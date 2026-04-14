@@ -1,90 +1,237 @@
 #!/usr/bin/env bash
-# Usage: devtunnel [OPTIONS] [PORT] [SUBDOMAIN]
+# Usage: devtunnel [<project>] [-- <command>...]
+#        devtunnel [<project>] edit
+#        devtunnel [<project>] env
+#        devtunnel --help
 #
-# Tunnels PORT (default: value from frpc config) to <subdomain>.avdi.dev.
-# SUBDOMAIN can be bare ("fooproj") or fully-qualified ("fooproj.avdi.dev").
-# When omitted, uses the subdomain stored in the frpc config.
+# <project> is both the subdomain and the config filename:
+#   ~/.config/devtunnel/projects/<project>.toml
+# If DEVTUNNEL_PROJECT is set, <project> can be omitted.
 #
-# Latest-wins: before connecting, this script calls the ctl.avdi.dev eviction
-# endpoint to surgically kill the tunnel for this specific subdomain (if any),
-# without disrupting other active tunnels. Falls back to restarting frps if
-# the surgical approach fails.
+# With no subcommand: starts the tunnel (frpc in foreground).
+# With -- <cmd>: starts frpc in background, exports env vars, execs <cmd>.
+# edit: opens (or creates) the project config in $EDITOR.
+# env: prints templated env vars for sourcing (eval $(devtunnel env)).
 #
-# Options:
-#   --help, -h    Show this help message and exit
-#   --config      Show the path to the frpc config file and exit
+# Config example (~/.config/devtunnel/projects/mailstrom.toml):
+#
+#   subdomain = "mailstrom"
+#
+#   [[ports]]
+#   port = 3000
+#   label = "rails"
+#
+#   [[ports]]
+#   port = 3036
+#   label = "vite"
+#
+#   [env]
+#   MAILSTROM_HOSTNAME = "{rails}"
+#   VITE_RUBY_ASSET_HOST = "https://{vite}"
+#
+# First port → <subdomain>.avdi.dev
+# Subsequent ports → <subdomain>-<label>.avdi.dev
+#
+# Without a config file, env vars bootstrap the config:
+#   DEVTUNNEL_PROJECT   project/subdomain name
+#   DEVTUNNEL_PORTS     "port[:label] ..." (e.g. "3000 3036:vite")
+#   DEVTUNNEL_ENV       semicolon-delimited KEY=VALUE with {label} templates
 set -euo pipefail
 
-CONFIG="$HOME/.config/devtunnel/frpc.toml"
+DEVTUNNEL_DIR="$HOME/.config/devtunnel"
+PROJECTS_DIR="$DEVTUNNEL_DIR/projects"
+BASE_CONFIG="$DEVTUNNEL_DIR/frpc.toml"
 
-# ---- argument parsing ----
-SHOW_HELP=false
-SHOW_CONFIG=false
-PORT_ARG=""
-SUBDOMAIN_ARG=""
-
-while [[ $# -gt 0 ]]; do
-  case "$1" in
-    --help|-h) SHOW_HELP=true; shift ;;
-    --config)  SHOW_CONFIG=true; shift ;;
-    -*)        echo "Unknown option: $1" >&2; exit 1 ;;
-    *)
-      if [[ -z "$PORT_ARG" ]]; then
-        PORT_ARG="$1"
-      elif [[ -z "$SUBDOMAIN_ARG" ]]; then
-        SUBDOMAIN_ARG="$1"
-      else
-        echo "Unexpected argument: $1" >&2; exit 1
-      fi
-      shift ;;
-  esac
-done
-
-if $SHOW_HELP; then
+# ---- usage ----
+_usage() {
   sed -n '2,/^set -/{ /^set -/d; s/^# \{0,1\}//; p }' "$0"
   exit 0
-fi
+}
 
-if $SHOW_CONFIG; then
-  echo "$CONFIG"
-  exit 0
-fi
+# ---- minimal TOML parser ----
+# Reads a project TOML and sets: SUBDOMAIN, PORTS[], PORT_LABELS[], ENV_VARS[]
+_parse_project_toml() {
+  local file="$1"
+  SUBDOMAIN=""
+  PORTS=()
+  PORT_LABELS=()
+  ENV_VARS=()  # "KEY=value_template" entries
 
-# ---- config checks ----
-if [[ ! -f "$CONFIG" ]]; then
-  echo "Error: $CONFIG not found. Run install-frpc.sh first." >&2
-  exit 1
-fi
+  local in_ports=false in_env=false current_port="" current_label=""
 
-# Read the auth token from frpc.toml
-TOKEN=$(awk -F'"' '/^auth\.token[[:space:]]*=/{print $2; exit}' "$CONFIG")
-if [[ -z "$TOKEN" ]]; then
-  echo "Error: could not read auth.token from $CONFIG" >&2
-  exit 1
-fi
+  while IFS= read -r line || [[ -n "$line" ]]; do
+    # strip comments and trailing whitespace
+    line="${line%%#*}"
+    line="${line%"${line##*[![:space:]]}"}"
+    [[ -z "$line" ]] && continue
 
-# Read the configured subdomain and default port from frpc.toml
-CONFIGURED_SUBDOMAIN=$(awk -F'"' '/^subdomain[[:space:]]*=/{print $2; exit}' "$CONFIG")
-CONFIGURED_SUBDOMAIN="${CONFIGURED_SUBDOMAIN:-avdi}"
-CONFIGURED_PORT=$(awk '/^localPort[[:space:]]*=/{print $3; exit}' "$CONFIG")
-CONFIGURED_PORT="${CONFIGURED_PORT:-3000}"
+    # section headers
+    if [[ "$line" == "[[ports]]" ]]; then
+      # flush previous port
+      if [[ -n "$current_port" ]]; then
+        PORTS+=("$current_port")
+        PORT_LABELS+=("${current_label:-$current_port}")
+      fi
+      current_port=""
+      current_label=""
+      in_ports=true
+      in_env=false
+      continue
+    elif [[ "$line" == "[env]" ]]; then
+      # flush last port
+      if [[ -n "$current_port" ]]; then
+        PORTS+=("$current_port")
+        PORT_LABELS+=("${current_label:-$current_port}")
+      fi
+      current_port=""
+      current_label=""
+      in_ports=false
+      in_env=true
+      continue
+    elif [[ "$line" =~ ^\[.*\] ]]; then
+      # some other section — flush and skip
+      if [[ -n "$current_port" ]]; then
+        PORTS+=("$current_port")
+        PORT_LABELS+=("${current_label:-$current_port}")
+      fi
+      current_port=""
+      current_label=""
+      in_ports=false
+      in_env=false
+      continue
+    fi
 
-PORT="${PORT_ARG:-$CONFIGURED_PORT}"
+    # key = value parsing
+    local key val
+    key="${line%%=*}"
+    val="${line#*=}"
+    key="${key%"${key##*[![:space:]]}"}"  # rtrim
+    key="${key#"${key%%[![:space:]]*}"}"  # ltrim
+    val="${val%"${val##*[![:space:]]}"}"  # rtrim
+    val="${val#"${val%%[![:space:]]*}"}"  # ltrim
+    val="${val#\"}"                        # strip quotes
+    val="${val%\"}"
 
-# Resolve SUBDOMAIN: strip .avdi.dev suffix if present
-if [[ -n "$SUBDOMAIN_ARG" ]]; then
-  NEW_SUBDOMAIN="${SUBDOMAIN_ARG%.avdi.dev}"
-else
-  NEW_SUBDOMAIN="$CONFIGURED_SUBDOMAIN"
-fi
+    if $in_ports; then
+      case "$key" in
+        port) current_port="$val" ;;
+        label) current_label="$val" ;;
+      esac
+    elif $in_env; then
+      ENV_VARS+=("${key}=${val}")
+    elif [[ "$key" == "subdomain" ]]; then
+      SUBDOMAIN="$val"
+    fi
+  done < "$file"
 
-# ---- evict old subdomain if we're switching ----
+  # flush last port
+  if [[ -n "$current_port" ]]; then
+    PORTS+=("$current_port")
+    PORT_LABELS+=("${current_label:-$current_port}")
+  fi
+}
+
+# ---- build config from env vars ----
+_config_from_env() {
+  SUBDOMAIN="${DEVTUNNEL_PROJECT}"
+  PORTS=()
+  PORT_LABELS=()
+  ENV_VARS=()
+
+  if [[ -n "${DEVTUNNEL_PORTS:-}" ]]; then
+    for spec in $DEVTUNNEL_PORTS; do
+      local port="${spec%%:*}"
+      local label="${spec#*:}"
+      [[ "$label" == "$port" ]] && label="$port"
+      PORTS+=("$port")
+      PORT_LABELS+=("$label")
+    done
+  else
+    # single-port fallback
+    PORTS+=("${DEV_TUNNEL_PORT:-3000}")
+    PORT_LABELS+=("${SUBDOMAIN}")
+  fi
+
+  if [[ -n "${DEVTUNNEL_ENV:-}" ]]; then
+    local IFS=';'
+    for entry in $DEVTUNNEL_ENV; do
+      # trim whitespace
+      entry="${entry#"${entry%%[![:space:]]*}"}"
+      entry="${entry%"${entry##*[![:space:]]}"}"
+      [[ -n "$entry" ]] && ENV_VARS+=("$entry")
+    done
+  fi
+}
+
+# ---- resolve label → hostname ----
+_label_to_host() {
+  local label="$1" index="$2"
+  if [[ "$index" -eq 0 ]]; then
+    echo "${SUBDOMAIN}.avdi.dev"
+  else
+    echo "${SUBDOMAIN}-${label}.avdi.dev"
+  fi
+}
+
+# ---- template env vars ----
+# Replaces {label} with the corresponding hostname
+_template_env_vars() {
+  RESOLVED_ENV=()
+  for entry in "${ENV_VARS[@]}"; do
+    local key="${entry%%=*}"
+    local val="${entry#*=}"
+    # replace each {label} placeholder
+    for i in "${!PORT_LABELS[@]}"; do
+      local label="${PORT_LABELS[$i]}"
+      local host
+      host=$(_label_to_host "$label" "$i")
+      val="${val//\{${label}\}/${host}}"
+    done
+    RESOLVED_ENV+=("${key}=${val}")
+  done
+}
+
+# ---- generate frpc.toml ----
+_generate_frpc_config() {
+  local token="$1" outfile="$2"
+  cat > "$outfile" <<EOF
+serverAddr = "avdi.dev"
+serverPort = 7000
+
+auth.method = "token"
+auth.token = "${token}"
+
+loginFailExit = false
+transport.heartbeatInterval = 10
+EOF
+
+  for i in "${!PORTS[@]}"; do
+    local port="${PORTS[$i]}"
+    local label="${PORT_LABELS[$i]}"
+    local sub
+    if [[ "$i" -eq 0 ]]; then
+      sub="$SUBDOMAIN"
+    else
+      sub="${SUBDOMAIN}-${label}"
+    fi
+    cat >> "$outfile" <<EOF
+
+[[proxies]]
+name = "${sub}"
+type = "http"
+localPort = ${port}
+subdomain = "${sub}"
+EOF
+  done
+}
+
+# ---- evict ----
 _evict() {
-  local sub="$1"
-  echo "Evicting ${sub}.avdi.dev via ctl.avdi.dev..."
+  local sub="$1" token="$2"
+  echo "Evicting ${sub}.avdi.dev..."
   local resp
   resp=$(curl -sf -X POST \
-    -H "Authorization: Bearer $TOKEN" \
+    -H "Authorization: Bearer $token" \
     -H "Content-Type: application/json" \
     -d "{\"subdomain\": \"$sub\"}" \
     https://ctl.avdi.dev/evict 2>&1) || true
@@ -99,23 +246,155 @@ _evict() {
       sleep 0.5
     fi
   else
-    echo "  ⚠ eviction request failed (is ctl.avdi.dev reachable?)"
-    echo "  Continuing anyway — frpc will retry until the subdomain is free."
+    echo "  ⚠ eviction failed (continuing anyway)"
   fi
 }
 
-if [[ "$NEW_SUBDOMAIN" != "$CONFIGURED_SUBDOMAIN" ]]; then
-  _evict "$CONFIGURED_SUBDOMAIN"
+_evict_all() {
+  local token="$1"
+  for i in "${!PORTS[@]}"; do
+    local label="${PORT_LABELS[$i]}"
+    local sub
+    if [[ "$i" -eq 0 ]]; then
+      sub="$SUBDOMAIN"
+    else
+      sub="${SUBDOMAIN}-${label}"
+    fi
+    _evict "$sub" "$token"
+  done
+}
+
+# ---- read token ----
+_read_token() {
+  local token
+  token=$(awk -F'"' '/^auth\.token[[:space:]]*=/{print $2; exit}' "$BASE_CONFIG" 2>/dev/null || true)
+  if [[ -z "$token" ]]; then
+    echo "Error: could not read auth.token from $BASE_CONFIG" >&2
+    echo "Run install-frpc.sh first." >&2
+    exit 1
+  fi
+  echo "$token"
+}
+
+# ========== MAIN ==========
+
+[[ "${1:-}" == "--help" || "${1:-}" == "-h" ]] && _usage
+
+# ---- parse args ----
+# Grammar: devtunnel [<project>] [edit|env|--] [<command>...]
+# If $1 is not a known subcommand or "--", it's the project name.
+# DEVTUNNEL_PROJECT fills in the project when omitted.
+
+PROJECT=""
+COMMAND=""       # "", "edit", or "env"
+WRAP_CMD=()      # command to exec after --, if any
+
+_is_subcommand() { [[ "$1" == "edit" || "$1" == "env" || "$1" == "--" ]]; }
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --)  shift; WRAP_CMD=("$@"); break ;;
+    edit|env)
+      COMMAND="$1"; shift ;;
+    -*)  echo "Unknown option: $1" >&2; exit 1 ;;
+    *)
+      if [[ -z "$PROJECT" ]]; then
+        # Could be project name, or could be a wrapped command after --
+        PROJECT="$1"; shift
+      else
+        echo "Unexpected argument: $1" >&2; exit 1
+      fi ;;
+  esac
+done
+
+# If PROJECT looks like it should be DEVTUNNEL_PROJECT-derived
+if [[ -z "$PROJECT" ]]; then
+  PROJECT="${DEVTUNNEL_PROJECT:-}"
 fi
-_evict "$NEW_SUBDOMAIN"
+if [[ -z "$PROJECT" ]]; then
+  echo "Usage: devtunnel [<project>] [edit|env|-- <command>...]" >&2
+  echo "  Or set DEVTUNNEL_PROJECT." >&2
+  exit 1
+fi
+PROJECT="${PROJECT%.avdi.dev}"
 
-# ---- patch config in place ----
-sed -i "s/localPort = .*/localPort = $PORT/" "$CONFIG"
-if [[ "$NEW_SUBDOMAIN" != "$CONFIGURED_SUBDOMAIN" ]]; then
-  sed -i "s/^subdomain = .*/subdomain = \"$NEW_SUBDOMAIN\"/" "$CONFIG"
-  sed -i "s/^name = .*/name = \"$NEW_SUBDOMAIN\"/" "$CONFIG"
+PROJECT_FILE="$PROJECTS_DIR/${PROJECT}.toml"
+
+# ---- edit ----
+if [[ "$COMMAND" == "edit" ]]; then
+  mkdir -p "$PROJECTS_DIR"
+  if [[ ! -f "$PROJECT_FILE" ]]; then
+    cat > "$PROJECT_FILE" <<EOF
+subdomain = "${PROJECT}"
+
+[[ports]]
+port = 3000
+# label = "rails"
+
+# [[ports]]
+# port = 3036
+# label = "vite"
+
+# [env]
+# MY_HOSTNAME = "{rails}"
+# VITE_ASSET_HOST = "https://{vite}"
+EOF
+    echo "Created $PROJECT_FILE"
+  fi
+  exec "${EDITOR:-vi}" "$PROJECT_FILE"
 fi
 
-echo "Tunneling localhost:$PORT → https://${NEW_SUBDOMAIN}.avdi.dev"
+# ---- load project config ----
+if [[ -f "$PROJECT_FILE" ]]; then
+  _parse_project_toml "$PROJECT_FILE"
+elif [[ -n "${DEVTUNNEL_PORTS:-}" ]]; then
+  DEVTUNNEL_PROJECT="$PROJECT"
+  _config_from_env
+else
+  echo "No config found: $PROJECT_FILE" >&2
+  echo "Run: devtunnel $PROJECT edit" >&2
+  exit 1
+fi
 
-exec frpc -c "$CONFIG"
+# ---- env ----
+if [[ "$COMMAND" == "env" ]]; then
+  _template_env_vars
+  for entry in "${RESOLVED_ENV[@]:-}"; do
+    [[ -n "$entry" ]] && echo "export $entry"
+  done
+  exit 0
+fi
+
+# ---- tunnel ----
+TOKEN=$(_read_token)
+
+RUNTIME_CONFIG=$(mktemp "$DEVTUNNEL_DIR/frpc-${PROJECT}-XXXXXX.toml")
+trap 'rm -f "$RUNTIME_CONFIG"' EXIT
+_generate_frpc_config "$TOKEN" "$RUNTIME_CONFIG"
+
+_evict_all "$TOKEN"
+
+# Print tunnel mappings
+echo ""
+for i in "${!PORTS[@]}"; do
+  echo "  localhost:${PORTS[$i]} → https://$(_label_to_host "${PORT_LABELS[$i]}" "$i")"
+done
+echo ""
+
+# Template env vars (used whether wrapping or not)
+_template_env_vars
+for entry in "${RESOLVED_ENV[@]:-}"; do
+  [[ -n "$entry" ]] && export "${entry?}"
+done
+
+if [[ ${#WRAP_CMD[@]} -gt 0 ]]; then
+  # Wrapping a command: frpc in background, exec the command
+  frpc -c "$RUNTIME_CONFIG" &
+  FRPC_PID=$!
+  trap 'kill $FRPC_PID 2>/dev/null; rm -f "$RUNTIME_CONFIG"' EXIT
+  sleep 1
+  exec "${WRAP_CMD[@]}"
+else
+  # No command to wrap: frpc in foreground
+  exec frpc -c "$RUNTIME_CONFIG"
+fi

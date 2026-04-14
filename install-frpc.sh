@@ -9,8 +9,17 @@
 #   3. Interactive prompt
 #
 # Tunnel configuration (optional env vars):
-#   DEV_TUNNEL_SUBDOMAIN  Subdomain to expose (default: avdi → avdi.avdi.dev)
-#   DEV_TUNNEL_PORT       Local port to tunnel by default (default: 3000)
+#   DEV_TUNNEL_SUBDOMAIN  (legacy) Subdomain to expose (default: avdi)
+#   DEV_TUNNEL_PORT       (legacy) Local port to tunnel (default: 3000)
+#
+# Multi-port project config (optional env vars):
+#   DEVTUNNEL_PROJECT     Project/subdomain name (also used by devtunnel wrapper)
+#   DEVTUNNEL_PORTS       Space-separated "port[:label]" (e.g. "3000 3036:vite")
+#   DEVTUNNEL_ENV         Newline-separated KEY=VALUE with {label} placeholders
+#
+# If DEVTUNNEL_PROJECT + DEVTUNNEL_PORTS are set, a project config file is
+# generated at ~/.config/devtunnel/projects/<project>.toml so that
+# `devtunnel serve` (or `devtunnel <project> serve`) works immediately.
 set -euo pipefail
 
 # Zoho Vault secret ID for the devtunnel FRP auth token
@@ -92,10 +101,7 @@ fi
 
 : "${DEV_TUNNEL_TOKEN:?Could not resolve DEV_TUNNEL_TOKEN}"
 
-# ---- frpc config ----
-SUBDOMAIN="${DEV_TUNNEL_SUBDOMAIN:-avdi}"
-LOCAL_PORT="${DEV_TUNNEL_PORT:-3000}"
-
+# ---- base frpc config (auth token only — proxies generated at runtime) ----
 mkdir -p "$HOME/.config/devtunnel"
 cat > "$HOME/.config/devtunnel/frpc.toml" <<EOF
 serverAddr = "avdi.dev"
@@ -109,16 +115,58 @@ auth.token = "${DEV_TUNNEL_TOKEN}"
 loginFailExit = false
 transport.heartbeatInterval = 10
 
+# Legacy single-port proxy (used by devtunnel <project> <port> fallback)
 [[proxies]]
-name = "${SUBDOMAIN}"
+name = "${DEV_TUNNEL_SUBDOMAIN:-avdi}"
 type = "http"
-localPort = ${LOCAL_PORT}
-subdomain = "${SUBDOMAIN}"
+localPort = ${DEV_TUNNEL_PORT:-3000}
+subdomain = "${DEV_TUNNEL_SUBDOMAIN:-avdi}"
 EOF
 
-echo "frpc config written to ~/.config/devtunnel/frpc.toml"
-echo "  Subdomain : https://${SUBDOMAIN}.avdi.dev"
-echo "  Default port : ${LOCAL_PORT}"
-echo ""
-echo "Next: make sure ~/.local/bin is in your PATH, then:"
-echo "  devtunnel [PORT]   # defaults to port ${LOCAL_PORT}, tunnels to https://${SUBDOMAIN}.avdi.dev"
+echo "Base frpc config written to ~/.config/devtunnel/frpc.toml"
+
+# ---- project config from env vars ----
+if [[ -n "${DEVTUNNEL_PROJECT:-}" && -n "${DEVTUNNEL_PORTS:-}" ]]; then
+  mkdir -p "$HOME/.config/devtunnel/projects"
+  PROJECT_FILE="$HOME/.config/devtunnel/projects/${DEVTUNNEL_PROJECT}.toml"
+
+  {
+    echo "subdomain = \"${DEVTUNNEL_PROJECT}\""
+    echo ""
+    for spec in $DEVTUNNEL_PORTS; do
+      port="${spec%%:*}"
+      label="${spec#*:}"
+      [[ "$label" == "$spec" ]] && label=""
+      echo "[[ports]]"
+      echo "port = ${port}"
+      [[ -n "$label" ]] && echo "label = \"${label}\""
+      echo ""
+    done
+
+    if [[ -n "${DEVTUNNEL_ENV:-}" ]]; then
+      echo "[env]"
+      _OLD_IFS="${IFS:-}"
+      IFS=';'
+      for entry in $DEVTUNNEL_ENV; do
+        # trim whitespace
+        entry="${entry#"${entry%%[![:space:]]*}"}"
+        entry="${entry%"${entry##*[![:space:]]}"}"
+        [[ -z "$entry" ]] && continue
+        key="${entry%%=*}"
+        val="${entry#*=}"
+        echo "${key} = \"${val}\""
+      done
+      IFS="$_OLD_IFS"
+    fi
+  } > "$PROJECT_FILE"
+
+  echo "Project config written to $PROJECT_FILE"
+  echo "  Run: devtunnel ${DEVTUNNEL_PROJECT} -- <command>"
+  echo "   or: devtunnel ${DEVTUNNEL_PROJECT}              (tunnel only)"
+else
+  echo ""
+  echo "Next: make sure ~/.local/bin is in your PATH, then:"
+  echo "  devtunnel <project> serve    # multi-port with project config"
+  echo "  devtunnel <project> <port>   # single-port legacy mode"
+  echo "  devtunnel <project> edit     # create/edit project config"
+fi
