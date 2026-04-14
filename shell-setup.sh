@@ -1,9 +1,6 @@
 #!/usr/bin/env bash
-# devtunnel shell integration — source this from your .bashrc / .zshrc.
-#
-# In your purse dotfiles, add:
-#   source ~/.config/devtunnel/shell-setup.sh   # if you copy it there, or:
-#   source ~/projects/devtunnel/dotfiles/shell-setup.sh
+# devtunnel shell integration — installed to ~/.config/devtunnel/shell-setup.sh
+# and sourced from .bashrc / .zshrc by purse/install.sh.
 
 # Add ~/.local/bin to PATH (idempotent)
 case ":${PATH}:" in
