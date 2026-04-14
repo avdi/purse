@@ -1,18 +1,56 @@
 #!/usr/bin/env bash
-# Usage: devtunnel [PORT]
-# Tunnels PORT (default: value from frpc config) to <subdomain>.avdi.dev
+# Usage: devtunnel [OPTIONS] [PORT] [SUBDOMAIN]
 #
-# The subdomain is whatever was written by install-frpc.sh (controlled by
-# DEV_TUNNEL_SUBDOMAIN at install time, e.g. "glorb" → glorb.avdi.dev).
+# Tunnels PORT (default: value from frpc config) to <subdomain>.avdi.dev.
+# SUBDOMAIN can be bare ("fooproj") or fully-qualified ("fooproj.avdi.dev").
+# When omitted, uses the subdomain stored in the frpc config.
 #
 # Latest-wins: before connecting, this script calls the ctl.avdi.dev eviction
 # endpoint to surgically kill the tunnel for this specific subdomain (if any),
 # without disrupting other active tunnels. Falls back to restarting frps if
 # the surgical approach fails.
+#
+# Options:
+#   --help, -h    Show this help message and exit
+#   --config      Show the path to the frpc config file and exit
 set -euo pipefail
 
 CONFIG="$HOME/.config/devtunnel/frpc.toml"
 
+# ---- argument parsing ----
+SHOW_HELP=false
+SHOW_CONFIG=false
+PORT_ARG=""
+SUBDOMAIN_ARG=""
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --help|-h) SHOW_HELP=true; shift ;;
+    --config)  SHOW_CONFIG=true; shift ;;
+    -*)        echo "Unknown option: $1" >&2; exit 1 ;;
+    *)
+      if [[ -z "$PORT_ARG" ]]; then
+        PORT_ARG="$1"
+      elif [[ -z "$SUBDOMAIN_ARG" ]]; then
+        SUBDOMAIN_ARG="$1"
+      else
+        echo "Unexpected argument: $1" >&2; exit 1
+      fi
+      shift ;;
+  esac
+done
+
+if $SHOW_HELP; then
+  sed -n '2,/^set -/{ /^set -/d; s/^# \{0,1\}//; p }' "$0"
+  exit 0
+fi
+
+if $SHOW_CONFIG; then
+  echo "$CONFIG"
+  exit 0
+fi
+
+# ---- config checks ----
 if [[ ! -f "$CONFIG" ]]; then
   echo "Error: $CONFIG not found. Run install-frpc.sh first." >&2
   exit 1
@@ -26,38 +64,58 @@ if [[ -z "$TOKEN" ]]; then
 fi
 
 # Read the configured subdomain and default port from frpc.toml
-SUBDOMAIN=$(awk -F'"' '/^subdomain[[:space:]]*=/{print $2; exit}' "$CONFIG")
-SUBDOMAIN="${SUBDOMAIN:-avdi}"
+CONFIGURED_SUBDOMAIN=$(awk -F'"' '/^subdomain[[:space:]]*=/{print $2; exit}' "$CONFIG")
+CONFIGURED_SUBDOMAIN="${CONFIGURED_SUBDOMAIN:-avdi}"
 CONFIGURED_PORT=$(awk '/^localPort[[:space:]]*=/{print $3; exit}' "$CONFIG")
 CONFIGURED_PORT="${CONFIGURED_PORT:-3000}"
 
-PORT=${1:-$CONFIGURED_PORT}
+PORT="${PORT_ARG:-$CONFIGURED_PORT}"
 
-# Patch localPort in place
-sed -i "s/localPort = .*/localPort = $PORT/" "$CONFIG"
-
-# Evict any existing tunnel for this subdomain via the control API
-echo "Evicting ${SUBDOMAIN}.avdi.dev via ctl.avdi.dev..."
-EVICT_RESPONSE=$(curl -sf -X POST \
-  -H "Authorization: Bearer $TOKEN" \
-  -H "Content-Type: application/json" \
-  -d "{\"subdomain\": \"$SUBDOMAIN\"}" \
-  https://ctl.avdi.dev/evict 2>&1) || true
-
-if echo "$EVICT_RESPONSE" | grep -q '"ok":true'; then
-  EVICT_MSG=$(echo "$EVICT_RESPONSE" | grep -o '"message":"[^"]*"' | head -1 | cut -d'"' -f4)
-  echo "  ✓ ${EVICT_MSG:-evicted}"
-  # Brief pause if frps was restarted (nuclear fallback), otherwise ready immediately
-  if echo "$EVICT_RESPONSE" | grep -q 'restarted'; then
-    sleep 2
-  else
-    sleep 0.5
-  fi
+# Resolve SUBDOMAIN: strip .avdi.dev suffix if present
+if [[ -n "$SUBDOMAIN_ARG" ]]; then
+  NEW_SUBDOMAIN="${SUBDOMAIN_ARG%.avdi.dev}"
 else
-  echo "  ⚠ eviction request failed (is ctl.avdi.dev reachable?)"
-  echo "  Continuing anyway — frpc will retry until the subdomain is free."
+  NEW_SUBDOMAIN="$CONFIGURED_SUBDOMAIN"
 fi
 
-echo "Tunneling localhost:$PORT → https://${SUBDOMAIN}.avdi.dev"
+# ---- evict old subdomain if we're switching ----
+_evict() {
+  local sub="$1"
+  echo "Evicting ${sub}.avdi.dev via ctl.avdi.dev..."
+  local resp
+  resp=$(curl -sf -X POST \
+    -H "Authorization: Bearer $TOKEN" \
+    -H "Content-Type: application/json" \
+    -d "{\"subdomain\": \"$sub\"}" \
+    https://ctl.avdi.dev/evict 2>&1) || true
+
+  if echo "$resp" | grep -q '"ok":true'; then
+    local msg
+    msg=$(echo "$resp" | grep -o '"message":"[^"]*"' | head -1 | cut -d'"' -f4)
+    echo "  ✓ ${msg:-evicted}"
+    if echo "$resp" | grep -q 'restarted'; then
+      sleep 2
+    else
+      sleep 0.5
+    fi
+  else
+    echo "  ⚠ eviction request failed (is ctl.avdi.dev reachable?)"
+    echo "  Continuing anyway — frpc will retry until the subdomain is free."
+  fi
+}
+
+if [[ "$NEW_SUBDOMAIN" != "$CONFIGURED_SUBDOMAIN" ]]; then
+  _evict "$CONFIGURED_SUBDOMAIN"
+fi
+_evict "$NEW_SUBDOMAIN"
+
+# ---- patch config in place ----
+sed -i "s/localPort = .*/localPort = $PORT/" "$CONFIG"
+if [[ "$NEW_SUBDOMAIN" != "$CONFIGURED_SUBDOMAIN" ]]; then
+  sed -i "s/^subdomain = .*/subdomain = \"$NEW_SUBDOMAIN\"/" "$CONFIG"
+  sed -i "s/^name = .*/name = \"$NEW_SUBDOMAIN\"/" "$CONFIG"
+fi
+
+echo "Tunneling localhost:$PORT → https://${NEW_SUBDOMAIN}.avdi.dev"
 
 exec frpc -c "$CONFIG"
