@@ -1,0 +1,63 @@
+#!/usr/bin/env bash
+# Usage: devtunnel [PORT]
+# Tunnels PORT (default: value from frpc config) to <subdomain>.avdi.dev
+#
+# The subdomain is whatever was written by install-frpc.sh (controlled by
+# DEV_TUNNEL_SUBDOMAIN at install time, e.g. "glorb" → glorb.avdi.dev).
+#
+# Latest-wins: before connecting, this script calls the ctl.avdi.dev eviction
+# endpoint to surgically kill the tunnel for this specific subdomain (if any),
+# without disrupting other active tunnels. Falls back to restarting frps if
+# the surgical approach fails.
+set -euo pipefail
+
+CONFIG="$HOME/.config/devtunnel/frpc.toml"
+
+if [[ ! -f "$CONFIG" ]]; then
+  echo "Error: $CONFIG not found. Run install-frpc.sh first." >&2
+  exit 1
+fi
+
+# Read the auth token from frpc.toml
+TOKEN=$(awk -F'"' '/^auth\.token[[:space:]]*=/{print $2; exit}' "$CONFIG")
+if [[ -z "$TOKEN" ]]; then
+  echo "Error: could not read auth.token from $CONFIG" >&2
+  exit 1
+fi
+
+# Read the configured subdomain and default port from frpc.toml
+SUBDOMAIN=$(awk -F'"' '/^subdomain[[:space:]]*=/{print $2; exit}' "$CONFIG")
+SUBDOMAIN="${SUBDOMAIN:-avdi}"
+CONFIGURED_PORT=$(awk '/^localPort[[:space:]]*=/{print $3; exit}' "$CONFIG")
+CONFIGURED_PORT="${CONFIGURED_PORT:-3000}"
+
+PORT=${1:-$CONFIGURED_PORT}
+
+# Patch localPort in place
+sed -i "s/localPort = .*/localPort = $PORT/" "$CONFIG"
+
+# Evict any existing tunnel for this subdomain via the control API
+echo "Evicting ${SUBDOMAIN}.avdi.dev via ctl.avdi.dev..."
+EVICT_RESPONSE=$(curl -sf -X POST \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d "{\"subdomain\": \"$SUBDOMAIN\"}" \
+  https://ctl.avdi.dev/evict 2>&1) || true
+
+if echo "$EVICT_RESPONSE" | grep -q '"ok":true'; then
+  EVICT_MSG=$(echo "$EVICT_RESPONSE" | grep -o '"message":"[^"]*"' | head -1 | cut -d'"' -f4)
+  echo "  ✓ ${EVICT_MSG:-evicted}"
+  # Brief pause if frps was restarted (nuclear fallback), otherwise ready immediately
+  if echo "$EVICT_RESPONSE" | grep -q 'restarted'; then
+    sleep 2
+  else
+    sleep 0.5
+  fi
+else
+  echo "  ⚠ eviction request failed (is ctl.avdi.dev reachable?)"
+  echo "  Continuing anyway — frpc will retry until the subdomain is free."
+fi
+
+echo "Tunneling localhost:$PORT → https://${SUBDOMAIN}.avdi.dev"
+
+exec frpc -c "$CONFIG"

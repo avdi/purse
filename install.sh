@@ -24,4 +24,4 @@ if [ -f ~/.zshrc ]; then
 fi
 
 # devtunnel: install frpc + devtunnel wrapper + frpc.toml
-curl -fsSL https://raw.githubusercontent.com/avdi/devtunnel/main/dotfiles/install-frpc.sh | bash
+bash ~/dotfiles/install-frpc.sh
