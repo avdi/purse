@@ -13,11 +13,11 @@
 #   DEV_TUNNEL_PORT       (legacy) Local port to tunnel (default: 3000)
 #
 # Multi-port project config (optional env vars):
-#   DEVTUNNEL_PROJECT     Project/subdomain name (also used by devtunnel wrapper)
+#   DEVTUNNEL_NAME     Project/subdomain name (also used by devtunnel wrapper)
 #   DEVTUNNEL_PORTS       Space-separated "port[:label]" (e.g. "3000 3036:vite")
 #   DEVTUNNEL_ENV         Newline-separated KEY=VALUE with {label} placeholders
 #
-# If DEVTUNNEL_PROJECT + DEVTUNNEL_PORTS are set, a project config file is
+# If DEVTUNNEL_NAME + DEVTUNNEL_PORTS are set, a project config file is
 # generated at ~/.config/devtunnel/projects/<project>.toml so that
 # `devtunnel serve` (or `devtunnel <project> serve`) works immediately.
 set -euo pipefail
@@ -126,12 +126,12 @@ EOF
 echo "Base frpc config written to ~/.config/devtunnel/frpc.toml"
 
 # ---- project config from env vars ----
-if [[ -n "${DEVTUNNEL_PROJECT:-}" && -n "${DEVTUNNEL_PORTS:-}" ]]; then
+if [[ -n "${DEVTUNNEL_NAME:-}" && -n "${DEVTUNNEL_PORTS:-}" ]]; then
   mkdir -p "$HOME/.config/devtunnel/projects"
-  PROJECT_FILE="$HOME/.config/devtunnel/projects/${DEVTUNNEL_PROJECT}.toml"
+  PROJECT_FILE="$HOME/.config/devtunnel/projects/${DEVTUNNEL_NAME}.toml"
 
   {
-    echo "subdomain = \"${DEVTUNNEL_PROJECT}\""
+    echo "subdomain = \"${DEVTUNNEL_NAME}\""
     echo ""
     for spec in $DEVTUNNEL_PORTS; do
       port="${spec%%:*}"
@@ -161,8 +161,8 @@ if [[ -n "${DEVTUNNEL_PROJECT:-}" && -n "${DEVTUNNEL_PORTS:-}" ]]; then
   } > "$PROJECT_FILE"
 
   echo "Project config written to $PROJECT_FILE"
-  echo "  Run: devtunnel ${DEVTUNNEL_PROJECT} -- <command>"
-  echo "   or: devtunnel ${DEVTUNNEL_PROJECT}              (tunnel only)"
+  echo "  Run: devtunnel ${DEVTUNNEL_NAME} -- <command>"
+  echo "   or: devtunnel ${DEVTUNNEL_NAME}              (tunnel only)"
 else
   echo ""
   echo "Next: make sure ~/.local/bin is in your PATH, then:"

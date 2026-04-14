@@ -6,7 +6,7 @@
 #
 # <project> is both the subdomain and the config filename:
 #   ~/.config/devtunnel/projects/<project>.toml
-# If DEVTUNNEL_PROJECT is set, <project> can be omitted.
+# If DEVTUNNEL_NAME is set, <project> can be omitted.
 #
 # With no subcommand: starts the tunnel (frpc in foreground).
 # With -- <cmd>: starts frpc in background, exports env vars, execs <cmd>.
@@ -33,7 +33,7 @@
 # Subsequent ports → <subdomain>-<label>.avdi.dev
 #
 # Without a config file, env vars bootstrap the config:
-#   DEVTUNNEL_PROJECT   project/subdomain name
+#   DEVTUNNEL_NAME   project/subdomain name
 #   DEVTUNNEL_PORTS     "port[:label] ..." (e.g. "3000 3036:vite")
 #   DEVTUNNEL_ENV       semicolon-delimited KEY=VALUE with {label} templates
 set -euo pipefail
@@ -133,7 +133,7 @@ _parse_project_toml() {
 
 # ---- build config from env vars ----
 _config_from_env() {
-  SUBDOMAIN="${DEVTUNNEL_PROJECT}"
+  SUBDOMAIN="${DEVTUNNEL_NAME}"
   PORTS=()
   PORT_LABELS=()
   ENV_VARS=()
@@ -283,7 +283,7 @@ _read_token() {
 # ---- parse args ----
 # Grammar: devtunnel [<project>] [edit|env|--] [<command>...]
 # If $1 is not a known subcommand or "--", it's the project name.
-# DEVTUNNEL_PROJECT fills in the project when omitted.
+# DEVTUNNEL_NAME fills in the project when omitted.
 
 PROJECT=""
 COMMAND=""       # "", "edit", or "env"
@@ -307,13 +307,13 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-# If PROJECT looks like it should be DEVTUNNEL_PROJECT-derived
+# If PROJECT looks like it should be DEVTUNNEL_NAME-derived
 if [[ -z "$PROJECT" ]]; then
-  PROJECT="${DEVTUNNEL_PROJECT:-}"
+  PROJECT="${DEVTUNNEL_NAME:-}"
 fi
 if [[ -z "$PROJECT" ]]; then
   echo "Usage: devtunnel [<project>] [edit|env|-- <command>...]" >&2
-  echo "  Or set DEVTUNNEL_PROJECT." >&2
+  echo "  Or set DEVTUNNEL_NAME." >&2
   exit 1
 fi
 PROJECT="${PROJECT%.avdi.dev}"
@@ -348,7 +348,7 @@ fi
 if [[ -f "$PROJECT_FILE" ]]; then
   _parse_project_toml "$PROJECT_FILE"
 elif [[ -n "${DEVTUNNEL_PORTS:-}" ]]; then
-  DEVTUNNEL_PROJECT="$PROJECT"
+  DEVTUNNEL_NAME="$PROJECT"
   _config_from_env
 else
   echo "No config found: $PROJECT_FILE" >&2
