@@ -1,7 +1,8 @@
 #!/bin/sh
+DOTFILES_DIR="$(cd "$(dirname "$0")" && pwd)"
 
-echo ". ~/dotfiles/aliases.sh" >> ~/.profile
-echo ". ~/dotfiles/aliases.sh" >> ~/.bashrc
+echo ". $DOTFILES_DIR/aliases.sh" >> ~/.profile
+echo ". $DOTFILES_DIR/aliases.sh" >> ~/.bashrc
 
 # Zoho Vault CLI (zv)
 if ! command -v zv >/dev/null 2>&1; then
@@ -24,4 +25,4 @@ if [ -f ~/.zshrc ]; then
 fi
 
 # devtunnel: install frpc + devtunnel wrapper + frpc.toml
-bash ~/dotfiles/install-frpc.sh
+bash "$DOTFILES_DIR/install-frpc.sh"
