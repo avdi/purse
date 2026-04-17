@@ -270,7 +270,7 @@ _read_token() {
   token=$(awk -F'"' '/^auth\.token[[:space:]]*=/{print $2; exit}' "$BASE_CONFIG" 2>/dev/null || true)
   if [[ -z "$token" ]]; then
     echo "Error: could not read auth.token from $BASE_CONFIG" >&2
-    echo "Run install-frpc.sh first." >&2
+    echo "Run: DEV_TUNNEL_TOKEN=your_token_here ~/.config/devtunnel/install-frpc.sh" >&2
     exit 1
   fi
   echo "$token"

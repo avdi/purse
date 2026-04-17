@@ -1,12 +1,11 @@
 #!/usr/bin/env bash
 # Install frpc + devtunnel wrapper, and write ~/.config/devtunnel/frpc.toml.
 #
-# Token resolution order:
+# Token resolution order (strictly non-interactive):
 #   1. $DEV_TUNNEL_TOKEN env var (set automatically in GitHub Codespaces)
-#   2. Zoho Vault CLI (zv) if installed, unlocked, and jq is available
+#   2. Zoho Vault CLI (zv) if installed, already unlocked, and jq+timeout are available
 #      Secret name: devtunnel-frp-auth-token  (ID: 339798000000165005)
-#      If vault is locked and stdin is a tty, prompts for master password.
-#   3. Interactive prompt
+#   3. If still unavailable, continue with a comment-only frpc.toml stub
 #
 # Tunnel configuration (optional env vars):
 #   DEV_TUNNEL_SUBDOMAIN  (legacy) Subdomain to expose (default: avdi)
@@ -29,6 +28,9 @@ FRPC_VERSION=0.61.0
 FRPC_BIN="$HOME/.local/bin/frpc"
 DEVTUNNEL_BIN="$HOME/.local/bin/devtunnel"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+DEVTUNNEL_DIR="$HOME/.config/devtunnel"
+BASE_CONFIG="$DEVTUNNEL_DIR/frpc.toml"
+INSTALL_FRPC_COPY="$DEVTUNNEL_DIR/install-frpc.sh"
 
 # ---- frpc install ----
 if [[ ! -x "$FRPC_BIN" ]]; then
@@ -50,9 +52,14 @@ chmod +x "$DEVTUNNEL_BIN"
 echo "devtunnel wrapper installed at $DEVTUNNEL_BIN"
 
 # ---- shell-setup ----
-mkdir -p "$HOME/.config/devtunnel"
-cp "$SCRIPT_DIR/shell-setup.sh" "$HOME/.config/devtunnel/shell-setup.sh"
+mkdir -p "$DEVTUNNEL_DIR"
+cp "$SCRIPT_DIR/shell-setup.sh" "$DEVTUNNEL_DIR/shell-setup.sh"
 echo "shell-setup.sh installed at ~/.config/devtunnel/shell-setup.sh"
+
+# ---- install-frpc copy ----
+cp "$SCRIPT_DIR/install-frpc.sh" "$INSTALL_FRPC_COPY"
+chmod +x "$INSTALL_FRPC_COPY"
+echo "install-frpc.sh installed at ~/.config/devtunnel/install-frpc.sh"
 
 # ---- Codespace warning ----
 if [[ "${CODESPACES:-}" == "true" && -z "${DEV_TUNNEL_TOKEN:-}" ]]; then
@@ -64,46 +71,49 @@ if [[ "${CODESPACES:-}" == "true" && -z "${DEV_TUNNEL_TOKEN:-}" ]]; then
   echo ""
 fi
 
-# ---- resolve token ----
+# ---- resolve token (non-interactive) ----
 _zv_get_token() {
   command -v zv &>/dev/null || return 1
   command -v jq &>/dev/null || return 1
+  command -v timeout &>/dev/null || return 1
   local out
-  out=$(timeout 5 zv get -id "$ZV_SECRET_ID" --not-safe --output json 2>/dev/null) || return 1
+  out=$(timeout 5s zv get -id "$ZV_SECRET_ID" --not-safe --output json </dev/null 2>/dev/null) || return 1
   jq -re '.secret.secretData[] | select(.id == "password") | .value' <<< "$out" 2>/dev/null
 }
 
 if [[ -z "${DEV_TUNNEL_TOKEN:-}" ]] && command -v zv &>/dev/null; then
-  echo "Trying Zoho Vault (zv)..."
+  echo "Trying Zoho Vault (zv) non-interactively..."
   DEV_TUNNEL_TOKEN=$(_zv_get_token || true)
-
-  if [[ -z "${DEV_TUNNEL_TOKEN:-}" && -t 0 ]]; then
-    echo "Vault appears locked. Enter your Zoho Vault master password to unlock,"
-    echo "or press Enter to skip and type the token manually."
-    read -rsp "Master password: " _zv_mp && echo
-    if [[ -n "${_zv_mp:-}" ]]; then
-      zv unlock "$_zv_mp" 2>/dev/null || true
-      DEV_TUNNEL_TOKEN=$(_zv_get_token || true)
-    fi
-    unset _zv_mp
-  fi
 fi
 
 if [[ -z "${DEV_TUNNEL_TOKEN:-}" ]]; then
-  if [[ "${CODESPACES:-}" == "true" ]]; then
-    echo "ERROR: DEV_TUNNEL_TOKEN is required in Codespaces. See warning above." >&2
-    exit 1
+  echo ""
+  echo "⚠️  DEV_TUNNEL_TOKEN not found; devtunnel auth is not configured yet."
+  echo "   Devcontainer/Codespaces startup will continue without devtunnel auth configured."
+  echo "   To enable devtunnel later, run:"
+  echo "     DEV_TUNNEL_TOKEN=your_token_here $INSTALL_FRPC_COPY"
+  if [[ -f "$BASE_CONFIG" ]]; then
+    echo "   Leaving existing ~/.config/devtunnel/frpc.toml in place."
+  else
+    cat > "$BASE_CONFIG" <<EOF
+# devtunnel is not configured yet: DEV_TUNNEL_TOKEN was unavailable.
+#
+# To configure it later, run:
+#
+#   DEV_TUNNEL_TOKEN=your_token_here $INSTALL_FRPC_COPY
+#
+# Or rerun the same command later with DEV_TUNNEL_TOKEN already present
+# in the environment. Once configured, this file will be replaced with
+# the auth-bearing frpc.toml used by devtunnel.
+EOF
+    echo "   Wrote ~/.config/devtunnel/frpc.toml stub with recovery instructions."
   fi
-  echo "DEV_TUNNEL_TOKEN not found in environment or Zoho Vault."
-  read -rsp "Paste DEV_TUNNEL_TOKEN: " DEV_TUNNEL_TOKEN
-  echo
 fi
 
-: "${DEV_TUNNEL_TOKEN:?Could not resolve DEV_TUNNEL_TOKEN}"
-
 # ---- base frpc config (auth token only — proxies generated at runtime) ----
-mkdir -p "$HOME/.config/devtunnel"
-cat > "$HOME/.config/devtunnel/frpc.toml" <<EOF
+if [[ -n "${DEV_TUNNEL_TOKEN:-}" ]]; then
+  mkdir -p "$DEVTUNNEL_DIR"
+  cat > "$BASE_CONFIG" <<EOF
 serverAddr = "avdi.dev"
 serverPort = 7000
 
@@ -123,7 +133,8 @@ localPort = ${DEV_TUNNEL_PORT:-3000}
 subdomain = "${DEV_TUNNEL_SUBDOMAIN:-avdi}"
 EOF
 
-echo "Base frpc config written to ~/.config/devtunnel/frpc.toml"
+  echo "Base frpc config written to ~/.config/devtunnel/frpc.toml"
+fi
 
 # ---- project config from env vars ----
 if [[ -n "${DEVTUNNEL_NAME:-}" && -n "${DEVTUNNEL_PORTS:-}" ]]; then
