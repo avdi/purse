@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# devtunnel shell integration — installed to ~/.config/devtunnel/shell-setup.sh
+# lenticel shell integration — installed to ~/.config/lenticel/shell-setup.sh
 # and sourced from .bashrc / .zshrc by purse/install.sh.
 
 # Add ~/.local/bin to PATH (idempotent)
@@ -9,4 +9,4 @@ case ":${PATH}:" in
 esac
 
 # Short alias
-alias dt='devtunnel'
+alias lt='lenticel'

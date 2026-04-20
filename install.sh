@@ -18,11 +18,11 @@ else
   echo "zv already installed ($(zv --version 2>/dev/null || true))"
 fi
 
-# devtunnel: source shell-setup in interactive shells
-echo ". ~/.config/devtunnel/shell-setup.sh 2>/dev/null || true" >> ~/.bashrc
+# lenticel: source shell-setup in interactive shells
+echo ". ~/.config/lenticel/shell-setup.sh 2>/dev/null || true" >> ~/.bashrc
 if [ -f ~/.zshrc ]; then
-  echo ". ~/.config/devtunnel/shell-setup.sh 2>/dev/null || true" >> ~/.zshrc
+  echo ". ~/.config/lenticel/shell-setup.sh 2>/dev/null || true" >> ~/.zshrc
 fi
 
-# devtunnel: install frpc + devtunnel wrapper + frpc.toml
+# lenticel: install frpc + lenticel wrapper + frpc.toml
 bash "$DOTFILES_DIR/install-frpc.sh"

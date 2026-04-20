@@ -1,19 +1,19 @@
 #!/usr/bin/env bash
-# Usage: devtunnel [<project>] [-- <command>...]
-#        devtunnel [<project>] edit
-#        devtunnel [<project>] env
-#        devtunnel --help
+# Usage: lenticel [<project>] [-- <command>...]
+#        lenticel [<project>] edit
+#        lenticel [<project>] env
+#        lenticel --help
 #
 # <project> is both the subdomain and the config filename:
-#   ~/.config/devtunnel/projects/<project>.toml
-# If DEVTUNNEL_NAME is set, <project> can be omitted.
+#   ~/.config/lenticel/projects/<project>.toml
+# If LENTICEL_NAME is set, <project> can be omitted.
 #
 # With no subcommand: starts the tunnel (frpc in foreground).
 # With -- <cmd>: starts frpc in background, exports env vars, execs <cmd>.
 # edit: opens (or creates) the project config in $EDITOR.
-# env: prints templated env vars for sourcing (eval $(devtunnel env)).
+# env: prints templated env vars for sourcing (eval $(lenticel env)).
 #
-# Config example (~/.config/devtunnel/projects/myapp.toml):
+# Config example (~/.config/lenticel/projects/myapp.toml):
 #
 #   subdomain = "myapp"
 #
@@ -33,14 +33,14 @@
 # Subsequent ports → <subdomain>-<label>.<server-domain>
 #
 # Without a config file, env vars bootstrap the config:
-#   DEVTUNNEL_NAME   project/subdomain name
-#   DEVTUNNEL_PORTS     "port[:label] ..." (e.g. "3000 3036:vite")
-#   DEVTUNNEL_ENV       semicolon-delimited KEY=VALUE with {label} templates
+#   LENTICEL_NAME   project/subdomain name
+#   LENTICEL_PORTS     "port[:label] ..." (e.g. "3000 3036:vite")
+#   LENTICEL_ENV       semicolon-delimited KEY=VALUE with {label} templates
 set -euo pipefail
 
-DEVTUNNEL_DIR="$HOME/.config/devtunnel"
-PROJECTS_DIR="$DEVTUNNEL_DIR/projects"
-BASE_CONFIG="$DEVTUNNEL_DIR/frpc.toml"
+LENTICEL_DIR="$HOME/.config/lenticel"
+PROJECTS_DIR="$LENTICEL_DIR/projects"
+BASE_CONFIG="$LENTICEL_DIR/frpc.toml"
 
 # Read serverAddr from base frpc config (memoized in _SERVER_DOMAIN).
 _server_domain() {
@@ -141,13 +141,13 @@ _parse_project_toml() {
 
 # ---- build config from env vars ----
 _config_from_env() {
-  SUBDOMAIN="${DEVTUNNEL_NAME}"
+  SUBDOMAIN="${LENTICEL_NAME}"
   PORTS=()
   PORT_LABELS=()
   ENV_VARS=()
 
-  if [[ -n "${DEVTUNNEL_PORTS:-}" ]]; then
-    for spec in $DEVTUNNEL_PORTS; do
+  if [[ -n "${LENTICEL_PORTS:-}" ]]; then
+    for spec in $LENTICEL_PORTS; do
       local port="${spec%%:*}"
       local label="${spec#*:}"
       [[ "$label" == "$port" ]] && label="$port"
@@ -156,13 +156,13 @@ _config_from_env() {
     done
   else
     # single-port fallback
-    PORTS+=("${DEV_TUNNEL_PORT:-3000}")
+    PORTS+=("${LENTICEL_PORT:-3000}")
     PORT_LABELS+=("${SUBDOMAIN}")
   fi
 
-  if [[ -n "${DEVTUNNEL_ENV:-}" ]]; then
+  if [[ -n "${LENTICEL_ENV:-}" ]]; then
     local IFS=';'
-    for entry in $DEVTUNNEL_ENV; do
+    for entry in $LENTICEL_ENV; do
       # trim whitespace
       entry="${entry#"${entry%%[![:space:]]*}"}"
       entry="${entry%"${entry##*[![:space:]]}"}"
@@ -285,7 +285,7 @@ _read_token() {
   token=$(awk -F'"' '/^auth\.token[[:space:]]*=/{print $2; exit}' "$BASE_CONFIG" 2>/dev/null || true)
   if [[ -z "$token" ]]; then
     echo "Error: could not read auth.token from $BASE_CONFIG" >&2
-    echo "Run: DEV_TUNNEL_TOKEN=your_token_here ~/.config/devtunnel/install-frpc.sh" >&2
+    echo "Run: LENTICEL_TOKEN=your_token_here ~/.config/lenticel/install-frpc.sh" >&2
     exit 1
   fi
   echo "$token"
@@ -296,9 +296,9 @@ _read_token() {
 [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]] && _usage
 
 # ---- parse args ----
-# Grammar: devtunnel [<project>] [edit|env|--] [<command>...]
+# Grammar: lenticel [<project>] [edit|env|--] [<command>...]
 # If $1 is not a known subcommand or "--", it's the project name.
-# DEVTUNNEL_NAME fills in the project when omitted.
+# LENTICEL_NAME fills in the project when omitted.
 
 PROJECT=""
 COMMAND=""       # "", "edit", or "env"
@@ -322,13 +322,13 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-# If PROJECT looks like it should be DEVTUNNEL_NAME-derived
+# If PROJECT looks like it should be LENTICEL_NAME-derived
 if [[ -z "$PROJECT" ]]; then
-  PROJECT="${DEVTUNNEL_NAME:-}"
+  PROJECT="${LENTICEL_NAME:-}"
 fi
 if [[ -z "$PROJECT" ]]; then
-  echo "Usage: devtunnel [<project>] [edit|env|-- <command>...]" >&2
-  echo "  Or set DEVTUNNEL_NAME." >&2
+  echo "Usage: lenticel [<project>] [edit|env|-- <command>...]" >&2
+  echo "  Or set LENTICEL_NAME." >&2
   exit 1
 fi
 PROJECT="${PROJECT%.${_SERVER_DOMAIN:-}}"
@@ -362,12 +362,12 @@ fi
 # ---- load project config ----
 if [[ -f "$PROJECT_FILE" ]]; then
   _parse_project_toml "$PROJECT_FILE"
-elif [[ -n "${DEVTUNNEL_PORTS:-}" ]]; then
-  DEVTUNNEL_NAME="$PROJECT"
+elif [[ -n "${LENTICEL_PORTS:-}" ]]; then
+  LENTICEL_NAME="$PROJECT"
   _config_from_env
 else
   echo "No config found: $PROJECT_FILE" >&2
-  echo "Run: devtunnel $PROJECT edit" >&2
+  echo "Run: lenticel $PROJECT edit" >&2
   exit 1
 fi
 
@@ -383,7 +383,7 @@ fi
 # ---- tunnel ----
 TOKEN=$(_read_token)
 
-RUNTIME_CONFIG=$(mktemp "$DEVTUNNEL_DIR/frpc-${PROJECT}-XXXXXX.toml")
+RUNTIME_CONFIG=$(mktemp "$LENTICEL_DIR/frpc-${PROJECT}-XXXXXX.toml")
 trap 'rm -f "$RUNTIME_CONFIG"' EXIT
 _generate_frpc_config "$TOKEN" "$RUNTIME_CONFIG"
 
