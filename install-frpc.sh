@@ -4,11 +4,14 @@
 # Token resolution order (strictly non-interactive):
 #   1. $DEV_TUNNEL_TOKEN env var (set automatically in GitHub Codespaces)
 #   2. Zoho Vault CLI (zv) if installed, already unlocked, and jq+timeout are available
-#      Secret name: devtunnel-frp-auth-token  (ID: 339798000000165005)
+#      Secret name: devtunnel-frp-auth-token  (ZV_SECRET_ID env var or set below)
 #   3. If still unavailable, continue with a comment-only frpc.toml stub
 #
+# Required env vars:
+#   DEVTUNNEL_SERVER      Hostname of the frps server (e.g. tunnel.example.com)
+#
 # Tunnel configuration (optional env vars):
-#   DEV_TUNNEL_SUBDOMAIN  (legacy) Subdomain to expose (default: avdi)
+#   DEV_TUNNEL_SUBDOMAIN  (legacy) Subdomain to expose (default: myproject)
 #   DEV_TUNNEL_PORT       (legacy) Local port to tunnel (default: 3000)
 #
 # Multi-port project config (optional env vars):
@@ -21,8 +24,9 @@
 # `devtunnel serve` (or `devtunnel <project> serve`) works immediately.
 set -euo pipefail
 
-# Zoho Vault secret ID for the devtunnel FRP auth token
-ZV_SECRET_ID="339798000000165005"
+# Zoho Vault secret ID for the devtunnel FRP auth token.
+# Override with ZV_SECRET_ID env var, or leave empty to skip Zoho Vault lookup.
+ZV_SECRET_ID="${ZV_SECRET_ID:-}"
 
 FRPC_VERSION=0.61.0
 FRPC_BIN="$HOME/.local/bin/frpc"
@@ -66,13 +70,14 @@ if [[ "${CODESPACES:-}" == "true" && -z "${DEV_TUNNEL_TOKEN:-}" ]]; then
   echo ""
   echo "⚠️  WARNING: Running in a GitHub Codespace but DEV_TUNNEL_TOKEN is not set."
   echo "   Fix: github.com → Settings → Codespaces → Secrets → New secret"
-  echo "   Name: DEV_TUNNEL_TOKEN  |  Value: FRP_AUTH_TOKEN from avdi/devtunnel server/.env"
+  echo "   Name: DEV_TUNNEL_TOKEN  |  Value: FRP_AUTH_TOKEN from the devtunnel server/.env"
   echo "   Then rebuild / reopen this Codespace."
   echo ""
 fi
 
 # ---- resolve token (non-interactive) ----
 _zv_get_token() {
+  [[ -n "$ZV_SECRET_ID" ]] || return 1
   command -v zv &>/dev/null || return 1
   command -v jq &>/dev/null || return 1
   command -v timeout &>/dev/null || return 1
@@ -112,9 +117,13 @@ fi
 
 # ---- base frpc config (auth token only — proxies generated at runtime) ----
 if [[ -n "${DEV_TUNNEL_TOKEN:-}" ]]; then
+  if [[ -z "${DEVTUNNEL_SERVER:-}" ]]; then
+    echo "ERROR: DEVTUNNEL_SERVER is not set. Set it to the hostname of your frps server."
+    exit 1
+  fi
   mkdir -p "$DEVTUNNEL_DIR"
   cat > "$BASE_CONFIG" <<EOF
-serverAddr = "avdi.dev"
+serverAddr = "${DEVTUNNEL_SERVER}"
 serverPort = 7000
 
 auth.method = "token"
@@ -127,10 +136,10 @@ transport.heartbeatInterval = 10
 
 # Legacy single-port proxy (used by devtunnel <project> <port> fallback)
 [[proxies]]
-name = "${DEV_TUNNEL_SUBDOMAIN:-avdi}"
+name = "${DEV_TUNNEL_SUBDOMAIN:-myproject}"
 type = "http"
 localPort = ${DEV_TUNNEL_PORT:-3000}
-subdomain = "${DEV_TUNNEL_SUBDOMAIN:-avdi}"
+subdomain = "${DEV_TUNNEL_SUBDOMAIN:-myproject}"
 requestHeaders.set.X-Forwarded-Proto = "https"
 EOF
 

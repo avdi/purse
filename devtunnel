@@ -13,9 +13,9 @@
 # edit: opens (or creates) the project config in $EDITOR.
 # env: prints templated env vars for sourcing (eval $(devtunnel env)).
 #
-# Config example (~/.config/devtunnel/projects/mailstrom.toml):
+# Config example (~/.config/devtunnel/projects/myapp.toml):
 #
-#   subdomain = "mailstrom"
+#   subdomain = "myapp"
 #
 #   [[ports]]
 #   port = 3000
@@ -26,11 +26,11 @@
 #   label = "vite"
 #
 #   [env]
-#   MAILSTROM_HOSTNAME = "{rails}"
+#   MYAPP_HOSTNAME = "{rails}"
 #   VITE_RUBY_ASSET_HOST = "https://{vite}"
 #
-# First port → <subdomain>.avdi.dev
-# Subsequent ports → <subdomain>-<label>.avdi.dev
+# First port → <subdomain>.<server-domain>
+# Subsequent ports → <subdomain>-<label>.<server-domain>
 #
 # Without a config file, env vars bootstrap the config:
 #   DEVTUNNEL_NAME   project/subdomain name
@@ -41,6 +41,14 @@ set -euo pipefail
 DEVTUNNEL_DIR="$HOME/.config/devtunnel"
 PROJECTS_DIR="$DEVTUNNEL_DIR/projects"
 BASE_CONFIG="$DEVTUNNEL_DIR/frpc.toml"
+
+# Read serverAddr from base frpc config (memoized in _SERVER_DOMAIN).
+_server_domain() {
+  if [[ -z "${_SERVER_DOMAIN:-}" ]]; then
+    _SERVER_DOMAIN=$(awk -F'"' '/^serverAddr[[:space:]]*=/{print $2; exit}' "$BASE_CONFIG" 2>/dev/null || true)
+  fi
+  echo "${_SERVER_DOMAIN}"
+}
 
 # ---- usage ----
 _usage() {
@@ -166,10 +174,12 @@ _config_from_env() {
 # ---- resolve label → hostname ----
 _label_to_host() {
   local label="$1" index="$2"
+  local domain
+  domain=$(_server_domain)
   if [[ "$index" -eq 0 ]]; then
-    echo "${SUBDOMAIN}.avdi.dev"
+    echo "${SUBDOMAIN}.${domain}"
   else
-    echo "${SUBDOMAIN}-${label}.avdi.dev"
+    echo "${SUBDOMAIN}-${label}.${domain}"
   fi
 }
 
@@ -194,8 +204,10 @@ _template_env_vars() {
 # ---- generate frpc.toml ----
 _generate_frpc_config() {
   local token="$1" outfile="$2"
+  local server_addr
+  server_addr=$(_server_domain)
   cat > "$outfile" <<EOF
-serverAddr = "avdi.dev"
+serverAddr = "${server_addr}"
 serverPort = 7000
 
 auth.method = "token"
@@ -229,13 +241,15 @@ EOF
 # ---- evict ----
 _evict() {
   local sub="$1" token="$2"
-  echo "Evicting ${sub}.avdi.dev..."
+  local domain
+  domain=$(_server_domain)
+  echo "Evicting ${sub}.${domain}..."
   local resp
   resp=$(curl -sf -X POST \
     -H "Authorization: Bearer $token" \
     -H "Content-Type: application/json" \
     -d "{\"subdomain\": \"$sub\"}" \
-    https://ctl.avdi.dev/evict 2>&1) || true
+    "https://ctl.${domain}/evict" 2>&1) || true
 
   if echo "$resp" | grep -q '"ok":true'; then
     local msg
@@ -317,7 +331,7 @@ if [[ -z "$PROJECT" ]]; then
   echo "  Or set DEVTUNNEL_NAME." >&2
   exit 1
 fi
-PROJECT="${PROJECT%.avdi.dev}"
+PROJECT="${PROJECT%.${_SERVER_DOMAIN:-}}"
 
 PROJECT_FILE="$PROJECTS_DIR/${PROJECT}.toml"
 
