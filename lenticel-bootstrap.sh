@@ -43,7 +43,7 @@ fi
 LENTICEL_REPO="${LENTICEL_REPO:-avdi/lenticel}"
 LENTICEL_BRANCH="${LENTICEL_BRANCH:-main}"
 
-curl -fsSL "https://raw.githubusercontent.com/${LENTICEL_REPO}/${LENTICEL_BRANCH}/purse/install-frpc.sh" \
+curl -fsSL "https://raw.githubusercontent.com/${LENTICEL_REPO}/${LENTICEL_BRANCH}/client/install-frpc.sh" \
   | LENTICEL_TOKEN="${LENTICEL_TOKEN:-}" \
     LENTICEL_SERVER="${LENTICEL_SERVER:-}" \
     bash
