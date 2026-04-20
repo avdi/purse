@@ -131,6 +131,7 @@ name = "${DEV_TUNNEL_SUBDOMAIN:-avdi}"
 type = "http"
 localPort = ${DEV_TUNNEL_PORT:-3000}
 subdomain = "${DEV_TUNNEL_SUBDOMAIN:-avdi}"
+requestHeaders.set.X-Forwarded-Proto = "https"
 EOF
 
   echo "Base frpc config written to ~/.config/devtunnel/frpc.toml"

@@ -221,6 +221,7 @@ name = "${sub}"
 type = "http"
 localPort = ${port}
 subdomain = "${sub}"
+requestHeaders.set.X-Forwarded-Proto = "https"
 EOF
   done
 }
