@@ -10,3 +10,24 @@ sourceDir = {{ .chezmoi.sourceDir | quote }}
 
 [hooks.read-source-state.pre]
     command = {{ joinPath (.chezmoi.sourceDir | dir) ".install-zv.sh" | quote }}
+
+# Wire Zoho Vault CLI as chezmoi's secret backend.
+# This enables the secretJSON template function in any *.tmpl file.
+# The configured args are always prepended, so in templates you only pass the ID:
+#
+#   {{ secretJSON "-id" "YOUR_VAULT_ITEM_ID" }}
+#
+# Full usage example (e.g. in ~/.config/some-tool/config.toml.tmpl):
+#
+#   {{- $item := secretJSON "-id" "2000002716908" -}}
+#   {{- $pass := "" -}}
+#   {{- range $item.secret.secretData -}}
+#   {{-   if eq .id "password" }}{{- $pass = .value -}}{{- end -}}
+#   {{- end -}}
+#   api_key = "{{ $pass }}"
+#
+# Requires zv to be authenticated before running chezmoi apply.
+# For bulk env-var secrets, prefer setup-secrets instead (no auth needed at apply time).
+[secret]
+    command = "zv"
+    args = ["get", "--not-safe", "--output", "json"]
