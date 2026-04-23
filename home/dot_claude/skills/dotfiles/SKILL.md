@@ -11,8 +11,7 @@ description: >
 Dotfiles are managed with [chezmoi](https://chezmoi.io) in a repo called **purse**:
 
 - **GitHub**: `https://github.com/avdi/purse`
-- **Chezmoi source**: `/home/avdi/.local/share/chezmoi/` (the chezmoi clone)
-- **Working copy**: `/home/avdi/projects/avdi/purse/` (for editing)
+- **Chezmoi source**: `~/.local/share/chezmoi/` — use `chezmoi cd` to open a shell there
 
 Chezmoi's `sourceDir` is set to the `home/` subdirectory of the purse repo.
 
@@ -49,11 +48,12 @@ home/
 ### Add or edit a dotfile
 
 ```bash
-# Option A: edit in working copy, then sync to chezmoi clone
-cp home/dot_config/foo ~/.local/share/chezmoi/home/dot_config/foo
+# Edit directly in the chezmoi source
+chezmoi cd   # opens a shell in ~/.local/share/chezmoi/home/
+# ... make changes ...
 chezmoi apply
 
-# Option B: pull an existing file from ~ into chezmoi source
+# Or pull an existing file from ~ into the source
 chezmoi add ~/.config/foo
 ```
 
@@ -68,20 +68,15 @@ the deployed copy directly.
 
 ### Add an agent skill
 
-Create `home/dot_claude/skills/<skill-name>/SKILL.md` in the working copy,
-then copy to the chezmoi source clone and run `chezmoi apply`.
+```bash
+chezmoi cd
+mkdir -p home/dot_claude/skills/<skill-name>
+# create home/dot_claude/skills/<skill-name>/SKILL.md
+chezmoi apply
+```
 
 Claude Code picks up skills from `~/.claude/skills/`; Augment reads that
 location too (compatible per the agentskills.io standard).
-
-### Sync the two repo clones
-
-```bash
-# After editing in working copy: push to GitHub, pull in chezmoi clone
-git -C ~/projects/avdi/purse push
-git -C ~/.local/share/chezmoi pull
-chezmoi apply
-```
 
 ## Essential chezmoi commands
 
