@@ -22,6 +22,7 @@ sh -c "$(curl -fsLS get.chezmoi.io)" -- init --apply avdi/purse
 home/
   .chezmoi.toml.tmpl                  # generates ~/.config/chezmoi/chezmoi.toml
   .chezmoidata/packages.yaml          # edit this to add/remove packages
+  dot_config/shell/env.sh             # → ~/.config/shell/env.sh  (EDITOR, PATH, etc.)
   dot_config/shell/aliases.sh         # → ~/.config/shell/aliases.sh
   run_onchange_install-packages.sh.tmpl   # installs packages on Linux/macOS
   run_onchange_install-packages.ps1.tmpl  # installs packages on Windows (winget)

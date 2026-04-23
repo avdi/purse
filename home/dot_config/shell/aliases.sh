@@ -13,6 +13,12 @@
 # run_once_setup-shell.sh adds a source line for this file to ~/.bashrc,
 # ~/.profile, and ~/.zshrc (if present) on first apply.
 
+# Source env vars first so aliases can reference them if needed
+# shellcheck source=/dev/null
+_shell_cfg="${XDG_CONFIG_HOME:-$HOME/.config}/shell"
+[ -f "$_shell_cfg/env.sh" ] && . "$_shell_cfg/env.sh"
+unset _shell_cfg
+
 alias gs="git status"
 
 # direnv shell hook — loads/unloads .envrc as you cd between directories.
