@@ -1,3 +1,4 @@
+{{- if eq .chezmoi.os "windows" -}}
 # chezmoi run_onchange: install packages (Windows / PowerShell)
 #
 # Package lists are baked in from .chezmoidata/packages.yaml by the template
@@ -71,3 +72,4 @@ if ($nodeMajor -ge 22) {
     Write-Warning "  {{ .packages.npm | join ", " }}"
     Write-Warning "  Run 'winget upgrade OpenJS.NodeJS.LTS' then re-run chezmoi apply."
 }
+{{- end -}}
