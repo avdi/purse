@@ -130,6 +130,9 @@ fi
 # ---- npm packages -----------------------------------------------------------
 
 if [ "$(node_major)" -ge 22 ]; then
+  # Ensure npm global installs go to ~/.local so no sudo is needed.
+  # NodeSource/apt leaves the default prefix as /usr/local (root-owned).
+  npm config set prefix "$HOME/.local"
   echo "→ npm: {{ .packages.npm | join ", " }}"
   npm install -g {{ .packages.npm | join " " }}
 else
