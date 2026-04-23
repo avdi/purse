@@ -4,5 +4,9 @@ sourceDir = {{ .chezmoi.sourceDir | quote }}
 [data]
     codespaces = {{ $codespaces }}
 
+[git]
+    autoCommit = true
+    autoPush = true
+
 [hooks.read-source-state.pre]
     command = {{ joinPath (.chezmoi.sourceDir | dir) ".install-zv.sh" | quote }}
