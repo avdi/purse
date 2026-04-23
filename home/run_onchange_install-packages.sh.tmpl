@@ -1,15 +1,20 @@
 #!/bin/bash
-# chezmoi run_onchange: install packages
+# chezmoi run_onchange: install packages (Unix/Linux/macOS)
 #
 # Package lists are baked in from .chezmoidata/packages.yaml by the template
 # engine. Adding or removing a package changes this script's rendered content,
 # which causes chezmoi to re-run it on the next apply.
 #
+# Windows is handled by run_onchange_install-packages.ps1.tmpl instead.
+#
 # brew packages  : {{ .packages.brew | join ", " }}
 # apt packages   : {{ .packages.apt  | join ", " }}
 # npm packages   : {{ .packages.npm  | join ", " }}
 # cursor agent   : curl https://cursor.com/install (installs as 'agent')
-
+{{ if eq .chezmoi.os "windows" }}
+echo "Windows detected — use run_onchange_install-packages.ps1 instead." >&2
+exit 0
+{{ end }}
 set -euo pipefail
 
 # ---- helpers ----------------------------------------------------------------

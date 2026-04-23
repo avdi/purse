@@ -17,3 +17,14 @@ packages:
     - "@openai/codex"              # codex
     - "@google/gemini-cli"         # gemini
     - "@augmentcode/auggie"        # auggie (Augment Code CLI)
+
+  # Windows Package Manager (winget) packages
+  # worktrunk installs as 'git-wt' on Windows (avoids conflict with Windows Terminal's 'wt')
+  # Cursor CLI (command: 'agent') is installed separately via PowerShell script
+  # npm tools (codex, gemini, auggie) are installed after Node.js via npm
+  winget:
+    - id: BurntSushi.ripgrep.MSVC  # ripgrep (rg)
+    - id: max-sixty.worktrunk       # git worktree manager (installs as 'git-wt' on Windows)
+    - id: michidk.vscli             # VS Code devcontainer launcher
+    - id: Anthropic.ClaudeCode      # claude (native binary, not npm)
+    - id: OpenJS.NodeJS.LTS         # Node.js LTS — needed for npm packages below

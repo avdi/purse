@@ -1,0 +1,73 @@
+# chezmoi run_onchange: install packages (Windows / PowerShell)
+#
+# Package lists are baked in from .chezmoidata/packages.yaml by the template
+# engine. Adding or removing a package changes this script's rendered content,
+# which causes chezmoi to re-run it on the next apply.
+#
+# Unix/macOS is handled by run_onchange_install-packages.sh.tmpl instead.
+#
+# winget packages : {{ range .packages.winget }}{{ .id }} {{ end }}
+# npm packages    : {{ .packages.npm | join ", " }}
+# cursor CLI      : irm 'https://cursor.com/install?win32=true' | iex  (installs as 'agent')
+{{ if ne .chezmoi.os "windows" }}
+Write-Host "This script is for Windows only. Skipping." -ForegroundColor Yellow
+exit 0
+{{ end }}
+$ErrorActionPreference = 'Stop'
+
+function Test-Command($cmd) {
+    return [bool](Get-Command $cmd -ErrorAction SilentlyContinue)
+}
+
+function Get-NodeMajor {
+    if (-not (Test-Command node)) { return 0 }
+    return [int](node -e 'process.stdout.write(process.version.slice(1).split(".")[0])')
+}
+
+# ---- winget packages --------------------------------------------------------
+
+if (-not (Test-Command winget)) {
+    Write-Error "winget not found. Install the App Installer from the Microsoft Store."
+    exit 1
+}
+
+Write-Host "→ winget: installing packages..." -ForegroundColor Cyan
+{{ range .packages.winget }}
+winget install --id {{ .id }} --exact --accept-package-agreements --accept-source-agreements --silent
+{{ end }}
+
+# ---- shell integration for worktrunk ----------------------------------------
+# On Windows, winget installs worktrunk as 'git-wt' (avoids conflict with
+# Windows Terminal's 'wt' command). Run shell integration if git-wt is now available.
+
+if (Test-Command git-wt) {
+    Write-Host "→ worktrunk: running shell integration (git-wt config shell install)..." -ForegroundColor Cyan
+    git-wt config shell install 2>$null
+}
+
+# ---- Cursor agent CLI -------------------------------------------------------
+# Cursor's CLI is a separate product from the editor; the command is 'agent'.
+# winget installs the Cursor editor (Anysphere.Cursor), but the CLI needs a
+# separate PowerShell installer.
+
+if (-not (Test-Command agent)) {
+    Write-Host "→ Installing Cursor agent CLI (command: 'agent')..." -ForegroundColor Cyan
+    irm 'https://cursor.com/install?win32=true' | iex
+}
+
+# ---- npm packages -----------------------------------------------------------
+# Refresh PATH after winget installs Node.js so we don't need a new shell.
+
+$env:PATH = [System.Environment]::GetEnvironmentVariable('PATH', 'Machine') + ';' +
+            [System.Environment]::GetEnvironmentVariable('PATH', 'User')
+
+$nodeMajor = Get-NodeMajor
+if ($nodeMajor -ge 22) {
+    Write-Host "→ npm: {{ .packages.npm | join ", " }}" -ForegroundColor Cyan
+    npm install -g {{ .packages.npm | join " " }}
+} else {
+    $nodeVer = if (Test-Command node) { node --version } else { "none" }
+    Write-Warning "Node.js 22+ required (have: $nodeVer). Skipping npm packages:"
+    Write-Warning "  {{ .packages.npm | join ", " }}"
+    Write-Warning "  Run 'winget upgrade OpenJS.NodeJS.LTS' then re-run chezmoi apply."
+}
