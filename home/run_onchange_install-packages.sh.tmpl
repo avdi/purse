@@ -1,0 +1,81 @@
+#!/bin/bash
+# chezmoi run_onchange: install packages
+#
+# Package lists are baked in from .chezmoidata/packages.yaml by the template
+# engine. Adding or removing a package changes this script's rendered content,
+# which causes chezmoi to re-run it on the next apply.
+#
+# brew packages  : {{ .packages.brew | join ", " }}
+# apt packages   : {{ .packages.apt  | join ", " }}
+# npm packages   : {{ .packages.npm  | join ", " }}
+# cursor agent   : curl https://cursor.com/install (installs as 'agent')
+
+set -euo pipefail
+
+# ---- helpers ----------------------------------------------------------------
+
+node_major() {
+  command -v node >/dev/null 2>&1 || { echo 0; return; }
+  node -e 'process.stdout.write(process.version.slice(1).split(".")[0])'
+}
+
+# ---- system packages & Rust tools -------------------------------------------
+
+if command -v brew >/dev/null 2>&1; then
+  echo "→ brew: {{ .packages.brew | join ", " }}"
+  brew install {{ .packages.brew | join " " }}
+
+elif command -v apt-get >/dev/null 2>&1; then
+  echo "→ apt: {{ .packages.apt | join ", " }}"
+  sudo apt-get update -qq
+  sudo apt-get install -y --no-install-recommends {{ .packages.apt | join " " }}
+
+  # Node.js 22+ — auggie requires it; NodeSource if system node is too old
+  if [ "$(node_major)" -lt 22 ]; then
+    echo "→ Node.js 22+ required; installing via NodeSource..."
+    curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash -
+    sudo apt-get install -y nodejs
+  fi
+
+  # worktrunk (→ wt) and vscli via cargo; warn if cargo not available
+  if command -v cargo >/dev/null 2>&1; then
+    echo "→ cargo: worktrunk, vscli"
+    command -v wt    >/dev/null 2>&1 || cargo install worktrunk
+    command -v vscli >/dev/null 2>&1 || cargo install vscli
+  else
+    echo "⚠️  cargo not found — worktrunk and vscli not installed"
+    echo "   Install Rust: curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh"
+    echo "   Or install Homebrew on Linux: https://brew.sh"
+  fi
+
+else
+  echo "⚠️  No supported package manager found (need brew or apt-get)" >&2
+  exit 1
+fi
+
+# ---- npm packages -----------------------------------------------------------
+
+if [ "$(node_major)" -ge 22 ]; then
+  echo "→ npm: {{ .packages.npm | join ", " }}"
+  npm install -g {{ .packages.npm | join " " }}
+else
+  echo "⚠️  Node.js 22+ not found (have: $(node --version 2>/dev/null || echo none))"
+  echo "   Skipping: {{ .packages.npm | join ", " }}"
+fi
+
+# ---- cursor agent CLI -------------------------------------------------------
+# Cursor's CLI is a separate binary from the editor; the command is 'agent'.
+
+if ! command -v agent >/dev/null 2>&1; then
+  echo "→ Installing Cursor agent CLI (command: 'agent')..."
+  curl https://cursor.com/install -fsS | bash
+fi
+
+# ---- worktrunk shell integration --------------------------------------------
+# 'wt switch' needs a shell function to cd; wt config shell install adds it.
+# Idempotent — checks before modifying rc files.
+
+if command -v wt >/dev/null 2>&1; then
+  echo "→ worktrunk: ensuring shell integration..."
+  wt config shell install 2>/dev/null || true
+fi

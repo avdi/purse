@@ -1,0 +1,19 @@
+packages:
+  # Debian/Ubuntu apt packages (Linux without Homebrew)
+  apt:
+    - ripgrep
+
+  # Homebrew packages (macOS, or Linux with brew)
+  brew:
+    - ripgrep
+    - node        # Node.js LTS — needed for npm packages below
+    - worktrunk   # git worktree manager (installs as 'wt')
+    - vscli       # VS Code devcontainer launcher
+
+  # npm global packages — all coding-agent CLIs
+  # Requires Node.js 22+ (auggie is the strictest)
+  npm:
+    - "@anthropic-ai/claude-code"  # claude
+    - "@openai/codex"              # codex
+    - "@google/gemini-cli"         # gemini
+    - "@augmentcode/auggie"        # auggie (Augment Code CLI)
