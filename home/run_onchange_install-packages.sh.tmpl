@@ -154,5 +154,7 @@ fi
 
 if command -v wt >/dev/null 2>&1; then
   echo "→ worktrunk: ensuring shell integration..."
-  wt config shell install 2>/dev/null || true
+  # --yes skips the interactive approval prompt; </dev/null guards against
+  # any future version that prompts on something other than the approval step.
+  wt config shell install --yes </dev/null >/dev/null 2>&1 || true
 fi
