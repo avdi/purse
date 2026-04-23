@@ -2,10 +2,12 @@ packages:
   # Debian/Ubuntu apt packages (Linux without Homebrew)
   apt:
     - ripgrep
+    - direnv
 
   # Homebrew packages (macOS, or Linux with brew)
   brew:
     - ripgrep
+    - direnv
     - node        # Node.js LTS — needed for npm packages below
     - worktrunk   # git worktree manager (installs as 'wt')
     - vscli       # VS Code devcontainer launcher
@@ -24,6 +26,7 @@ packages:
   # npm tools (codex, gemini, auggie) are installed after Node.js via npm
   winget:
     - id: BurntSushi.ripgrep.MSVC  # ripgrep (rg)
+    - id: direnv.direnv             # direnv
     - id: max-sixty.worktrunk       # git worktree manager (installs as 'git-wt' on Windows)
     - id: michidk.vscli             # VS Code devcontainer launcher
     - id: Anthropic.ClaudeCode      # claude (native binary, not npm)

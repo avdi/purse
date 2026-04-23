@@ -14,3 +14,13 @@
 # ~/.profile, and ~/.zshrc (if present) on first apply.
 
 alias gs="git status"
+
+# direnv shell hook — loads/unloads .envrc as you cd between directories.
+# See: https://direnv.net/docs/hook.html
+if command -v direnv >/dev/null 2>&1; then
+  if [ -n "${ZSH_VERSION:-}" ]; then
+    eval "$(direnv hook zsh)"
+  else
+    eval "$(direnv hook bash)"
+  fi
+fi
