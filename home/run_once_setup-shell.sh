@@ -19,8 +19,12 @@ _append_if_missing() {
 for rc in ~/.profile ~/.bashrc; do
   _append_if_missing "$rc" '.config/shell/aliases.sh' "$ALIASES_LINE"
 done
-[ -f ~/.zshrc ] && _append_if_missing ~/.zshrc '.config/shell/aliases.sh' "$ALIASES_LINE"
+if [ -f ~/.zshrc ]; then
+  _append_if_missing ~/.zshrc '.config/shell/aliases.sh' "$ALIASES_LINE"
+fi
 
 # Lenticel → .bashrc (and .zshrc if present)
 _append_if_missing ~/.bashrc '.config/lenticel/shell-setup.sh' "$LENTICEL_LINE"
-[ -f ~/.zshrc ] && _append_if_missing ~/.zshrc '.config/lenticel/shell-setup.sh' "$LENTICEL_LINE"
+if [ -f ~/.zshrc ]; then
+  _append_if_missing ~/.zshrc '.config/lenticel/shell-setup.sh' "$LENTICEL_LINE"
+fi
