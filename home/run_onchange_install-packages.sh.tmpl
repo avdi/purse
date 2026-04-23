@@ -97,6 +97,26 @@ elif command -v apt-get >/dev/null 2>&1; then
     fi
   fi
 
+  # chruby: install from source via make (not in apt)
+  # See: https://github.com/postmodern/chruby#install
+  if [ ! -f /usr/local/share/chruby/chruby.sh ]; then
+    echo "→ chruby: installing from source..."
+    _chruby_ver="$(curl -fsSL https://api.github.com/repos/postmodern/chruby/releases/latest | grep '"tag_name"' | cut -d'"' -f4 | tr -d 'v')"
+    curl -fsSL "https://github.com/postmodern/chruby/archive/v${_chruby_ver}.tar.gz" | tar -xz -C /tmp
+    sudo make -C "/tmp/chruby-${_chruby_ver}" install
+    rm -rf "/tmp/chruby-${_chruby_ver}"
+  fi
+
+  # ruby-install: install from source via make (not in apt)
+  # See: https://github.com/postmodern/ruby-install#install
+  if ! command -v ruby-install >/dev/null 2>&1; then
+    echo "→ ruby-install: installing from source..."
+    _ri_ver="$(curl -fsSL https://api.github.com/repos/postmodern/ruby-install/releases/latest | grep '"tag_name"' | cut -d'"' -f4 | tr -d 'v')"
+    curl -fsSL "https://github.com/postmodern/ruby-install/archive/v${_ri_ver}.tar.gz" | tar -xz -C /tmp
+    sudo make -C "/tmp/ruby-install-${_ri_ver}" install
+    rm -rf "/tmp/ruby-install-${_ri_ver}"
+  fi
+
 else
   echo "⚠️  No supported package manager found (need brew or apt-get)" >&2
   exit 1

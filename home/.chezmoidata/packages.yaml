@@ -11,6 +11,8 @@ packages:
     - node        # Node.js LTS — needed for npm packages below
     - worktrunk   # git worktree manager (installs as 'wt')
     - vscli       # VS Code devcontainer launcher
+    - chruby      # lightweight Ruby version switcher (shell function)
+    - ruby-install  # installs Ruby versions for use with chruby
 
   # npm global packages — all coding-agent CLIs
   # Requires Node.js 22+ (auggie is the strictest)

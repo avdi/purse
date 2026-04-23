@@ -35,3 +35,23 @@ if command -v direnv >/dev/null 2>&1; then
     eval "$(direnv hook bash)"
   fi
 fi
+
+# chruby shell hook — enables 'chruby X.Y.Z' to switch Ruby versions.
+# auto.sh additionally reads .ruby-version files and switches automatically.
+# Probe known brew prefix locations (linuxbrew / Apple Silicon / Intel) and
+# the default prefix used by manual 'make install'.
+# See: https://github.com/postmodern/chruby
+for _chruby_sh in \
+  /home/linuxbrew/.linuxbrew/opt/chruby/share/chruby/chruby.sh \
+  /opt/homebrew/opt/chruby/share/chruby/chruby.sh \
+  /usr/local/opt/chruby/share/chruby/chruby.sh \
+  /usr/local/share/chruby/chruby.sh; do
+  if [ -f "$_chruby_sh" ]; then
+    # shellcheck source=/dev/null
+    . "$_chruby_sh"
+    # shellcheck source=/dev/null
+    . "${_chruby_sh%chruby.sh}auto.sh" 2>/dev/null || true
+    break
+  fi
+done
+unset _chruby_sh
