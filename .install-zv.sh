@@ -1,11 +1,9 @@
 #!/bin/sh
-# chezmoi run_once: install Zoho Vault CLI (zv)
-# Runs only on first `chezmoi apply` (or after a state reset).
+# chezmoi hooks.read-source-state.pre: install Zoho Vault CLI (zv)
+# Runs before chezmoi reads the source state on every apply.
+# Exits immediately if zv is already present — must be fast.
 
-if command -v zv >/dev/null 2>&1; then
-  echo "zv already installed ($(zv --version 2>/dev/null || true))"
-  exit 0
-fi
+type zv >/dev/null 2>&1 && exit 0
 
 echo "Installing Zoho Vault CLI (zv)..."
 mkdir -p "$HOME/.local/bin"
