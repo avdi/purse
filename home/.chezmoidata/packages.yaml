@@ -15,6 +15,7 @@ packages:
   # npm global packages — all coding-agent CLIs
   # Requires Node.js 22+ (auggie is the strictest)
   npm:
+    - "@devcontainers/cli"         # devcontainer (dc alias)
     - "@anthropic-ai/claude-code"  # claude
     - "@openai/codex"              # codex
     - "@google/gemini-cli"         # gemini

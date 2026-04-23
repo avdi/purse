@@ -20,6 +20,10 @@ _shell_cfg="${XDG_CONFIG_HOME:-$HOME/.config}/shell"
 unset _shell_cfg
 
 alias gs="git status"
+alias vs="vscli open"
+alias vsr="vscli recent"
+alias dc="devcontainer"
+alias lt="lenticel"
 
 # direnv shell hook — loads/unloads .envrc as you cd between directories.
 # See: https://direnv.net/docs/hook.html
