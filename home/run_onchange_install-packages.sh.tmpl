@@ -56,7 +56,8 @@ elif command -v apt-get >/dev/null 2>&1; then
     if [ -n "$_wt_arch" ]; then
       _wt_ver="$(curl -fsSL https://api.github.com/repos/max-sixty/worktrunk/releases/latest | grep '"tag_name"' | cut -d'"' -f4)"
       curl -fsSL "https://github.com/max-sixty/worktrunk/releases/download/${_wt_ver}/worktrunk-${_wt_arch}.tar.xz" \
-        | tar -xJ -C "$HOME/.local/bin" wt
+        | tar -xJ --strip-components=1 -C "$HOME/.local/bin" \
+            "worktrunk-${_wt_arch}/wt" "worktrunk-${_wt_arch}/git-wt"
       chmod +x "$HOME/.local/bin/wt"
     fi
   fi
@@ -75,7 +76,7 @@ elif command -v apt-get >/dev/null 2>&1; then
     if [ -n "$_vscli_arch" ]; then
       _vscli_ver="$(curl -fsSL https://api.github.com/repos/michidk/vscli/releases/latest | grep '"tag_name"' | cut -d'"' -f4)"
       curl -fsSL "https://github.com/michidk/vscli/releases/download/${_vscli_ver}/vscli-${_vscli_arch}.tar.gz" \
-        | tar -xz -C "$HOME/.local/bin" vscli
+        | tar -xz --strip-components=1 -C "$HOME/.local/bin" "vscli-${_vscli_arch}/vscli"
       chmod +x "$HOME/.local/bin/vscli"
     fi
   fi
