@@ -1,0 +1,25 @@
+[user]
+	email = avdi@avdi.codes
+	name = Avdi Grimm
+	signingkey = 2EFC2BD07E026325
+[gpg]
+	program = gpg
+[commit]
+	gpgsign = false
+[tag]
+	forceSignAnnotated = false
+[init]
+	defaultBranch = main
+[gpg "ssh"]
+	program = ssh-keygen
+	allowedSignersFile = ""
+[credential "https://github.com"]
+	helper = 
+	helper = !/usr/bin/gh auth git-credential
+[credential "https://gist.github.com"]
+	helper = 
+	helper = !/usr/bin/gh auth git-credential
+{{- if contains "microsoft" .chezmoi.kernel.osrelease }}
+[credential]
+	helper = /mnt/c/Program\\ Files/Git/mingw64/bin/git-credential-manager.exe
+{{- end }}
