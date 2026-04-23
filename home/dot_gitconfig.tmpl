@@ -19,7 +19,14 @@
 [credential "https://gist.github.com"]
 	helper = 
 	helper = !/usr/bin/gh auth git-credential
-{{- if contains "microsoft" .chezmoi.kernel.osrelease }}
+{{/*
+  Only emit the Git-for-Windows credential helper in *real* WSL2 user-space.
+  The kernel osrelease string contains "microsoft" for any Linux running on
+  a WSL2 kernel — including containers under Docker Desktop on Windows, which
+  share the host kernel but have no /mnt/c/. Requiring /mnt/c/Windows to exist
+  distinguishes real WSL user-space from a WSL2-kernel-hosted container.
+*/ -}}
+{{- if and (contains "microsoft" .chezmoi.kernel.osrelease) (stat "/mnt/c/Windows") }}
 [credential]
 	helper = /mnt/c/Program\\ Files/Git/mingw64/bin/git-credential-manager.exe
 {{- end }}
