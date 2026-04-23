@@ -5,4 +5,4 @@ sourceDir = {{ .chezmoi.sourceDir | quote }}
     codespaces = {{ $codespaces }}
 
 [hooks.read-source-state.pre]
-    command = {{ joinPath .chezmoi.sourceDir ".install-zv.sh" | quote }}
+    command = {{ joinPath (.chezmoi.sourceDir | dir) ".install-zv.sh" | quote }}
