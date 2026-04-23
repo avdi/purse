@@ -29,6 +29,11 @@ node_major() {
 
 if ! command -v brew >/dev/null 2>&1 && [ "$(uname)" = "Linux" ]; then
   echo "→ Homebrew not found; installing..."
+  # NONINTERACTIVE=1 suppresses prompts — required in Codespaces and other
+  # headless environments where there is no opportunity for user interaction.
+  if [ "${CODESPACES:-}" = "true" ]; then
+    export NONINTERACTIVE=1
+  fi
   /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
   # Add brew to PATH for the rest of this script
   if [ -x "/home/linuxbrew/.linuxbrew/bin/brew" ]; then
