@@ -25,14 +25,28 @@ node_major() {
   node -e 'process.stdout.write(process.version.slice(1).split(".")[0])'
 }
 
-# ---- system packages & Rust tools -------------------------------------------
+# ---- bootstrap Homebrew if missing (Linux only) ------------------------------
+
+if ! command -v brew >/dev/null 2>&1 && [ "$(uname)" = "Linux" ]; then
+  echo "→ Homebrew not found; installing..."
+  /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+  # Add brew to PATH for the rest of this script
+  if [ -x "/home/linuxbrew/.linuxbrew/bin/brew" ]; then
+    eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"
+  elif [ -x "$HOME/.linuxbrew/bin/brew" ]; then
+    eval "$("$HOME/.linuxbrew/bin/brew" shellenv)"
+  fi
+fi
+
+# ---- system packages ---------------------------------------------------------
 
 if command -v brew >/dev/null 2>&1; then
   echo "→ brew: {{ .packages.brew | join ", " }}"
   brew install {{ .packages.brew | join " " }}
 
 elif command -v apt-get >/dev/null 2>&1; then
-  echo "→ apt: {{ .packages.apt | join ", " }}"
+  # Fallback: apt + manual steps (brew install failed or was skipped)
+  echo "→ apt fallback: {{ .packages.apt | join ", " }}"
   sudo apt-get update -qq
   sudo apt-get install -y --no-install-recommends {{ .packages.apt | join " " }}
 
@@ -44,7 +58,6 @@ elif command -v apt-get >/dev/null 2>&1; then
   fi
 
   # worktrunk (→ wt): install binary from GitHub releases
-  # Release assets: worktrunk-{arch}-unknown-linux-musl.tar.xz
   if ! command -v wt >/dev/null 2>&1; then
     echo "→ worktrunk: installing from GitHub releases..."
     _arch="$(uname -m)"
@@ -63,8 +76,6 @@ elif command -v apt-get >/dev/null 2>&1; then
   fi
 
   # vscli: install binary from GitHub releases
-  # Release assets: vscli-x86_64-unknown-linux-musl.tar.gz
-  #                 vscli-arm-unknown-linux-gnueabihf.tar.gz (no aarch64-musl)
   if ! command -v vscli >/dev/null 2>&1; then
     echo "→ vscli: installing from GitHub releases..."
     _arch="$(uname -m)"
