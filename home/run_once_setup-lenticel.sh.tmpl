@@ -1,0 +1,9 @@
+#!/bin/bash
+# chezmoi run_once: bootstrap lenticel (frp tunnel client)
+# Delegates to lenticel-bootstrap.sh in the repo root, which handles
+# Codespace detection and Zoho Vault token resolution internally.
+#
+# chezmoi.sourceDir points to the dotfiles repo root (set via sourceDir in
+# chezmoi.toml, which is written by .chezmoi.toml.tmpl during init).
+
+bash "{{ .chezmoi.sourceDir }}/lenticel-bootstrap.sh"
