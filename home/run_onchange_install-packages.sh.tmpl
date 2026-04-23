@@ -16,6 +16,7 @@ echo "Windows detected — use run_onchange_install-packages.ps1 instead." >&2
 exit 0
 {{ end }}
 set -euo pipefail
+mkdir -p "$HOME/.local/bin"
 
 # ---- helpers ----------------------------------------------------------------
 
@@ -42,15 +43,41 @@ elif command -v apt-get >/dev/null 2>&1; then
     sudo apt-get install -y nodejs
   fi
 
-  # worktrunk (→ wt) and vscli via cargo; warn if cargo not available
-  if command -v cargo >/dev/null 2>&1; then
-    echo "→ cargo: worktrunk, vscli"
-    command -v wt    >/dev/null 2>&1 || cargo install worktrunk
-    command -v vscli >/dev/null 2>&1 || cargo install vscli
-  else
-    echo "⚠️  cargo not found — worktrunk and vscli not installed"
-    echo "   Install Rust: curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh"
-    echo "   Or install Homebrew on Linux: https://brew.sh"
+  # worktrunk (→ wt): install binary from GitHub releases
+  # Release assets: worktrunk-{arch}-unknown-linux-musl.tar.xz
+  if ! command -v wt >/dev/null 2>&1; then
+    echo "→ worktrunk: installing from GitHub releases..."
+    _arch="$(uname -m)"
+    case "$_arch" in
+      x86_64)  _wt_arch="x86_64-unknown-linux-musl" ;;
+      aarch64) _wt_arch="aarch64-unknown-linux-musl" ;;
+      *)        echo "⚠️  worktrunk: unsupported arch $_arch"; _wt_arch="" ;;
+    esac
+    if [ -n "$_wt_arch" ]; then
+      _wt_ver="$(curl -fsSL https://api.github.com/repos/max-sixty/worktrunk/releases/latest | grep '"tag_name"' | cut -d'"' -f4)"
+      curl -fsSL "https://github.com/max-sixty/worktrunk/releases/download/${_wt_ver}/worktrunk-${_wt_arch}.tar.xz" \
+        | tar -xJ -C "$HOME/.local/bin" wt
+      chmod +x "$HOME/.local/bin/wt"
+    fi
+  fi
+
+  # vscli: install binary from GitHub releases
+  # Release assets: vscli-x86_64-unknown-linux-musl.tar.gz
+  #                 vscli-arm-unknown-linux-gnueabihf.tar.gz (no aarch64-musl)
+  if ! command -v vscli >/dev/null 2>&1; then
+    echo "→ vscli: installing from GitHub releases..."
+    _arch="$(uname -m)"
+    case "$_arch" in
+      x86_64)  _vscli_arch="x86_64-unknown-linux-musl" ;;
+      aarch64) _vscli_arch="arm-unknown-linux-gnueabihf" ;;
+      *)        echo "⚠️  vscli: unsupported arch $_arch"; _vscli_arch="" ;;
+    esac
+    if [ -n "$_vscli_arch" ]; then
+      _vscli_ver="$(curl -fsSL https://api.github.com/repos/michidk/vscli/releases/latest | grep '"tag_name"' | cut -d'"' -f4)"
+      curl -fsSL "https://github.com/michidk/vscli/releases/download/${_vscli_ver}/vscli-${_vscli_arch}.tar.gz" \
+        | tar -xz -C "$HOME/.local/bin" vscli
+      chmod +x "$HOME/.local/bin/vscli"
+    fi
   fi
 
 else
