@@ -25,41 +25,46 @@ node_major() {
   node -e 'process.stdout.write(process.version.slice(1).split(".")[0])'
 }
 
-# ---- bootstrap Homebrew if missing (Linux only) ------------------------------
+# ---- bootstrap Homebrew (macOS only) ----------------------------------------
+# On Linux we use apt + GitHub releases directly, so we don't auto-install brew.
+# Brew may already be present on Linux (e.g. for a newer git) and that's fine —
+# we just don't install our listed packages through it.
 
-if ! command -v brew >/dev/null 2>&1 && [ "$(uname)" = "Linux" ]; then
-  echo "→ Homebrew not found; installing..."
-  # NONINTERACTIVE=1 suppresses prompts — required in Codespaces and other
-  # headless environments where there is no opportunity for user interaction.
-  if [ "${CODESPACES:-}" = "true" ]; then
-    export NONINTERACTIVE=1
-  fi
+if [ "$(uname)" = "Darwin" ] && ! command -v brew >/dev/null 2>&1; then
+  echo "→ Homebrew not found on macOS; installing..."
   /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
-  # Add brew to PATH for the rest of this script
-  if [ -x "/home/linuxbrew/.linuxbrew/bin/brew" ]; then
-    eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"
-  elif [ -x "$HOME/.linuxbrew/bin/brew" ]; then
-    eval "$("$HOME/.linuxbrew/bin/brew" shellenv)"
-  fi
 fi
 
 # ---- system packages ---------------------------------------------------------
+# Strategy:
+#   macOS  → Homebrew for everything (brew list used as-is)
+#   Linux  → apt for apt packages; NodeSource for Node; GitHub releases for
+#             the rest.  Brew may be present on Linux (e.g. for a newer git)
+#             but we deliberately avoid using it for our listed packages to
+#             prevent heavy dependency trees (node pulls in python, etc.).
 
-if command -v brew >/dev/null 2>&1; then
-  echo "→ brew: {{ .packages.brew | join ", " }}"
+if [ "$(uname)" = "Darwin" ]; then
+  # ---- macOS: Homebrew -------------------------------------------------------
+  if ! command -v brew >/dev/null 2>&1; then
+    echo "⚠️  Homebrew not found on macOS" >&2
+    exit 1
+  fi
+  echo "→ brew (macOS): {{ .packages.brew | join ", " }}"
   brew install {{ .packages.brew | join " " }}
 
 elif command -v apt-get >/dev/null 2>&1; then
-  # Fallback: apt + manual steps (brew install failed or was skipped)
-  echo "→ apt fallback: {{ .packages.apt | join ", " }}"
+  # ---- Linux: apt + GitHub releases (preferred over brew) -------------------
+  echo "→ apt: {{ .packages.apt | join ", " }}"
   sudo apt-get update -qq
   sudo apt-get install -y --no-install-recommends {{ .packages.apt | join " " }}
 
-  # Node.js 22+ — auggie requires it; NodeSource if system node is too old
+  # Node.js 22+ — use system node if already ≥22, otherwise NodeSource
   if [ "$(node_major)" -lt 22 ]; then
     echo "→ Node.js 22+ required; installing via NodeSource..."
     curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash -
     sudo apt-get install -y nodejs
+  else
+    echo "→ Node.js $(node --version) already installed (system), skipping"
   fi
 
   # worktrunk (→ wt): install binary from GitHub releases
@@ -118,7 +123,7 @@ elif command -v apt-get >/dev/null 2>&1; then
   fi
 
 else
-  echo "⚠️  No supported package manager found (need brew or apt-get)" >&2
+  echo "⚠️  No supported package manager found (need brew on macOS or apt-get on Linux)" >&2
   exit 1
 fi
 

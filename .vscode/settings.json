@@ -1,4 +1,9 @@
 {
+    // *.tmpl files contain Go template syntax ({{ }}) that shellcheck cannot
+    // parse — ignore them entirely rather than suppress individual codes.
+    "shellcheck.ignorePatterns": {
+        "**/*.tmpl": true
+    },
     "workbench.colorCustomizations": {
         "activityBar.background": "#688f70",
         "titleBar.activeBackground": "#537259",
