@@ -1,3 +1,4 @@
+# shellcheck shell=sh
 # Shell environment variables — managed by chezmoi
 #
 # This file lives in the repo at:

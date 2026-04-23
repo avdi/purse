@@ -1,7 +1,8 @@
-#!/bin/sh
+#!/bin/bash
 # chezmoi run_once: wire shell aliases and lenticel into rc files
 # Idempotent — checks before appending.
 
+# shellcheck disable=SC2016  # $HOME intentionally unexpanded — written as literal text into rc files
 ALIASES_LINE='. "$HOME/.config/shell/aliases.sh"'
 LENTICEL_LINE='. "$HOME/.config/lenticel/shell-setup.sh" 2>/dev/null || true'
 

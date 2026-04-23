@@ -1,3 +1,4 @@
+# shellcheck shell=sh
 # Shell aliases — managed by chezmoi
 #
 # This file lives in the repo at:
