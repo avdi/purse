@@ -1,0 +1,55 @@
+#!/usr/bin/env bash
+# git-clone-bare — clone a repository into the umbrella `.bare/` layout.
+#
+# Usage:
+#   git clone-bare <url> [dir]
+#   git-clone-bare <url> [dir]
+#
+# Result:
+#   <dir>/
+#     .bare/        # bare clone
+#     .git          # file: "gitdir: ./.bare"
+#
+# Run `git wt-add <branch>` afterwards to materialize a working tree.
+
+set -euo pipefail
+
+usage() {
+  sed -n '2,12p' "$0" | sed 's/^# \{0,1\}//'
+  exit "${1:-2}"
+}
+
+case "${1:-}" in
+  -h|--help|"") usage 0 ;;
+esac
+
+url="$1"
+dir="${2:-}"
+
+if [ -z "$dir" ]; then
+  dir="${url##*/}"
+  dir="${dir%.git}"
+fi
+
+if [ -e "$dir" ]; then
+  echo "git-clone-bare: refusing to clobber existing path: $dir" >&2
+  exit 1
+fi
+
+mkdir -p "$dir"
+git clone --bare "$url" "$dir/.bare"
+
+# Make `cd <dir>` behave like a normal git checkout root: git resolves `.git`
+# (a file) and follows it to `.bare/`.
+printf 'gitdir: ./.bare\n' > "$dir/.git"
+
+# Bare clones default to a fetch refspec that doesn't populate
+# `refs/remotes/origin/*`. Reset to the standard layout so worktrees can track
+# remote branches normally.
+git -C "$dir/.bare" config remote.origin.fetch '+refs/heads/*:refs/remotes/origin/*'
+git -C "$dir" fetch origin --prune
+
+cat <<EOF
+Cloned bare into $dir/.bare/
+Next: cd $dir && git wt-add <branch>
+EOF

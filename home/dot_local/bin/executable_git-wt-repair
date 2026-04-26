@@ -1,0 +1,128 @@
+#!/usr/bin/env bash
+# git-wt-repair — repair worktree links in the umbrella, version-aware.
+#
+# Usage:
+#   git wt-repair [-v] [-n]
+#   git-wt-repair [-v] [-n]
+#
+# Options:
+#   -v   Verbose: report each worktree as it's repaired.
+#   -n   Dry-run: print what would be done without invoking git.
+#
+# Detects whether the running git supports `worktree.useRelativePaths`
+# (added in 2.48) and whether the option is enabled, then:
+#
+#   1. Runs `git worktree repair` from inside the bare/main repo against
+#      every registered worktree path (fixes bare → worktree links).
+#   2. Runs `git worktree repair` from inside each worktree
+#      (fixes worktree → bare links).
+#
+# Both passes are idempotent and safe regardless of the relative-paths mode.
+# The output makes the active mode explicit so divergence between hosts
+# and containers is easy to diagnose.
+#
+# Works from any subdirectory of any worktree under the umbrella.
+
+set -euo pipefail
+
+verbose=false
+dry_run=false
+for arg in "$@"; do
+  case "$arg" in
+    -h|--help)
+      sed -n '2,21p' "$0" | sed 's/^# \{0,1\}//'
+      exit 0
+      ;;
+    -v|--verbose) verbose=true ;;
+    -n|--dry-run) dry_run=true ;;
+    *) echo "git-wt-repair: unknown arg: $arg" >&2; exit 2 ;;
+  esac
+done
+
+run() {
+  if $dry_run; then
+    printf '   [dry-run] %s\n' "$*"
+  elif $verbose; then
+    "$@"
+  else
+    "$@" 2>&1 | grep -v '^repair: ' || true
+  fi
+}
+
+# ── locate the umbrella ──────────────────────────────────────────────────────
+common_dir="$(git rev-parse --git-common-dir 2>/dev/null || true)"
+if [ -z "$common_dir" ]; then
+  echo "git-wt-repair: not inside a git repository" >&2
+  exit 1
+fi
+common_dir="$(cd "$common_dir" && pwd)"
+case "$common_dir" in
+  */.bare) umbrella="${common_dir%/.bare}" ;;
+  *)       umbrella="$(dirname "$common_dir")" ;;
+esac
+
+# ── detect git version & relative-paths support ──────────────────────────────
+ver_string="$(git --version | awk '{print $3}')"
+ver_major="${ver_string%%.*}"
+ver_rest="${ver_string#*.}"
+ver_minor="${ver_rest%%.*}"
+[ "$ver_major" -eq "$ver_major" ] 2>/dev/null || ver_major=0
+[ "$ver_minor" -eq "$ver_minor" ] 2>/dev/null || ver_minor=0
+
+rel_paths_supported=false
+if [ "$ver_major" -gt 2 ] || { [ "$ver_major" -eq 2 ] && [ "$ver_minor" -ge 48 ]; }; then
+  rel_paths_supported=true
+fi
+
+rel_paths_enabled="$(git -C "$common_dir" config --type=bool --get worktree.useRelativePaths 2>/dev/null || echo false)"
+
+mode="absolute paths"
+if $rel_paths_supported && [ "$rel_paths_enabled" = "true" ]; then
+  mode="relative paths (worktree.useRelativePaths=true)"
+elif ! $rel_paths_supported; then
+  mode="absolute paths (git $ver_string < 2.48 — relative paths unsupported)"
+fi
+
+echo "git-wt-repair: umbrella=$umbrella"
+echo "git-wt-repair: git $ver_string, mode=$mode"
+
+# ── collect worktree paths ───────────────────────────────────────────────────
+paths=()
+while IFS= read -r line; do
+  case "$line" in
+    "worktree "*) paths+=("${line#worktree }") ;;
+  esac
+done < <(git -C "$common_dir" worktree list --porcelain)
+
+if [ "${#paths[@]}" -eq 0 ]; then
+  echo "git-wt-repair: no worktrees registered"
+  exit 0
+fi
+
+# ── pass 1: repair from the bare/main side ──────────────────────────────────
+$verbose && echo "git-wt-repair: pass 1 — repairing bare → worktree links"
+run git -C "$common_dir" worktree repair "${paths[@]}"
+
+# ── pass 2: repair from inside each worktree ────────────────────────────────
+$verbose && echo "git-wt-repair: pass 2 — repairing worktree → bare links"
+for p in "${paths[@]}"; do
+  # The bare/main repo is in `paths` but isn't a checkout; pass 1 covered it.
+  [ "$p" = "$common_dir" ] && continue
+  case "$p" in "$umbrella"|"$umbrella"/.bare) continue ;; esac
+  if [ -d "$p" ]; then
+    $verbose && echo "  $p"
+    run git -C "$p" worktree repair
+  else
+    echo "git-wt-repair: skipping missing worktree path: $p" >&2
+  fi
+done
+
+# ── final consistency hint ──────────────────────────────────────────────────
+if ! $rel_paths_supported && ! $dry_run; then
+  cat >&2 <<EOF
+git-wt-repair: NOTE — this git ($ver_string) writes absolute paths.
+  Worktree links will need re-repair after any host/container path change.
+EOF
+fi
+
+echo "git-wt-repair: done"

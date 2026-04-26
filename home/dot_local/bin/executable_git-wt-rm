@@ -1,0 +1,68 @@
+#!/usr/bin/env bash
+# git-wt-rm — remove a worktree (and the local branch if requested).
+#
+# Usage:
+#   git wt-rm <branch|path> [--branch] [--force]
+#   git-wt-rm <branch|path> [--branch] [--force]
+#
+#   <branch|path>  Either a branch name (resolved against `git worktree list`)
+#                  or a filesystem path to a worktree.
+#   --branch       Also delete the local branch after removing the worktree.
+#   --force        Pass --force to `git worktree remove`.
+
+set -euo pipefail
+
+usage() {
+  sed -n '2,12p' "$0" | sed 's/^# \{0,1\}//'
+  exit "${1:-2}"
+}
+
+target=""
+delete_branch=false
+force=false
+
+while [ $# -gt 0 ]; do
+  case "$1" in
+    -h|--help) usage 0 ;;
+    --branch)  delete_branch=true ;;
+    --force|-f) force=true ;;
+    *) if [ -z "$target" ]; then target="$1"; else usage 2; fi ;;
+  esac
+  shift
+done
+
+[ -n "$target" ] || usage 2
+
+# Resolve target → (path, branch).
+path=""
+branch=""
+if [ -d "$target" ]; then
+  path="$(cd "$target" && pwd)"
+  branch="$(git -C "$path" symbolic-ref --quiet --short HEAD || true)"
+else
+  # Treat as branch name; look it up in `git worktree list --porcelain`.
+  while IFS= read -r line; do
+    case "$line" in
+      "worktree "*) cur_path="${line#worktree }" ;;
+      "branch refs/heads/$target") path="$cur_path"; branch="$target"; break ;;
+    esac
+  done < <(git worktree list --porcelain)
+fi
+
+if [ -z "$path" ]; then
+  echo "git-wt-rm: could not resolve worktree for: $target" >&2
+  exit 1
+fi
+
+remove_args=("$path")
+$force && remove_args=(--force "${remove_args[@]}")
+
+git worktree remove "${remove_args[@]}"
+
+if $delete_branch && [ -n "$branch" ]; then
+  delete_flag=-d
+  $force && delete_flag=-D
+  git branch "$delete_flag" "$branch"
+fi
+
+echo "Removed worktree: $path${branch:+ (branch: $branch)}"

@@ -1,0 +1,76 @@
+#!/usr/bin/env bash
+# git-wt-overlay — drop a Tier-B per-worktree devcontainer overlay.
+#
+# Usage:
+#   git wt-overlay [worktree-path]
+#   git-wt-overlay [worktree-path]
+#
+# Default path is the current worktree root. Idempotent: skips if a project
+# devcontainer is detected, or if the overlay already exists.
+#
+# Designed to be callable as a worktrunk pre-start hook:
+#   [[hooks.pre-start]]
+#   command = "git wt-overlay {{ worktree_path }}"
+#
+# The overlay sets WORKTREE_NAME inside the container so dev tooling and
+# direnv-driven port/DB namespacing have something stable to key off of.
+
+set -euo pipefail
+
+wt_path="${1:-}"
+if [ -z "$wt_path" ]; then
+  wt_path="$(git rev-parse --show-toplevel 2>/dev/null || true)"
+fi
+if [ -z "$wt_path" ] || [ ! -d "$wt_path" ]; then
+  echo "git-wt-overlay: no worktree path resolved" >&2
+  exit 1
+fi
+
+overlay="$wt_path/.devcontainer.json"
+project_dir="$wt_path/.devcontainer/devcontainer.json"
+
+# If the project ships its own devcontainer, leave it alone. The user can
+# extend it manually; an automatic merge would silently break their config.
+if [ -f "$overlay" ]; then
+  # Ours or theirs? Look for our marker.
+  if ! grep -q '"x-purse-tier-b": true' "$overlay" 2>/dev/null; then
+    echo "git-wt-overlay: $overlay exists and was not created by purse — skipping" >&2
+    exit 0
+  fi
+  # It's our marker; rewrite to keep current.
+elif [ -f "$project_dir" ]; then
+  echo "git-wt-overlay: project ships .devcontainer/devcontainer.json — skipping" >&2
+  echo "  (Tier B overlay at $overlay would be ignored by VS Code in this layout.)" >&2
+  exit 0
+fi
+
+# Worktree name = basename of the worktree path. This matches what direnv
+# would compute and what containerized services should namespace against.
+wt_name="$(basename "$wt_path")"
+
+cat > "$overlay" <<JSON
+{
+  "x-purse-tier-b": true,
+  "name": "${wt_name}",
+  "containerEnv": {
+    "WORKTREE_NAME": "${wt_name}",
+    "DEV_PORT_OFFSET": "\${localEnv:DEV_PORT_OFFSET:0}"
+  },
+  "remoteEnv": {
+    "WORKTREE_NAME": "${wt_name}",
+    "DEV_PORT_OFFSET": "\${localEnv:DEV_PORT_OFFSET:0}"
+  }
+}
+JSON
+
+# Ensure git ignores the overlay locally without polluting the project's
+# committed .gitignore.
+exclude_file="$(git -C "$wt_path" rev-parse --git-path info/exclude 2>/dev/null || true)"
+if [ -n "$exclude_file" ] && [ -f "$exclude_file" ]; then
+  if ! grep -qxF '/.devcontainer.json' "$exclude_file"; then
+    printf '\n# Added by git-wt-overlay (purse Tier B)\n/.devcontainer.json\n' \
+      >> "$exclude_file"
+  fi
+fi
+
+echo "git-wt-overlay: wrote $overlay (WORKTREE_NAME=$wt_name)"

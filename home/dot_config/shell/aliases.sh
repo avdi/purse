@@ -26,6 +26,13 @@ alias vsr="vscli recent"
 alias dc="devcontainer"
 alias lt="lenticel"
 
+# Bare-umbrella worktree workflow. `wt` itself is reserved for worktrunk;
+# these are thin wrappers around the git-* scripts in ~/.local/bin.
+alias wtclone="git clone-bare"
+alias wtadd="git wt-add"
+alias wtrm="git wt-rm"
+alias wtrepair="git wt-repair"
+
 # direnv shell hook — loads/unloads .envrc as you cd between directories.
 # See: https://direnv.net/docs/hook.html
 if command -v direnv >/dev/null 2>&1; then

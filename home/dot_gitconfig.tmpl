@@ -10,6 +10,15 @@
 	forceSignAnnotated = false
 [init]
 	defaultBranch = main
+[alias]
+	# Bare-umbrella worktree workflow. Each command is also directly
+	# invocable on PATH (git-clone-bare, git-wt-add, etc.); these aliases
+	# exist mainly so `git config --get-regexp alias` advertises them.
+	clone-bare = "!git-clone-bare"
+	wt-add     = "!git-wt-add"
+	wt-rm      = "!git-wt-rm"
+	wt-repair  = "!git-wt-repair"
+	wt-overlay = "!git-wt-overlay"
 [extensions]
 	worktreeConfig = true
 [worktree]

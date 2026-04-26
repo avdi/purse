@@ -1,0 +1,51 @@
+#!/usr/bin/env bash
+# gh-clone-bare — clone a GitHub repo into the umbrella `.bare/` layout.
+#
+# Usage:
+#   gh-clone-bare <owner/repo|url> [dir] [-- <gh repo clone args>]
+#
+# Resolves the repo via `gh` (so SSH/HTTPS preference and auth follow gh
+# settings) and delegates to `git-clone-bare`.
+#
+# Also installable as a gh extension:
+#   gh extension install avdi/purse  (if/when packaged)
+# but works fine invoked directly from PATH.
+
+set -euo pipefail
+
+usage() {
+  sed -n '2,13p' "$0" | sed 's/^# \{0,1\}//'
+  exit "${1:-2}"
+}
+
+case "${1:-}" in
+  -h|--help|"") usage 0 ;;
+esac
+
+repo="$1"
+dir="${2:-}"
+
+command -v gh >/dev/null 2>&1 || {
+  echo "gh-clone-bare: gh CLI not found on PATH" >&2
+  exit 1
+}
+command -v git-clone-bare >/dev/null 2>&1 || {
+  echo "gh-clone-bare: git-clone-bare not found on PATH" >&2
+  exit 1
+}
+
+# Resolve to a clone URL using gh's own preference (sshUrl vs url).
+# `gh repo view` accepts owner/repo, full URLs, or shorthand.
+url="$(gh repo view "$repo" --json sshUrl,url \
+  --jq 'if .sshUrl != "" then .sshUrl else .url end')"
+
+if [ -z "$url" ]; then
+  echo "gh-clone-bare: could not resolve clone URL for: $repo" >&2
+  exit 1
+fi
+
+if [ -z "$dir" ]; then
+  dir="$(gh repo view "$repo" --json name --jq '.name')"
+fi
+
+exec git-clone-bare "$url" "$dir"
