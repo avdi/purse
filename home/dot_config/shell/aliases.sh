@@ -26,6 +26,11 @@ alias vsr="vscli recent"
 alias dc="devcontainer"
 alias lt="lenticel"
 
+# Pull latest from the chezmoi source clone (~/.local/share/chezmoi) and
+# apply. The working clone at ~/projects/avdi/purse is separate, so edits
+# committed/pushed there don't take effect on disk until this runs.
+alias purse-pull="chezmoi update"
+
 # Bare-umbrella worktree workflow. `wt` itself is reserved for worktrunk;
 # these are thin wrappers around the git-* scripts in ~/.local/bin.
 alias wtclone="git clone-bare"
