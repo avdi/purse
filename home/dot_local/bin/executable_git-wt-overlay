@@ -5,15 +5,27 @@
 #   git wt-overlay [worktree-path]
 #   git-wt-overlay [worktree-path]
 #
-# Default path is the current worktree root. Idempotent: skips if a project
-# devcontainer is detected, or if the overlay already exists.
+# Default path is the current worktree root. Three behaviors based on what
+# the project ships:
 #
-# Designed to be callable as a worktrunk pre-start hook:
-#   [[hooks.pre-start]]
-#   command = "git wt-overlay {{ worktree_path }}"
+#   1. No devcontainer  →  writes <wt>/.devcontainer.json (minimal).
+#   2. .devcontainer/devcontainer.json present  →  writes a selectable
+#      variant at <wt>/.devcontainer/purse-worktree/devcontainer.json
+#      by copying the project's config and:
+#        - prepending "../" to relative dockerComposeFile / dockerFile /
+#          build.{context,dockerfile} paths (config is one level deeper);
+#        - injecting WORKTREE_NAME and DEV_PORT_OFFSET into containerEnv
+#          and remoteEnv (using ${localWorkspaceFolderBasename}, so a
+#          single file is correct for every worktree);
+#        - tagging with "x-purse-tier-b": true.
+#      Requires jq; falls back to mode-3 hint if jq is missing or the
+#      project file isn't parseable.
+#   3. .devcontainer.json (root file, not ours) present  →  prints an
+#      actionable hint with the env block to paste into that file.
 #
-# The overlay sets WORKTREE_NAME inside the container so dev tooling and
-# direnv-driven port/DB namespacing have something stable to key off of.
+# In modes 1 and 2 the overlay path is added to .git/info/exclude.
+#
+# Designed to be safe to invoke as a worktrunk post-start hook.
 
 set -euo pipefail
 
@@ -26,29 +38,43 @@ if [ -z "$wt_path" ] || [ ! -d "$wt_path" ]; then
   exit 1
 fi
 
-overlay="$wt_path/.devcontainer.json"
-project_dir="$wt_path/.devcontainer/devcontainer.json"
-
-# If the project ships its own devcontainer, leave it alone. The user can
-# extend it manually; an automatic merge would silently break their config.
-if [ -f "$overlay" ]; then
-  # Ours or theirs? Look for our marker.
-  if ! grep -q '"x-purse-tier-b": true' "$overlay" 2>/dev/null; then
-    echo "git-wt-overlay: $overlay exists and was not created by purse — skipping" >&2
-    exit 0
-  fi
-  # It's our marker; rewrite to keep current.
-elif [ -f "$project_dir" ]; then
-  echo "git-wt-overlay: project ships .devcontainer/devcontainer.json — skipping" >&2
-  echo "  (Tier B overlay at $overlay would be ignored by VS Code in this layout.)" >&2
-  exit 0
-fi
-
-# Worktree name = basename of the worktree path. This matches what direnv
-# would compute and what containerized services should namespace against.
 wt_name="$(basename "$wt_path")"
+root_overlay="$wt_path/.devcontainer.json"
+project_dir_cfg="$wt_path/.devcontainer/devcontainer.json"
+variant_dir="$wt_path/.devcontainer/purse-worktree"
+variant_cfg="$variant_dir/devcontainer.json"
 
-cat > "$overlay" <<JSON
+is_ours() { grep -q '"x-purse-tier-b": true' "$1" 2>/dev/null; }
+
+add_exclude() {
+  local pat="$1" exclude_file
+  exclude_file="$(git -C "$wt_path" rev-parse --git-path info/exclude 2>/dev/null || true)"
+  if [ -n "$exclude_file" ] && [ -f "$exclude_file" ]; then
+    if ! grep -qxF "$pat" "$exclude_file"; then
+      printf '\n# Added by git-wt-overlay (purse Tier B)\n%s\n' "$pat" \
+        >> "$exclude_file"
+    fi
+  fi
+}
+
+print_root_hint() {
+  cat >&2 <<EOF
+  For per-worktree isolation, add this to the project's .devcontainer.json
+  (or .devcontainer/devcontainer.json):
+
+    "containerEnv": {
+      "WORKTREE_NAME": "\${localWorkspaceFolderBasename}",
+      "DEV_PORT_OFFSET": "\${localEnv:DEV_PORT_OFFSET:0}"
+    },
+    "remoteEnv": {
+      "WORKTREE_NAME": "\${localWorkspaceFolderBasename}",
+      "DEV_PORT_OFFSET": "\${localEnv:DEV_PORT_OFFSET:0}"
+    }
+EOF
+}
+
+write_minimal_root() {
+  cat > "$root_overlay" <<JSON
 {
   "x-purse-tier-b": true,
   "name": "${wt_name}",
@@ -62,15 +88,78 @@ cat > "$overlay" <<JSON
   }
 }
 JSON
+  add_exclude '/.devcontainer.json'
+  echo "git-wt-overlay: wrote $root_overlay (WORKTREE_NAME=$wt_name)"
+}
 
-# Ensure git ignores the overlay locally without polluting the project's
-# committed .gitignore.
-exclude_file="$(git -C "$wt_path" rev-parse --git-path info/exclude 2>/dev/null || true)"
-if [ -n "$exclude_file" ] && [ -f "$exclude_file" ]; then
-  if ! grep -qxF '/.devcontainer.json' "$exclude_file"; then
-    printf '\n# Added by git-wt-overlay (purse Tier B)\n/.devcontainer.json\n' \
-      >> "$exclude_file"
+write_selectable_variant() {
+  if ! command -v jq >/dev/null 2>&1; then
+    echo "git-wt-overlay: jq not found; cannot generate selectable variant" >&2
+    print_root_hint
+    return 0
   fi
+
+  # JSONC → JSON: strip // line comments and /* … */ block comments.
+  # Heuristic; fails on // inside strings. If jq rejects the result we
+  # fall back to the hint.
+  local stripped
+  stripped="$(sed -e 's@//[^"]*$@@' -e '/\/\*/,/\*\//d' "$project_dir_cfg")"
+  if ! printf '%s' "$stripped" | jq -e '.' >/dev/null 2>&1; then
+    echo "git-wt-overlay: could not parse $project_dir_cfg as JSON(C) — skipping variant" >&2
+    print_root_hint
+    return 0
+  fi
+
+  mkdir -p "$variant_dir"
+  printf '%s' "$stripped" | jq '
+    def relpath:
+      if type != "string" then .
+      elif (startswith("/") or startswith("~") or startswith("$") or startswith("..")) then .
+      else "../" + .
+      end;
+    ."x-purse-tier-b" = true
+    | .name = "${localWorkspaceFolderBasename}"
+    | .containerEnv = ((.containerEnv // {})
+        + {"WORKTREE_NAME": "${localWorkspaceFolderBasename}",
+           "DEV_PORT_OFFSET": "${localEnv:DEV_PORT_OFFSET:0}"})
+    | .remoteEnv = ((.remoteEnv // {})
+        + {"WORKTREE_NAME": "${localWorkspaceFolderBasename}",
+           "DEV_PORT_OFFSET": "${localEnv:DEV_PORT_OFFSET:0}"})
+    | if has("dockerFile") then .dockerFile |= relpath else . end
+    | if has("build") then .build |= (
+        (if has("dockerfile") then .dockerfile |= relpath else . end)
+        | (if has("context") then .context |= relpath else . end)
+      ) else . end
+    | if has("dockerComposeFile") then
+        .dockerComposeFile |= (
+          if type == "string" then relpath
+          elif type == "array" then map(relpath)
+          else . end
+        )
+      else . end
+  ' > "$variant_cfg"
+
+  add_exclude '/.devcontainer/purse-worktree/'
+  echo "git-wt-overlay: wrote selectable variant at $variant_cfg"
+  echo "  In VS Code → Dev Containers: Reopen in Container → choose 'purse-worktree'"
+}
+
+# ── dispatch ────────────────────────────────────────────────────────────────
+
+if [ -f "$variant_cfg" ] && ! is_ours "$variant_cfg"; then
+  echo "git-wt-overlay: $variant_cfg exists and is not ours — skipping" >&2
+  exit 0
 fi
 
-echo "git-wt-overlay: wrote $overlay (WORKTREE_NAME=$wt_name)"
+if [ -f "$root_overlay" ] && ! is_ours "$root_overlay"; then
+  echo "git-wt-overlay: project ships .devcontainer.json (root file) — not modifying" >&2
+  print_root_hint
+  exit 0
+fi
+
+if [ -f "$project_dir_cfg" ]; then
+  write_selectable_variant
+  exit 0
+fi
+
+write_minimal_root

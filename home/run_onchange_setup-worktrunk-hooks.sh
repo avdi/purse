@@ -1,0 +1,44 @@
+#!/usr/bin/env bash
+# Idempotently insert purse-managed worktrunk hooks into the user config.
+#
+# We can't ship ~/.config/worktrunk/config.toml as a chezmoi-managed file
+# because worktrunk itself writes per-project entries (e.g. `worktree-path`
+# overrides) to it. Instead we maintain a marker-delimited block.
+#
+# Re-run by chezmoi whenever the body of this script changes.
+
+set -euo pipefail
+
+config="$HOME/.config/worktrunk/config.toml"
+mkdir -p "$(dirname "$config")"
+touch "$config"
+
+marker_begin="# >>> purse worktrunk hooks >>>"
+marker_end="# <<< purse worktrunk hooks <<<"
+
+# Drop any previous purse-managed block, preserving the rest of the file.
+tmp="$(mktemp)"
+trap 'rm -f "$tmp"' EXIT
+awk -v b="$marker_begin" -v e="$marker_end" '
+  index($0, b) { skip=1; next }
+  index($0, e) { skip=0; next }
+  !skip { print }
+' "$config" > "$tmp"
+
+# Trim trailing blank lines before re-appending the block.
+sed -i -e :a -e '/^$/{$d;N;ba' -e '}' "$tmp"
+
+cat >> "$tmp" <<EOF
+
+$marker_begin
+# Drop a Tier-B per-worktree devcontainer overlay when a new worktree is
+# created. Idempotent; skips when the project ships its own .devcontainer/.
+[post-start]
+purse-overlay = "git wt-overlay"
+$marker_end
+EOF
+
+mv "$tmp" "$config"
+trap - EXIT
+
+echo "purse: ensured worktrunk post-start hook in $config"
