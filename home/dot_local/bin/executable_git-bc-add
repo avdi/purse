@@ -10,7 +10,7 @@
 #   <branch>  Branch to check out. Created from HEAD if it doesn't exist;
 #             tracked from origin/<branch> if a remote-tracking branch exists.
 #   [target]  Directory for the new clone.
-#             Default: sibling of <source> named after <branch>.
+#             Default: sibling of <source> named <source>-<branch>.
 #
 # The new clone's origin is repointed to the real remote URL so that all
 # subsequent fetches/pushes go to the server, not to <source>.
@@ -31,9 +31,10 @@ branch="${2:?<branch> required}"
 
 source_abs="$(cd "$source_dir" && pwd)"
 
-# Default target: sibling of source named after branch (/ → - for safety).
+# Default target: sibling of source named <project>-<branch> (/ → - for safety).
 safe_branch="${branch//\//-}"
-target="${3:-$(dirname "$source_abs")/$safe_branch}"
+project="$(basename "$source_abs")"
+target="${3:-$(dirname "$source_abs")/${project}-${safe_branch}}"
 
 if [ -e "$target" ]; then
   echo "git-bc-add: refusing to clobber existing path: $target" >&2
