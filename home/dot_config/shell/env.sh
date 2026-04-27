@@ -10,7 +10,8 @@
 # It is sourced by ~/.config/shell/aliases.sh, which is itself sourced by
 # ~/.bashrc, ~/.profile, and ~/.zshrc. Add any exported env vars here.
 
-export EDITOR=code
+alias codew="code --wait"
+export EDITOR="code --wait"
 
 # GPG needs to know the current TTY to prompt for passphrase on git signing.
 # Git commit signing is opt-in per-repo; without GPG_TTY, pinentry-curses fails

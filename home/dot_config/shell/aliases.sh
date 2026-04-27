@@ -20,6 +20,7 @@ _shell_cfg="${XDG_CONFIG_HOME:-$HOME/.config}/shell"
 [ -f "$_shell_cfg/env.sh" ] && . "$_shell_cfg/env.sh"
 unset _shell_cfg
 
+alias cm="chezmoi"
 alias gs="git status"
 alias vs="vscli open"
 alias vsr="vscli recent"
