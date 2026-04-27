@@ -9,8 +9,6 @@
 #
 # brew packages  : {{ .packages.brew | join ", " }}
 # apt packages   : {{ .packages.apt  | join ", " }}
-# npm packages   : {{ .packages.npm  | join ", " }}
-# cursor agent   : curl https://cursor.com/install (installs as 'agent')
 {{ if eq .chezmoi.os "windows" }}
 echo "Windows detected — use run_onchange_install-packages.ps1 instead." >&2
 exit 0
@@ -125,34 +123,6 @@ elif command -v apt-get >/dev/null 2>&1; then
 else
   echo "⚠️  No supported package manager found (need brew on macOS or apt-get on Linux)" >&2
   exit 1
-fi
-
-# ---- npm packages -----------------------------------------------------------
-
-if [ "$(node_major)" -ge 22 ]; then
-  # Ensure npm global installs go to ~/.local so no sudo is needed.
-  # NodeSource/apt leaves the default prefix as /usr/local (root-owned).
-  npm config set prefix "$HOME/.local"
-
-  # Fix root-owned npm cache (left by earlier sudo npm runs) to avoid EACCES.
-  if [ -d "$HOME/.cache/npm" ] && [ "$(stat -c '%u' "$HOME/.cache/npm")" != "$(id -u)" ]; then
-    echo "→ npm cache is root-owned; fixing with chown..."
-    sudo chown -R "$(id -u):$(id -g)" "$HOME/.cache/npm"
-  fi
-
-  echo "→ npm: {{ .packages.npm | join ", " }}"
-  npm install -g {{ .packages.npm | join " " }}
-else
-  echo "⚠️  Node.js 22+ not found (have: $(node --version 2>/dev/null || echo none))"
-  echo "   Skipping: {{ .packages.npm | join ", " }}"
-fi
-
-# ---- cursor agent CLI -------------------------------------------------------
-# Cursor's CLI is a separate binary from the editor; the command is 'agent'.
-
-if ! command -v agent >/dev/null 2>&1; then
-  echo "→ Installing Cursor agent CLI (command: 'agent')..."
-  curl https://cursor.com/install -fsS | bash
 fi
 
 # ---- worktrunk shell integration --------------------------------------------

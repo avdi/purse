@@ -1,0 +1,40 @@
+#!/bin/bash
+# Install / update all AI coding agent CLIs.
+# Run manually whenever you want to install or refresh the agents.
+#
+# npm agents : {{ .packages.npm | join ", " }}
+# cursor agent: curl https://cursor.com/install (installs as 'agent')
+
+set -euo pipefail
+
+node_major() {
+  command -v node >/dev/null 2>&1 || { echo 0; return; }
+  node -e 'process.stdout.write(process.version.slice(1).split(".")[0])'
+}
+
+# ---- npm agents -------------------------------------------------------------
+
+if [ "$(node_major)" -ge 22 ]; then
+  # Ensure npm global installs go to ~/.local so no sudo is needed.
+  npm config set prefix "$HOME/.local"
+
+  # Fix root-owned npm cache (left by earlier sudo npm runs) to avoid EACCES.
+  if [ -d "$HOME/.cache/npm" ] && [ "$(stat -c '%u' "$HOME/.cache/npm")" != "$(id -u)" ]; then
+    echo "→ npm cache is root-owned; fixing with chown..."
+    sudo chown -R "$(id -u):$(id -g)" "$HOME/.cache/npm"
+  fi
+
+  echo "→ npm: {{ .packages.npm | join ", " }}"
+  npm install -g {{ .packages.npm | join " " }}
+else
+  echo "⚠️  Node.js 22+ not found (have: $(node --version 2>/dev/null || echo none))"
+  echo "   Skipping npm agents: {{ .packages.npm | join ", " }}"
+fi
+
+# ---- cursor agent CLI -------------------------------------------------------
+# Cursor's CLI is a separate binary from the editor; the command is 'agent'.
+
+if ! command -v agent >/dev/null 2>&1; then
+  echo "→ Installing Cursor agent CLI (command: 'agent')..."
+  curl https://cursor.com/install -fsS | bash
+fi
