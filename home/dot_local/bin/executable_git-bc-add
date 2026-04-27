@@ -1,0 +1,89 @@
+#!/usr/bin/env bash
+# git-bc-add — create a branch clone seeded from an existing local clone.
+#
+# Usage:
+#   git bc-add <source> <branch> [target]
+#   git-bc-add <source> <branch> [target]
+#
+#   <source>  Existing full git clone to seed from. Uses hardlinks when on
+#             the same filesystem — no network transfer for existing objects.
+#   <branch>  Branch to check out. Created from HEAD if it doesn't exist;
+#             tracked from origin/<branch> if a remote-tracking branch exists.
+#   [target]  Directory for the new clone.
+#             Default: sibling of <source> named after <branch>.
+#
+# The new clone's origin is repointed to the real remote URL so that all
+# subsequent fetches/pushes go to the server, not to <source>.
+
+set -euo pipefail
+
+usage() {
+  sed -n '2,15p' "$0" | sed 's/^# \{0,1\}//'
+  exit "${1:-2}"
+}
+
+case "${1:-}" in
+  -h|--help|"") usage 0 ;;
+esac
+
+source_dir="${1:?<source> required}"
+branch="${2:?<branch> required}"
+
+source_abs="$(cd "$source_dir" && pwd)"
+
+# Default target: sibling of source named after branch (/ → - for safety).
+safe_branch="${branch//\//-}"
+target="${3:-$(dirname "$source_abs")/$safe_branch}"
+
+if [ -e "$target" ]; then
+  echo "git-bc-add: refusing to clobber existing path: $target" >&2
+  exit 1
+fi
+
+# Walk local-clone chains to find the real (non-local) remote URL.
+real_remote_url() {
+  local dir="$1" url depth=0
+  while [ "$depth" -lt 10 ]; do
+    url="$(git -C "$dir" remote get-url origin 2>/dev/null)" || return 1
+    case "$url" in
+      *://*|git@*) echo "$url"; return 0 ;;
+    esac
+    # Local path — resolve and recurse.
+    local next
+    next="$(cd "$dir" && realpath -m "$url" 2>/dev/null)" || return 1
+    [ -d "$next" ] || return 1
+    dir="$next"
+    depth=$(( depth + 1 ))
+  done
+  return 1
+}
+
+remote_url="$(real_remote_url "$source_abs")" || {
+  echo "git-bc-add: could not resolve a network remote URL from $source_dir" >&2
+  exit 1
+}
+
+echo "git-bc-add: seeding from $source_abs (hardlinks if same filesystem)"
+git clone --local "$source_abs" "$target"
+
+# Repoint origin to the real remote so pushes/fetches bypass the seed.
+git -C "$target" remote set-url origin "$remote_url"
+
+# Fetch any commits that arrived after the seed was taken.
+git -C "$target" fetch origin --prune
+
+# Check out the branch: track remote if it exists, else create from HEAD.
+if git -C "$target" show-ref --verify --quiet "refs/remotes/origin/$branch"; then
+  git -C "$target" checkout --track "origin/$branch" 2>/dev/null \
+    || git -C "$target" checkout "$branch"
+elif git -C "$target" show-ref --verify --quiet "refs/heads/$branch"; then
+  git -C "$target" checkout "$branch"
+else
+  git -C "$target" checkout -b "$branch"
+fi
+
+cat <<EOF
+Branch clone ready: $target
+  cd $target
+  (origin → $remote_url)
+EOF
