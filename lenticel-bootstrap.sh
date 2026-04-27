@@ -6,7 +6,7 @@
 # plain env vars.
 #
 # Set these in your environment or Codespace secrets:
-#   LENTICEL_SERVER  — hostname of the frps server
+#   LENTICEL_SERVER  — hostname of the frps server (default: avdi.dev)
 #   ZV_SECRET_ID     — Zoho Vault secret ID for LENTICEL_TOKEN (optional)
 set -euo pipefail
 
@@ -45,5 +45,5 @@ LENTICEL_BRANCH="${LENTICEL_BRANCH:-main}"
 
 curl -fsSL "https://raw.githubusercontent.com/${LENTICEL_REPO}/${LENTICEL_BRANCH}/client/install-frpc.sh" \
   | LENTICEL_TOKEN="${LENTICEL_TOKEN:-}" \
-    LENTICEL_SERVER="${LENTICEL_SERVER:-}" \
+    LENTICEL_SERVER="${LENTICEL_SERVER:-avdi.dev}" \
     bash
