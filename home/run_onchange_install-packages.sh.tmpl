@@ -133,6 +133,13 @@ if [ "$(node_major)" -ge 22 ]; then
   # Ensure npm global installs go to ~/.local so no sudo is needed.
   # NodeSource/apt leaves the default prefix as /usr/local (root-owned).
   npm config set prefix "$HOME/.local"
+
+  # Fix root-owned npm cache (left by earlier sudo npm runs) to avoid EACCES.
+  if [ -d "$HOME/.cache/npm" ] && [ "$(stat -c '%u' "$HOME/.cache/npm")" != "$(id -u)" ]; then
+    echo "→ npm cache is root-owned; fixing with chown..."
+    sudo chown -R "$(id -u):$(id -g)" "$HOME/.cache/npm"
+  fi
+
   echo "→ npm: {{ .packages.npm | join ", " }}"
   npm install -g {{ .packages.npm | join " " }}
 else
