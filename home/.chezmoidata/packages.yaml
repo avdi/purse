@@ -8,7 +8,6 @@ packages:
   brew:
     - ripgrep
     - direnv
-    - git         # ensure git >= 2.48 (worktree.useRelativePaths)
     - node        # Node.js LTS — needed for npm packages below
     - worktrunk   # git worktree manager (installs as 'wt')
     - vscli       # VS Code devcontainer launcher
