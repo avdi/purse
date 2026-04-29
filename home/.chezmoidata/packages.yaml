@@ -13,6 +13,7 @@ packages:
     - vscli       # VS Code devcontainer launcher
     - chruby      # lightweight Ruby version switcher (shell function)
     - ruby-install  # installs Ruby versions for use with chruby
+    - uv          # fast Python package manager and tool runner
 
   # npm global packages — all coding-agent CLIs
   # Requires Node.js 22+ (auggie is the strictest)
@@ -34,3 +35,4 @@ packages:
     - id: michidk.vscli             # VS Code devcontainer launcher
     - id: Anthropic.ClaudeCode      # claude (native binary, not npm)
     - id: OpenJS.NodeJS.LTS         # Node.js LTS — needed for npm packages below
+    - id: astral-sh.uv              # fast Python package manager and tool runner

@@ -100,6 +100,12 @@ elif command -v apt-get >/dev/null 2>&1; then
     fi
   fi
 
+  # uv: fast Python package manager and tool runner (not in apt — use the official installer)
+  if ! command -v uv >/dev/null 2>&1; then
+    echo "→ uv: installing via official installer..."
+    curl -LsSf https://astral.sh/uv/install.sh | sh
+  fi
+
   # chruby: install from source via make (not in apt)
   # See: https://github.com/postmodern/chruby#install
   if [ ! -f /usr/local/share/chruby/chruby.sh ]; then
@@ -134,4 +140,14 @@ if command -v wt >/dev/null 2>&1; then
   # --yes skips the interactive approval prompt; </dev/null guards against
   # any future version that prompts on something other than the approval step.
   wt config shell install --yes </dev/null >/dev/null 2>&1 || true
+fi
+
+# ---- spec-kit (specify CLI) -------------------------------------------------
+# Spec-Driven Development toolkit — installed as a uv tool.
+
+if command -v uv >/dev/null 2>&1; then
+  echo "→ spec-kit: installing/upgrading via uv tool..."
+  uv tool install --upgrade spec-kit
+else
+  echo "⚠️  uv not found — skipping spec-kit install (re-run chezmoi apply after uv is on PATH)" >&2
 fi

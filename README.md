@@ -37,6 +37,49 @@ Packages are declared in `.chezmoidata/packages.yaml`. Adding or removing an ent
 and running `chezmoi apply` is all it takes — the `run_onchange_` scripts re-run
 automatically whenever the rendered package list changes.
 
+## Secret management
+
+Secrets (API keys, tokens, etc.) live in [Zoho Vault](https://www.zoho.com/vault/) and are never committed. The workflow has two layers:
+
+### 1. Runtime env vars — `setup-secrets`
+
+`~/.config/purse/secret-ids.env` maps environment variable names to Zoho Vault numeric IDs. IDs are non-sensitive and safe to commit.
+
+```
+# ~/.config/purse/secret-ids.env
+ANTHROPIC_API_KEY=2000002716908
+GITHUB_TOKEN=2000003012345
+```
+
+Run `setup-secrets` to pull the current values and write them to `~/.config/shell/secrets.sh` (mode 600, never committed). That file is auto-sourced by `~/.config/shell/env.sh` on every new shell.
+
+**Adding a new secret:**
+
+1. Add the secret to Zoho Vault (title = env var name, password = the value).
+2. Find its numeric ID: `zv search -k "secret-name" --name --output json | jq '.[0]'`
+3. Add `ENV_VAR_NAME=<id>` to `~/.config/purse/secret-ids.env`.
+4. Run `setup-secrets`.
+5. Commit the updated file: `chezmoi add ~/.config/purse/secret-ids.env`.
+
+### 2. Chezmoi template secrets — `secretJSON`
+
+For secrets needed at `chezmoi apply` time (e.g. to render a config file), use the `secretJSON` template function. It calls `zv get --not-safe --output json` and is wired in `.chezmoi.toml.tmpl`.
+
+```
+{{- $item := secretJSON "-id" "2000002716908" -}}
+{{- $pass := "" -}}
+{{- range $item.secret.secretData -}}
+{{-   if eq .id "password" }}{{- $pass = .value -}}{{- end -}}
+{{- end -}}
+api_key = "{{ $pass }}"
+```
+
+This requires `zv` to be authenticated before running `chezmoi apply`. For bulk env-var secrets, prefer `setup-secrets` — it authenticates interactively only when needed and doesn't block `chezmoi apply`.
+
+### `zv` CLI
+
+`zv` (Zoho Vault CLI) is installed automatically by `.install-zv.sh`, which runs as a chezmoi pre-hook before every `apply`. Authenticate once with `zv login`.
+
 ## Links
 
 - [chezmoi docs](https://www.chezmoi.io/user-guide/setup/)
