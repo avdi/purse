@@ -147,7 +147,7 @@ fi
 
 if command -v uv >/dev/null 2>&1; then
   echo "→ spec-kit: installing/upgrading via uv tool..."
-  uv tool install --upgrade spec-kit
+  uv tool install --force specify-cli --from git+https://github.com/github/spec-kit.git
 else
   echo "⚠️  uv not found — skipping spec-kit install (re-run chezmoi apply after uv is on PATH)" >&2
 fi

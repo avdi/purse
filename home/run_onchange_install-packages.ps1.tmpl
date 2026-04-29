@@ -82,7 +82,7 @@ $env:PATH = [System.Environment]::GetEnvironmentVariable('PATH', 'Machine') + ';
 
 if (Test-Command uv) {
     Write-Host "→ spec-kit: installing/upgrading via uv tool..." -ForegroundColor Cyan
-    uv tool install --upgrade spec-kit
+    uv tool install --force specify-cli --from git+https://github.com/github/spec-kit.git
 } else {
     Write-Warning "uv not found — skipping spec-kit install. Re-run chezmoi apply after uv is on PATH."
 }
