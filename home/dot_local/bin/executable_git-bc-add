@@ -14,6 +14,9 @@
 #
 # The new clone's origin is repointed to the real remote URL so that all
 # subsequent fetches/pushes go to the server, not to <source>.
+#
+# Unversioned ignored files matching common local-secret patterns (.env,
+# config/master.key, etc.) are copied from <source> into the new clone.
 
 set -euo pipefail
 
@@ -82,6 +85,33 @@ elif git -C "$target" show-ref --verify --quiet "refs/heads/$branch"; then
 else
   git -C "$target" checkout -b "$branch"
 fi
+
+# Copy unversioned ignored files that are needed in every clone but excluded
+# from version control (env files, local secrets, credential keys, etc.).
+copy_ignored_extras() {
+  local copied=0 rel dir
+  while IFS= read -r rel; do
+    case "$rel" in
+      # .env and all variants (.env.local, .env.development, etc.) at any depth
+      .env|.env.*|*/.env|*/.env.*)           ;;
+      # Rails encrypted-credentials keys
+      config/master.key|config/credentials/*.key) ;;
+      # Local Docker Compose overrides
+      docker-compose.override.yml|*/docker-compose.override.yml) ;;
+      # Local Procfile overrides (Overmind / Foreman)
+      Procfile.local|*/Procfile.local)        ;;
+      *) continue ;;
+    esac
+    dir="$(dirname "$rel")"
+    [ "$dir" = "." ] || mkdir -p "$target/$dir"
+    cp "$source_abs/$rel" "$target/$rel"
+    echo "git-bc-add: copied ignored file: $rel"
+    copied=$(( copied + 1 ))
+  done < <(git -C "$source_abs" ls-files --others --ignored --exclude-standard 2>/dev/null)
+  [ "$copied" -gt 0 ] || echo "git-bc-add: no ignored extras to copy"
+}
+
+copy_ignored_extras
 
 cat <<EOF
 Branch clone ready: $target
