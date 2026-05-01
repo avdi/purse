@@ -39,6 +39,36 @@ alias wtadd="git wt-add"
 alias wtrm="git wt-rm"
 alias wtrepair="git wt-repair"
 
+# Branch-clone helpers — must be functions (not aliases) so that `cd` affects
+# the current shell session.
+
+# bcadd <source> <branch> [target]
+# Creates a branch clone via git-bc-add and cd's into it on success.
+# Replicates git-bc-add's default-target logic so we know the path even when
+# [target] is omitted.
+bcadd() {
+  local source_abs branch safe_branch project target
+  source_abs="$(cd "${1:?<source> required}" && pwd)"
+  branch="${2:?<branch> required}"
+  safe_branch="${branch//\//-}"
+  project="$(basename "$source_abs")"
+  target="${3:-$(dirname "$source_abs")/${project}.${safe_branch}}"
+  git-bc-add "$@" && cd "$target"
+}
+
+# bcrm <clone-dir> [--force]
+# Removes a branch clone via git-bc-rm. If the clone-dir resolves to the
+# current directory, cd's to the parent first to avoid being stranded.
+bcrm() {
+  local clone_abs cwd_abs
+  clone_abs="$(cd "${1:?<clone-dir> required}" && pwd)"
+  cwd_abs="$(pwd)"
+  if [ "$clone_abs" = "$cwd_abs" ]; then
+    cd ..
+  fi
+  git-bc-rm "$@"
+}
+
 # direnv shell hook — loads/unloads .envrc as you cd between directories.
 # See: https://direnv.net/docs/hook.html
 if command -v direnv >/dev/null 2>&1; then
