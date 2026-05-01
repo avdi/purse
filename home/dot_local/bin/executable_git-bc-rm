@@ -16,6 +16,70 @@ usage() {
   exit "${1:-2}"
 }
 
+# Find and remove all Docker containers associated with the given clone directory.
+# Handles single-container devcontainers and multi-container Compose stacks,
+# including projects with multiple profiles (e.g. classic + sidecar).
+#
+# Strategy: devcontainer.local_folder uses WSL path syntax on WSL, so we cannot
+# filter by it directly. Instead we match devcontainer.config_file (a Unix path)
+# against <dir>/**, which works for any devcontainer profile. For Compose stacks
+# we then collect all sibling containers by their shared compose project name.
+#
+# Non-fatal: prints a warning on failure rather than aborting the clone removal.
+prune_devcontainers() {
+  local dir="$1"
+  command -v docker >/dev/null 2>&1 || return 0
+
+  # One docker ps call: emit ID, config_file path, and compose project name (tab-separated).
+  # Only containers with devcontainer.local_folder are devcontainer app entry-points;
+  # sidecar services (postgres, redis, etc.) are found via compose project in step 2.
+  local projects=()
+  local lone_ids=()
+  local id config_file project
+  while IFS=$'\t' read -r id config_file project; do
+    case "$config_file" in
+      "$dir"/*)
+        if [ -n "$project" ]; then
+          projects+=("$project")
+        else
+          lone_ids+=("$id")
+        fi
+        ;;
+    esac
+  done < <(
+    docker ps -a \
+      --filter "label=devcontainer.local_folder" \
+      --format $'{{.ID}}\t{{.Label "devcontainer.config_file"}}\t{{.Label "com.docker.compose.project"}}' \
+      2>/dev/null
+  ) || true
+
+  # Step 2: expand each compose project to its full set of container IDs.
+  local all_ids=()
+  local cid p
+  for p in "${projects[@]+"${projects[@]}"}"; do
+    while IFS= read -r cid; do
+      [ -n "$cid" ] && all_ids+=("$cid")
+    done < <(
+      docker ps -a \
+        --filter "label=com.docker.compose.project=$p" \
+        --format '{{.ID}}' \
+        2>/dev/null
+    ) || true
+  done
+  for cid in "${lone_ids[@]+"${lone_ids[@]}"}"; do
+    all_ids+=("$cid")
+  done
+
+  if [ "${#all_ids[@]}" -eq 0 ]; then
+    return 0
+  fi
+
+  printf 'git-bc-rm: removing %d devcontainer container(s) for %s\n' "${#all_ids[@]}" "$dir" >&2
+  docker rm -f "${all_ids[@]}" >/dev/null \
+    || printf 'git-bc-rm: warning: could not remove some devcontainer containers\n' >&2
+  return 0
+}
+
 clone_dir=""
 force=false
 
@@ -72,5 +136,6 @@ if ! $force; then
 fi
 
 abs="$(cd "$clone_dir" && pwd)"
+prune_devcontainers "$abs"
 rm -rf "$abs"
 echo "Removed branch clone: $abs"
