@@ -38,8 +38,16 @@
   a WSL2 kernel — including containers under Docker Desktop on Windows, which
   share the host kernel but have no /mnt/c/. Requiring /mnt/c/Windows to exist
   distinguishes real WSL user-space from a WSL2-kernel-hosted container.
+
+  The outer linux guard is required: .chezmoi.kernel is sourced from
+  /proc/sys/kernel and is an empty map on Windows/macOS, so referencing
+  .chezmoi.kernel.osrelease unconditionally errors there ("map has no entry
+  for key 'osrelease'"). Go templates evaluate all args of `and` eagerly, so
+  the OS check must be nested rather than inlined.
 */ -}}
+{{- if eq .chezmoi.os "linux" -}}
 {{- if and (contains "microsoft" .chezmoi.kernel.osrelease) (stat "/mnt/c/Windows") }}
 [credential]
 	helper = /mnt/c/Program\\ Files/Git/mingw64/bin/git-credential-manager.exe
+{{- end }}
 {{- end }}

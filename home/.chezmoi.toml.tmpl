@@ -8,8 +8,14 @@ sourceDir = {{ .chezmoi.sourceDir | quote }}
     autoCommit = true
     autoPush = true
 
+{{- /* .install-zv.sh is a POSIX shell script that downloads the linux build
+       of zv. Skip the hook on non-Linux hosts so chezmoi doesn't try to
+       fork/exec a .sh file on Windows ("%1 is not a valid Win32 application")
+       or run a Linux binary installer on macOS. */ -}}
+{{- if eq .chezmoi.os "linux" }}
 [hooks.read-source-state.pre]
     command = {{ joinPath (.chezmoi.sourceDir | dir) ".install-zv.sh" | quote }}
+{{- end }}
 
 # Wire Zoho Vault CLI as chezmoi's secret backend.
 # This enables the secretJSON template function in any *.tmpl file.
