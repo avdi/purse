@@ -1,3 +1,4 @@
+{{- if ne .chezmoi.os "windows" -}}
 #!/bin/bash
 # chezmoi run_once: bootstrap lenticel (frp tunnel client)
 # Delegates to lenticel-bootstrap.sh in the repo root, which handles
@@ -5,5 +6,9 @@
 #
 # With .chezmoiroot = home, .chezmoi.sourceDir is the home/ subdirectory.
 # The repo root is one level up via | dir.
+#
+# Gated to non-Windows — lenticel-bootstrap.sh is bash; chezmoi can't
+# fork/exec a .sh on native Windows.
 
 bash "{{ .chezmoi.sourceDir | dir }}/lenticel-bootstrap.sh"
+{{- end }}

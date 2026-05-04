@@ -1,3 +1,4 @@
+{{- if ne .chezmoi.os "windows" -}}
 #!/bin/bash
 # chezmoi run_onchange: install packages (Unix/Linux/macOS)
 #
@@ -6,13 +7,12 @@
 # which causes chezmoi to re-run it on the next apply.
 #
 # Windows is handled by run_onchange_install-packages.ps1.tmpl instead.
+# On Windows this template renders empty so chezmoi skips execution entirely
+# (chezmoi can't fork/exec a .sh on Windows — it errors with "%1 is not a
+# valid Win32 application").
 #
 # brew packages  : {{ .packages.brew | join ", " }}
 # apt packages   : {{ .packages.apt  | join ", " }}
-{{ if eq .chezmoi.os "windows" }}
-echo "Windows detected — use run_onchange_install-packages.ps1 instead." >&2
-exit 0
-{{ end }}
 set -euo pipefail
 mkdir -p "$HOME/.local/bin"
 
@@ -151,3 +151,4 @@ if command -v uv >/dev/null 2>&1; then
 else
   echo "⚠️  uv not found — skipping spec-kit install (re-run chezmoi apply after uv is on PATH)" >&2
 fi
+{{- end }}

@@ -1,3 +1,4 @@
+{{- if ne .chezmoi.os "windows" -}}
 #!/usr/bin/env bash
 # Idempotently insert purse-managed worktrunk hooks into the user config.
 #
@@ -6,6 +7,9 @@
 # overrides) to it. Instead we maintain a marker-delimited block.
 #
 # Re-run by chezmoi whenever the body of this script changes.
+#
+# Gated to non-Windows — uses awk/sed/mktemp; chezmoi can't fork/exec a .sh
+# there. Worktrunk on Windows is a separate follow-up.
 
 set -euo pipefail
 
@@ -42,3 +46,4 @@ mv "$tmp" "$config"
 trap - EXIT
 
 echo "purse: ensured worktrunk post-start hook in $config"
+{{- end }}

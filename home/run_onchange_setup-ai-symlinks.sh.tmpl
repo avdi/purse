@@ -1,3 +1,4 @@
+{{- if ne .chezmoi.os "windows" -}}
 #!/usr/bin/env bash
 # run_onchange_setup-ai-symlinks.sh
 #
@@ -10,6 +11,10 @@
 #   - Augment      -> ~/.augment/rules/global.md
 #
 # This script re-runs whenever its own content changes (run_onchange_ prefix).
+#
+# Gated to non-Windows — symlink semantics differ on Windows (require Developer
+# Mode or admin) and chezmoi can't fork/exec a .sh there. Native-Windows AI
+# agents are wired up separately, if at all.
 
 set -euo pipefail
 
@@ -25,3 +30,4 @@ link() {
 link "$HOME/.claude/CLAUDE.md"
 link "$HOME/.gemini/GEMINI.md"
 link "$HOME/.augment/rules/global.md"
+{{- end }}

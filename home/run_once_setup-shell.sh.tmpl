@@ -1,6 +1,10 @@
+{{- if ne .chezmoi.os "windows" -}}
 #!/bin/bash
 # chezmoi run_once: wire shell aliases and lenticel into rc files
 # Idempotent — checks before appending.
+#
+# Gated to non-Windows — the rc files (.bashrc, .profile, .zshrc) only exist
+# under WSL/macOS/Linux, and chezmoi can't fork/exec a .sh on native Windows.
 
 # shellcheck disable=SC2016  # $HOME intentionally unexpanded — written as literal text into rc files
 ALIASES_LINE='. "$HOME/.config/shell/aliases.sh"'
@@ -29,3 +33,4 @@ _append_if_missing ~/.bashrc '.config/lenticel/shell-setup.sh' "$LENTICEL_LINE"
 if [ -f ~/.zshrc ]; then
   _append_if_missing ~/.zshrc '.config/lenticel/shell-setup.sh' "$LENTICEL_LINE"
 fi
+{{- end }}
