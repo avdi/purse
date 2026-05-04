@@ -27,11 +27,11 @@
 	program = ssh-keygen
 	allowedSignersFile = ""
 [credential "https://github.com"]
-	helper = 
-	helper = !/usr/bin/gh auth git-credential
+	helper =
+	helper = !gh auth git-credential
 [credential "https://gist.github.com"]
-	helper = 
-	helper = !/usr/bin/gh auth git-credential
+	helper =
+	helper = !gh auth git-credential
 {{/*
   Only emit the Git-for-Windows credential helper in *real* WSL2 user-space.
   The kernel osrelease string contains "microsoft" for any Linux running on
