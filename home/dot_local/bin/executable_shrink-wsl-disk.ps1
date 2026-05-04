@@ -6,8 +6,20 @@
 # Steps performed:
 #   1. wsl --update                      (ensures WSL is current)
 #   2. docker system prune -a --volumes  (frees blocks inside the VHDX)
-#   3. wsl --shutdown                    (releases the VHDX file lock)
-#   4. Optimize-VHD ... -Mode Full       (compacts the sparse VHDX)
+#   3. Stop Docker Desktop               (releases file handles on the VHDX;
+#                                         graceful shutdown with force-kill
+#                                         fallback after 30 s timeout)
+#   4. wsl --shutdown                    (shuts down any remaining WSL distros
+#                                         and releases the VHDX file lock)
+#   5. Optimize-VHD ... -Mode Full       (compacts the sparse VHDX)
+#
+# Why step 3 is necessary:
+#   Docker Desktop keeps its own WSL2 distros (docker-desktop,
+#   docker-desktop-data) running as persistent background processes, each
+#   holding an open handle on the VHDX file. If Docker Desktop is still alive
+#   when Optimize-VHD runs, it will restart those distros and re-acquire the
+#   lock, causing Optimize-VHD to fail with "The process cannot access the
+#   file because it is being used by another process."
 #
 # Requires: Windows 10/11 with WSL2, Docker Desktop, and the Hyper-V module
 # (Optimize-VHD). Must be run from an elevated PowerShell session.
@@ -64,7 +76,37 @@ if (Test-Command docker) {
     Write-Warning "docker not found on PATH — skipping prune step."
 }
 
-# ---- 3. Shut down WSL to release the VHDX lock ------------------------------
+# ---- 3. Terminate Docker Desktop so it releases the VHDX file lock ----------
+#
+# Docker Desktop keeps the docker-desktop and docker-desktop-data WSL distros
+# running even after a prune. Killing the main "Docker Desktop" process causes
+# those distros to wind down; wsl --shutdown (step 4) then ensures they are
+# fully gone before Optimize-VHD tries to open the file.
+
+$ddName = 'Docker Desktop'
+$ddProc = Get-Process -Name $ddName -ErrorAction SilentlyContinue
+if ($ddProc) {
+    Write-Host "→ Stopping $ddName (graceful)…" -ForegroundColor Cyan
+    $ddProc | Stop-Process
+
+    # Wait up to 30 s for a clean exit before escalating to force-kill.
+    $deadline = (Get-Date).AddSeconds(30)
+    while ((Get-Process -Name $ddName -ErrorAction SilentlyContinue) -and (Get-Date) -lt $deadline) {
+        Start-Sleep -Seconds 1
+    }
+
+    if (Get-Process -Name $ddName -ErrorAction SilentlyContinue) {
+        Write-Warning "$ddName did not exit within 30 s — force-killing."
+        Get-Process -Name $ddName -ErrorAction SilentlyContinue | Stop-Process -Force
+        Start-Sleep -Seconds 2
+    } else {
+        Write-Host "✓ $ddName exited cleanly." -ForegroundColor Green
+    }
+} else {
+    Write-Warning "$ddName process not found — it may already be stopped."
+}
+
+# ---- 4. Shut down WSL to release the VHDX lock ------------------------------
 
 Write-Host "→ wsl --shutdown" -ForegroundColor Cyan
 wsl --shutdown
@@ -72,7 +114,7 @@ wsl --shutdown
 # Give the host a moment to release file handles before Optimize-VHD.
 Start-Sleep -Seconds 3
 
-# ---- 4. Compact the VHDX ----------------------------------------------------
+# ---- 5. Compact the VHDX ----------------------------------------------------
 
 if (-not (Test-Path -LiteralPath $VhdxPath)) {
     Write-Error "VHDX not found at: $VhdxPath"
