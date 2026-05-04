@@ -1,0 +1,36 @@
+{{- if eq .chezmoi.os "windows" -}}
+# chezmoi run_once: ensure ~/.local/bin is on the user's persistent PATH.
+#
+# Idempotent — checks before modifying. Writes to the User-scope environment
+# variable in the registry, so the change survives reboots and applies to all
+# new shells. The current shell is NOT updated; open a new terminal (or sign
+# out and back in) to pick up the change.
+#
+# On non-Windows systems this template renders empty and chezmoi skips it.
+
+$ErrorActionPreference = 'Stop'
+
+$bin = Join-Path $HOME '.local\bin'
+if (-not (Test-Path $bin)) {
+    New-Item -ItemType Directory -Path $bin -Force | Out-Null
+}
+
+$current = [Environment]::GetEnvironmentVariable('Path', 'User')
+$entries = if ($current) {
+    $current.Split(';', [StringSplitOptions]::RemoveEmptyEntries)
+} else {
+    @()
+}
+
+# Windows paths are case-insensitive; normalise trailing slashes for comparison.
+$target = $bin.TrimEnd('\')
+$already = $entries | Where-Object { $_.TrimEnd('\') -ieq $target }
+
+if ($already) {
+    Write-Host "$bin already on user PATH"
+} else {
+    $newPath = if ($current) { "$current;$bin" } else { $bin }
+    [Environment]::SetEnvironmentVariable('Path', $newPath, 'User')
+    Write-Host "Added $bin to user PATH (open a new shell to take effect)"
+}
+{{- end -}}
