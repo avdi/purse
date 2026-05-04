@@ -20,7 +20,7 @@ sh -c "$(curl -fsLS get.chezmoi.io)" -- init --apply avdi/purse
 ### Windows (PowerShell)
 
 ```powershell
-winget install twpayne.chezmoi
+winget install twpayne.chezmoi 
 # restart PowerShell so chezmoi is on PATH, then:
 chezmoi init --apply avdi/purse
 ```
@@ -47,7 +47,8 @@ home/
   run_onchange_install-packages.ps1.tmpl  # installs packages on Windows (winget)
   run_once_setup-shell.sh             # wires aliases + direnv into rc files (once)
   run_once_setup-lenticel.sh.tmpl     # bootstraps lenticel frp tunnel (once)
-.install-zv.sh                        # installs Zoho Vault CLI before apply
+.install-zv.sh                        # installs Zoho Vault CLI before apply (Linux)
+.install-zv.ps1                       # installs Zoho Vault CLI before apply (Windows)
 install.sh                            # VS Code / Codespace auto-dotfiles hook
 lenticel-bootstrap.sh                 # frp tunnel client setup
 ```
@@ -97,7 +98,7 @@ This requires `zv` to be authenticated before running `chezmoi apply`. For bulk 
 
 ### `zv` CLI
 
-`zv` (Zoho Vault CLI) is installed automatically by `.install-zv.sh`, which runs as a chezmoi pre-hook before every `apply`. Authenticate once with `zv login`.
+`zv` (Zoho Vault CLI) is installed automatically by a chezmoi pre-hook before every `apply` — `.install-zv.sh` on Linux, `.install-zv.ps1` on Windows. Both drop the binary into `~/.local/bin/` and exit immediately if `zv` is already on PATH. Authenticate once with `zv login`.
 
 ## Links
 

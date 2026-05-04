@@ -8,13 +8,18 @@ sourceDir = {{ .chezmoi.sourceDir | quote }}
     autoCommit = true
     autoPush = true
 
-{{- /* .install-zv.sh is a POSIX shell script that downloads the linux build
-       of zv. Skip the hook on non-Linux hosts so chezmoi doesn't try to
-       fork/exec a .sh file on Windows ("%1 is not a valid Win32 application")
-       or run a Linux binary installer on macOS. */ -}}
+{{- /* Per-OS zv installer hook. The script bodies live next to this repo
+       (one above sourceDir, since .chezmoiroot points at home/). The Linux
+       script downloads the linux build of zv; the Windows script downloads
+       the win build. macOS isn't wired up yet — install zv manually if you
+       need secret templating there. */ -}}
 {{- if eq .chezmoi.os "linux" }}
 [hooks.read-source-state.pre]
     command = {{ joinPath (.chezmoi.sourceDir | dir) ".install-zv.sh" | quote }}
+{{- else if eq .chezmoi.os "windows" }}
+[hooks.read-source-state.pre]
+    command = "powershell"
+    args = ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", {{ joinPath (.chezmoi.sourceDir | dir) ".install-zv.ps1" | quote }}]
 {{- end }}
 
 # Wire Zoho Vault CLI as chezmoi's secret backend.
