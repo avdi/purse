@@ -5,6 +5,8 @@ Personal dotfiles managed with [chezmoi](https://www.chezmoi.io/). Compatible wi
 
 ## New machine setup
 
+### Linux / macOS
+
 ```sh
 chezmoi init --apply avdi/purse
 ```
@@ -14,6 +16,23 @@ Or if chezmoi isn't installed yet:
 ```sh
 sh -c "$(curl -fsLS get.chezmoi.io)" -- init --apply avdi/purse
 ```
+
+### Windows (PowerShell)
+
+```powershell
+winget install twpayne.chezmoi
+# restart PowerShell so chezmoi is on PATH, then:
+chezmoi init --apply avdi/purse
+```
+
+If `winget` isn't available, install chezmoi with the upstream PowerShell bootstrap instead:
+
+```powershell
+iex "&{$(irm 'https://get.chezmoi.io/ps1')}"
+& "$HOME\bin\chezmoi.exe" init --apply avdi/purse
+```
+
+Windows packages (winget + npm + Cursor agent CLI) are installed by `run_onchange_install-packages.ps1.tmpl` on first apply.
 
 ## Repo structure
 
