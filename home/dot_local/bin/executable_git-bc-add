@@ -15,6 +15,9 @@
 # The new clone's origin is repointed to the real remote URL so that all
 # subsequent fetches/pushes go to the server, not to <source>.
 #
+# Idempotent: if [target] already exists and is a git repository, exits
+# successfully without modifying it.
+#
 # Unversioned ignored files matching common local-secret patterns (.env,
 # config/master.key, etc.) are copied from <source> into the new clone.
 
@@ -40,7 +43,11 @@ project="$(basename "$source_abs")"
 target="${3:-$(dirname "$source_abs")/${project}.${safe_branch}}"
 
 if [ -e "$target" ]; then
-  echo "git-bc-add: refusing to clobber existing path: $target" >&2
+  if git -C "$target" rev-parse --git-dir >/dev/null 2>&1; then
+    echo "git-bc-add: branch clone already exists: $target (nothing to do)"
+    exit 0
+  fi
+  echo "git-bc-add: refusing to clobber existing non-git path: $target" >&2
   exit 1
 fi
 
