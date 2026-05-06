@@ -11,8 +11,8 @@
 #             repo's directory name (e.g. myapp.main → myapp).
 #
 # Syncs unversioned ignored files matching common local-secret patterns:
-#   .env, .env.*, config/master.key, config/credentials/*.key,
-#   docker-compose.override.yml, Procfile.local
+#   .env, .env.*, *.env (e.g. app.local.env), config/master.key,
+#   config/credentials/*.key, docker-compose.override.yml, Procfile.local
 #
 # When stdout/stdin are both a tty, differing files are shown interactively
 # and you are prompted before overwriting.  Otherwise a warning is printed
@@ -63,7 +63,7 @@ echo "git-bc-sync-extras: syncing extras from $source_abs → $target_dir"
 is_interesting() {
   local rel="$1"
   case "$rel" in
-    .env|.env.*|*/.env|*/.env.*)                   return 0 ;;
+    .env|.env.*|*/.env|*/.env.*|*.env)             return 0 ;;
     config/master.key|config/credentials/*.key)     return 0 ;;
     docker-compose.override.yml|*/docker-compose.override.yml) return 0 ;;
     Procfile.local|*/Procfile.local)                return 0 ;;
