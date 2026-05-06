@@ -1,0 +1,122 @@
+#!/usr/bin/env bash
+# git-bc-sync-extras — sync ignored "extras" from a branch-clone source.
+#
+# Usage:
+#   git bc-sync-extras [source]
+#   git-bc-sync-extras [source]
+#
+#   [source]  Path to the source clone to sync from.
+#             If omitted, tries git config bc.source, then infers a sibling
+#             clone by stripping the last dotted segment from the current
+#             repo's directory name (e.g. myapp.main → myapp).
+#
+# Syncs unversioned ignored files matching common local-secret patterns:
+#   .env, .env.*, config/master.key, config/credentials/*.key,
+#   docker-compose.override.yml, Procfile.local
+#
+# When stdout/stdin are both a tty, differing files are shown interactively
+# and you are prompted before overwriting.  Otherwise a warning is printed
+# and the file is left unchanged.
+
+set -euo pipefail
+
+usage() {
+  sed -n '2,19p' "$0" | sed 's/^# \{0,1\}//'
+  exit "${1:-2}"
+}
+
+case "${1:-}" in
+  -h|--help) usage 0 ;;
+esac
+
+# ── Resolve target (current repo root) ───────────────────────────────────────
+target_dir="$(git rev-parse --show-toplevel 2>/dev/null)" || {
+  echo "git-bc-sync-extras: not inside a git repository" >&2
+  exit 1
+}
+
+# ── Resolve source ────────────────────────────────────────────────────────────
+if [ -n "${1:-}" ]; then
+  source_abs="$(cd "$1" && pwd)"
+else
+  # Try git config bc.source
+  configured="$(git -C "$target_dir" config bc.source 2>/dev/null)" || configured=""
+  if [ -n "$configured" ] && [ -d "$configured" ]; then
+    source_abs="$configured"
+  else
+    # Infer sibling: strip last dotted segment from basename
+    base="$(basename "$target_dir")"
+    inferred_base="${base%.*}"
+    inferred="$(dirname "$target_dir")/$inferred_base"
+    if [ "$inferred" != "$target_dir" ] && git -C "$inferred" rev-parse --git-dir >/dev/null 2>&1; then
+      source_abs="$(cd "$inferred" && pwd)"
+    else
+      echo "git-bc-sync-extras: could not determine source; pass it explicitly or set bc.source" >&2
+      exit 1
+    fi
+  fi
+fi
+
+echo "git-bc-sync-extras: syncing extras from $source_abs → $target_dir"
+
+# ── Pattern filter ────────────────────────────────────────────────────────────
+is_interesting() {
+  local rel="$1"
+  case "$rel" in
+    .env|.env.*|*/.env|*/.env.*)                   return 0 ;;
+    config/master.key|config/credentials/*.key)     return 0 ;;
+    docker-compose.override.yml|*/docker-compose.override.yml) return 0 ;;
+    Procfile.local|*/Procfile.local)                return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+# ── Interactive detection ─────────────────────────────────────────────────────
+interactive=false
+{ [ -t 0 ] && [ -t 1 ]; } && interactive=true
+
+# ── Sync loop ─────────────────────────────────────────────────────────────────
+copied=0
+skipped=0
+
+while IFS= read -r rel; do
+  is_interesting "$rel" || continue
+
+  src="$source_abs/$rel"
+  dst="$target_dir/$rel"
+
+  if [ ! -e "$dst" ]; then
+    dir="$(dirname "$dst")"
+    [ "$dir" = "." ] || mkdir -p "$dir"
+    cp "$src" "$dst"
+    echo "git-bc-sync-extras: copied $rel"
+    copied=$(( copied + 1 ))
+  elif diff -q "$src" "$dst" >/dev/null 2>&1; then
+    : # identical — nothing to do
+  else
+    if $interactive; then
+      echo "git-bc-sync-extras: $rel differs from source:"
+      diff "$src" "$dst" || true
+      printf "Overwrite %s with source? [y/N] " "$rel"
+      read -r answer </dev/tty
+      case "$answer" in
+        y|Y)
+          cp "$src" "$dst"
+          echo "git-bc-sync-extras: updated $rel"
+          copied=$(( copied + 1 ))
+          ;;
+        *)
+          echo "git-bc-sync-extras: skipped $rel"
+          skipped=$(( skipped + 1 ))
+          ;;
+      esac
+    else
+      echo "git-bc-sync-extras: $rel differs from source — run interactively to review" >&2
+      skipped=$(( skipped + 1 ))
+    fi
+  fi
+done < <(git -C "$source_abs" ls-files --others --ignored --exclude-standard 2>/dev/null)
+
+if [ "$copied" -eq 0 ] && [ "$skipped" -eq 0 ]; then
+  echo "git-bc-sync-extras: no ignored extras to sync"
+fi
