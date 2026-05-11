@@ -1,0 +1,136 @@
+#!/usr/bin/env bash
+# git-bc-prune — remove branch clones whose PR or branch is merged/closed.
+#
+# Usage:
+#   git bc-prune [-n] [-f] [dir]
+#   git-bc-prune [-n] [-f] [dir]
+#
+#   [dir]           Directory to scan for branch-clone subdirectories.
+#                   Default: current directory.
+#   -n, --dry-run   Print what would be removed without actually removing.
+#   -f, --force     Pass --force to git-bc-rm (skip dirty/unpushed checks).
+#
+# Scans each git-repository subdirectory of [dir]. For each one:
+#   1. If `gh` is available, checks whether the checked-out branch has a
+#      merged or closed PR via `gh pr view`.
+#   2. Falls back to checking whether the remote-tracking branch is gone
+#      and all local commits are already reachable from the default branch.
+# Matching clones are removed via git-bc-rm.
+
+set -euo pipefail
+
+usage() {
+  sed -n '2,18p' "$0" | sed 's/^# \{0,1\}//'
+  exit "${1:-2}"
+}
+
+dry_run=false
+force=false
+scan_dir="."
+
+while [ $# -gt 0 ]; do
+  case "$1" in
+    -h|--help)      usage 0 ;;
+    -n|--dry-run)   dry_run=true ;;
+    -f|--force)     force=true ;;
+    *)
+      if [ "$scan_dir" = "." ]; then
+        scan_dir="$1"
+      else
+        usage 2
+      fi
+      ;;
+  esac
+  shift
+done
+
+scan_dir="$(cd "$scan_dir" && pwd)"
+
+has_gh=false
+command -v gh >/dev/null 2>&1 && has_gh=true
+
+# Emit the GitHub PR state for the branch checked out in dir: MERGED, CLOSED, OPEN, or "".
+gh_pr_state() {
+  local dir="$1" branch="$2"
+  $has_gh || return 0
+  ( cd "$dir" && gh pr view "$branch" --json state --jq '.state' 2>/dev/null ) || true
+}
+
+# True if the remote-tracking ref for branch is gone AND all local commits
+# are already reachable from the remote default branch.
+is_merged_locally() {
+  local dir="$1" branch="$2"
+  git -C "$dir" show-ref --verify --quiet "refs/remotes/origin/$branch" 2>/dev/null \
+    && return 1   # remote branch still present — not obviously merged
+  local default_ref=""
+  default_ref="$(git -C "$dir" symbolic-ref --quiet refs/remotes/origin/HEAD 2>/dev/null \
+    | sed 's|refs/remotes/origin/||')" || true
+  if [ -z "$default_ref" ]; then
+    for candidate in main master; do
+      if git -C "$dir" show-ref --verify --quiet "refs/remotes/origin/$candidate" 2>/dev/null; then
+        default_ref="$candidate"
+        break
+      fi
+    done
+  fi
+  [ -n "$default_ref" ] || return 1
+  local unmerged
+  unmerged="$(git -C "$dir" rev-list --count "origin/$default_ref..HEAD" 2>/dev/null || echo 1)"
+  [ "$unmerged" -eq 0 ]
+}
+
+pruned=0
+skipped=0
+
+while IFS= read -r subdir; do
+  [ -d "$subdir" ] || continue
+  git -C "$subdir" rev-parse --git-dir >/dev/null 2>&1 || continue
+
+  branch="$(git -C "$subdir" symbolic-ref --short HEAD 2>/dev/null || true)"
+  if [ -z "$branch" ]; then
+    printf 'git-bc-prune: %s — detached HEAD, skipping\n' "$subdir"
+    skipped=$(( skipped + 1 ))
+    continue
+  fi
+
+  # Update remote-tracking info so local checks are current.
+  git -C "$subdir" fetch origin --prune --quiet 2>/dev/null || true
+
+  should_prune=false
+  reason=""
+
+  state="$(gh_pr_state "$subdir" "$branch")"
+  case "$state" in
+    MERGED) should_prune=true; reason="PR merged" ;;
+    CLOSED) should_prune=true; reason="PR closed" ;;
+    OPEN)   should_prune=false ;;
+    *)
+      # gh unavailable or no PR found — fall back to git-local heuristic.
+      if is_merged_locally "$subdir" "$branch"; then
+        should_prune=true
+        reason="branch merged (remote ref gone)"
+      fi
+      ;;
+  esac
+
+  if $should_prune; then
+    printf 'git-bc-prune: %s — %s\n' "$subdir" "$reason"
+    if $dry_run; then
+      printf '  (dry-run: would remove)\n'
+      pruned=$(( pruned + 1 ))
+    else
+      rm_args=("$subdir")
+      $force && rm_args+=("--force")
+      if git-bc-rm "${rm_args[@]}"; then
+        pruned=$(( pruned + 1 ))
+      else
+        printf 'git-bc-prune: warning: git-bc-rm failed for %s\n' "$subdir" >&2
+        skipped=$(( skipped + 1 ))
+      fi
+    fi
+  else
+    skipped=$(( skipped + 1 ))
+  fi
+done < <(find "$scan_dir" -maxdepth 1 -mindepth 1 -type d | sort)
+
+printf 'git-bc-prune: done — %d removed, %d skipped\n' "$pruned" "$skipped"

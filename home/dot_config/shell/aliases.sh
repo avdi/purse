@@ -38,6 +38,7 @@ alias wtclone="git clone-bare"
 alias wtadd="git wt-add"
 alias wtrm="git wt-rm"
 alias wtrepair="git wt-repair"
+alias bcprune="git-bc-prune"
 
 # Branch-clone helpers — must be functions (not aliases) so that `cd` affects
 # the current shell session.
