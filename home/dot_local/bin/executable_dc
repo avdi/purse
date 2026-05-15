@@ -1,0 +1,10 @@
+#!/usr/bin/env bash
+# dc — short form for `devcontainer`. Routes through the purse shim so
+# `dc up` automatically applies my dotfiles inside the new container, the
+# same way the VS Code Dev Containers extension does.
+#
+# Bare `devcontainer` also goes through the shim because env.sh prepends
+# the shim directory to PATH; this script just exists so `dc` works in any
+# shell context (including non-interactive ones that don't source env.sh).
+
+exec "$HOME/.local/share/purse/shims/devcontainer" "$@"

@@ -24,8 +24,10 @@ alias cm="chezmoi"
 alias gs="git status"
 alias vs="vscli open"
 alias vsr="vscli recent"
-alias dc="devcontainer"
 alias lt="lenticel"
+# `dc` lives at ~/.local/bin/dc as a script (routes through the devcontainer
+# shim that injects --dotfiles-* flags); intentionally not aliased here so the
+# script stays discoverable via `which dc` and works in non-interactive shells.
 
 # Pull latest from the chezmoi source clone (~/.local/share/chezmoi) and
 # apply. The working clone at ~/projects/avdi/purse is separate, so edits

@@ -1,0 +1,60 @@
+{{- if ne .chezmoi.os "windows" -}}
+#!/usr/bin/env bash
+# devcontainer shim — when the subcommand is `up`, inject the same dotfiles
+# flags the VS Code Dev Containers extension would pass, so the standalone
+# CLI installs my dotfiles into new containers automatically.
+#
+# Defers to the next `devcontainer` on PATH (the real binary, typically the
+# symlink npm drops into ~/.local/bin/ that points into node_modules).
+#
+# Effective only when this directory is on PATH ahead of the real
+# devcontainer — see ~/.config/shell/env.sh. Non-interactive shells that
+# don't source env.sh hit the real binary directly and skip this shim.
+
+set -euo pipefail
+
+dotfiles_repo="${PURSE_DOTFILES_REPOSITORY:-https://github.com/avdi/purse.git}"
+dotfiles_install="${PURSE_DOTFILES_INSTALL_COMMAND:-install.sh}"
+dotfiles_target="${PURSE_DOTFILES_TARGET_PATH:-~/dotfiles}"
+
+self_canonical="$(realpath "$0" 2>/dev/null || printf '%s' "$0")"
+
+real_devcontainer=""
+while IFS= read -r candidate; do
+  [ -n "$candidate" ] || continue
+  resolved="$(realpath "$candidate" 2>/dev/null || printf '%s' "$candidate")"
+  [ "$resolved" = "$self_canonical" ] && continue
+  real_devcontainer="$candidate"
+  break
+done < <(type -aP devcontainer 2>/dev/null || true)
+
+if [ -z "$real_devcontainer" ]; then
+  echo "devcontainer shim: real devcontainer CLI not found on PATH" >&2
+  echo "  install with: npm install -g @devcontainers/cli" >&2
+  exit 127
+fi
+
+# Pass through anything that isn't `up` untouched.
+if [ "${1:-}" != "up" ]; then
+  exec "$real_devcontainer" "$@"
+fi
+
+# If the caller already supplied any --dotfiles-* flag, respect their choice
+# and forward verbatim.
+for arg in "$@"; do
+  case "$arg" in
+    --dotfiles-repository|--dotfiles-repository=*|\
+    --dotfiles-install-command|--dotfiles-install-command=*|\
+    --dotfiles-target-path|--dotfiles-target-path=*)
+      exec "$real_devcontainer" "$@"
+      ;;
+  esac
+done
+
+shift  # consume the `up` subcommand
+exec "$real_devcontainer" up \
+  --dotfiles-repository "$dotfiles_repo" \
+  --dotfiles-install-command "$dotfiles_install" \
+  --dotfiles-target-path "$dotfiles_target" \
+  "$@"
+{{- end }}

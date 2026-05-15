@@ -43,6 +43,11 @@ home/
   .chezmoidata/packages.yaml          # edit this to add/remove packages
   dot_config/shell/env.sh             # → ~/.config/shell/env.sh  (EDITOR, PATH, etc.)
   dot_config/shell/aliases.sh         # → ~/.config/shell/aliases.sh
+  dot_local/bin/executable_dc         # → ~/.local/bin/dc  (devcontainer shorthand)
+  dot_local/share/purse/shims/executable_devcontainer.tmpl
+                                      # → ~/.local/share/purse/shims/devcontainer
+                                      #   shim that injects --dotfiles-* flags into
+                                      #   `devcontainer up` (PATH-prepended in env.sh)
   run_onchange_install-packages.sh.tmpl   # installs packages on Linux/macOS
   run_onchange_install-packages.ps1.tmpl  # installs packages on Windows (winget)
   run_once_setup-shell.sh             # wires aliases + direnv into rc files (once)
