@@ -1,0 +1,94 @@
+#!/usr/bin/env bash
+# dcsh — open a shell (or run a command) inside the devcontainer for the
+# current project.
+#
+# Usage:
+#   dcsh [options] [-- <cmd> [args...]]
+#
+# Options:
+#   -w, --workspace <path>   Workspace folder (default: nearest ancestor with
+#                            .devcontainer/ or .devcontainer.json, else cwd).
+#   -s, --shell <shell>      Shell to launch (default: bash).
+#   -u, --user <user>        Remote user to exec as (passed via --remote-env).
+#   -h, --help               Show this help.
+#
+# Anything after -- is passed as the command to exec instead of a shell.
+#
+# Examples:
+#   dcsh                     # bash in the container for this project
+#   dcsh -s zsh              # zsh instead
+#   dcsh -- rails console    # run a specific command
+#   dcsh -w ../other         # target a neighbouring workspace
+
+set -euo pipefail
+
+die() { printf 'dcsh: %s\n' "$*" >&2; exit 1; }
+
+command -v devcontainer >/dev/null 2>&1 || die "'devcontainer' not found on PATH (install @devcontainers/cli)"
+
+# ── defaults ────────────────────────────────────────────────────────────────
+workspace=""
+shell_cmd="bash"
+remote_user=""
+extra_cmd=()
+
+# ── argument parsing ─────────────────────────────────────────────────────────
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    -h|--help)
+      sed -n '2,20p' "$0" | sed 's/^# \{0,1\}//'
+      exit 0
+      ;;
+    -w|--workspace)
+      workspace="${2:?--workspace requires a path}"; shift 2 ;;
+    -s|--shell)
+      shell_cmd="${2:?--shell requires a shell name}"; shift 2 ;;
+    -u|--user)
+      remote_user="${2:?--user requires a username}"; shift 2 ;;
+    --)
+      shift; extra_cmd=("$@"); break ;;
+    -*)
+      die "unknown option: $1" ;;
+    *)
+      die "unexpected argument: $1 (use -- to pass a command)" ;;
+  esac
+done
+
+# ── locate workspace ─────────────────────────────────────────────────────────
+find_workspace() {
+  local dir
+  dir="$(pwd)"
+  while true; do
+    if [[ -d "$dir/.devcontainer" || -f "$dir/.devcontainer.json" ]]; then
+      echo "$dir"
+      return
+    fi
+    [[ "$dir" == "/" ]] && break
+    dir="$(dirname "$dir")"
+  done
+  # No marker found — use cwd and let devcontainer CLI report the error.
+  pwd
+}
+
+if [[ -z "$workspace" ]]; then
+  workspace="$(find_workspace)"
+fi
+
+# ── build exec arguments ─────────────────────────────────────────────────────
+exec_args=(
+  --workspace-folder "$workspace"
+  --terminal-columns "$(tput cols 2>/dev/null || echo 220)"
+  --terminal-rows    "$(tput lines 2>/dev/null || echo 50)"
+)
+
+[[ -n "$remote_user" ]] && exec_args+=(--remote-env "LOGNAME=$remote_user")
+
+# ── build the command to run inside the container ────────────────────────────
+if [[ ${#extra_cmd[@]} -gt 0 ]]; then
+  cmd=("${extra_cmd[@]}")
+else
+  cmd=("$shell_cmd" --login)
+fi
+
+printf 'dcsh: workspace → %s\n' "$workspace" >&2
+exec devcontainer exec "${exec_args[@]}" "${cmd[@]}"
