@@ -5,7 +5,8 @@
 # CLI installs my dotfiles into new containers automatically. Also forwards
 # selected host env vars (GitHub/Bundler tokens by default) into the new
 # container via --remote-env, so private-repo auth works out of the box
-# without per-project .env wiring.
+# without per-project .env wiring. Lazy-fetches tokens via `gh auth token`
+# if they aren't already in the host environment.
 #
 # Defers to the next `devcontainer` on PATH (the real binary, typically the
 # symlink npm drops into ~/.local/bin/ that points into node_modules).
@@ -61,11 +62,20 @@ for arg in "$@"; do
   esac
 done
 
-# Build --remote-env args from forwarded host vars. Empty/unset names are
-# skipped so containers without these tokens still come up cleanly.
+# Build --remote-env args from forwarded host vars. If a var is unset/empty,
+# we attempt to lazy-initialize it using `gh auth token` (if it looks like
+# a GitHub token) before skipping.
 remote_env_args=()
 for name in $forward_env_names; do
   value="${!name:-}"
+
+  # Lazy-fetch GitHub token if needed
+  if [ -z "$value" ] && [[ "$name" =~ ^(GH|GITHUB)_TOKEN$ ]]; then
+    if command -v gh >/dev/null 2>&1; then
+      value="$(gh auth token 2>/dev/null || true)"
+    fi
+  fi
+
   [ -n "$value" ] && remote_env_args+=(--remote-env "$name=$value")
 done
 
