@@ -1,0 +1,22 @@
+#!/usr/bin/env bash
+# Install optional host-side tools that enhance the devcontainer experience.
+# Run manually; re-running is safe (each tool is idempotent).
+
+set -euo pipefail
+
+# ---- devcontainer-bridge (dbr) ----------------------------------------------
+# Enables host-side port forwarding and xdg-open → host browser inside
+# devcontainers. The purse devcontainer shim injects the dbr feature into
+# every `devcontainer up`; having dbr running on the host activates it.
+#
+# Project: https://github.com/bradleybeddoes/devcontainer-bridge
+
+if command -v dbr >/dev/null 2>&1; then
+  echo "→ dbr already installed ($(dbr --version 2>/dev/null || echo version unknown))"
+else
+  echo "→ Installing devcontainer-bridge (dbr)..."
+  curl -fsSL https://github.com/bradleybeddoes/devcontainer-bridge/releases/latest/download/install.sh | bash
+fi
+
+echo "→ dbr ensure (start/update host daemon)..."
+dbr ensure
