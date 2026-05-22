@@ -33,3 +33,10 @@ export GPG_TTY=$(tty)
 # Secrets pulled from Zoho Vault by setup-secrets (not chezmoi-managed, never committed)
 # shellcheck disable=SC1091
 [ -f "${HOME}/.config/shell/secrets.sh" ] && . "${HOME}/.config/shell/secrets.sh"
+
+# Inside a devcontainer with the devcontainer-bridge (dbr) feature installed,
+# route $BROWSER through dbr-open so URLs opened by container tools land in
+# the host browser. Harmless no-op outside containers / when dbr isn't present.
+if [ -z "${BROWSER:-}" ] && command -v dbr-open >/dev/null 2>&1; then
+  export BROWSER=dbr-open
+fi

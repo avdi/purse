@@ -2,11 +2,15 @@
 #!/usr/bin/env bash
 # devcontainer shim — when the subcommand is `up`, inject the same dotfiles
 # flags the VS Code Dev Containers extension would pass, so the standalone
-# CLI installs my dotfiles into new containers automatically. Also forwards
-# selected host env vars (GitHub/Bundler tokens by default) into the new
-# container via --remote-env, so private-repo auth works out of the box
-# without per-project .env wiring. Lazy-fetches tokens via `gh auth token`
-# if they aren't already in the host environment.
+# CLI installs my dotfiles into new containers automatically. Also:
+#   - forwards selected host env vars (GitHub/Bundler tokens by default)
+#     into the new container via --remote-env, lazy-fetching missing tokens
+#     via `gh auth token`;
+#   - on WSL hosts, mounts the WSLg sockets and sets the DISPLAY/Wayland/
+#     PulseAudio env vars so GUI apps render on the host desktop;
+#   - injects the devcontainer-bridge (dbr) feature via --additional-features
+#     so host-side port forwarding and xdg-open work like in VS Code (requires
+#     `dbr` installed on the host; runs `dbr ensure` opportunistically).
 #
 # Defers to the next `devcontainer` on PATH (the real binary, typically the
 # symlink npm drops into ~/.local/bin/ that points into node_modules).
@@ -25,6 +29,11 @@ dotfiles_target="${PURSE_DOTFILES_TARGET_PATH:-~/dotfiles}"
 # unset or empty on the host are skipped silently. Override the list via
 # PURSE_DEVCONTAINER_FORWARD_ENV (space-separated).
 forward_env_names="${PURSE_DEVCONTAINER_FORWARD_ENV:-GH_TOKEN GITHUB_TOKEN BUNDLE_GITHUB__COM}"
+
+# Default-on integrations. Set to 0 to opt out.
+forward_wslg="${PURSE_DEVCONTAINER_FORWARD_WSLG:-1}"
+forward_dbr="${PURSE_DEVCONTAINER_FORWARD_DBR:-1}"
+dbr_feature="${PURSE_DEVCONTAINER_DBR_FEATURE:-ghcr.io/bradleybeddoes/devcontainer-bridge/dbr:latest}"
 
 self_canonical="$(realpath "$0" 2>/dev/null || printf '%s' "$0")"
 
@@ -88,9 +97,39 @@ if [ "$user_dotfiles" -eq 0 ]; then
   )
 fi
 
+# WSLg X11/Wayland/PulseAudio forwarding. Only activates when running on a
+# WSL host with the WSLg socket directory present. Mounts the X11 and WSLg
+# sockets into the container and points the standard env vars at them so
+# GUI apps render on the host Windows desktop.
+wslg_args=()
+if [ "$forward_wslg" = "1" ] && [ -d /mnt/wslg ]; then
+  wslg_args+=(
+    --mount "type=bind,source=/tmp/.X11-unix,target=/tmp/.X11-unix"
+    --mount "type=bind,source=/mnt/wslg,target=/mnt/wslg"
+    --remote-env "DISPLAY=${DISPLAY:-:0}"
+    --remote-env "WAYLAND_DISPLAY=${WAYLAND_DISPLAY:-wayland-0}"
+    --remote-env "XDG_RUNTIME_DIR=/mnt/wslg/runtime-dir"
+    --remote-env "PULSE_SERVER=${PULSE_SERVER:-unix:/mnt/wslg/PulseServer}"
+  )
+fi
+
+# devcontainer-bridge (dbr) for host-side port forwarding + xdg-open. Inject
+# the feature so it lands in every container regardless of devcontainer.json.
+# Run `dbr ensure` opportunistically — if dbr isn't installed on the host yet
+# the user will see a no-op feature in the container, which is harmless.
+dbr_args=()
+if [ "$forward_dbr" = "1" ]; then
+  dbr_args+=(--additional-features "{\"$dbr_feature\": {}}")
+  if command -v dbr >/dev/null 2>&1; then
+    dbr ensure >/dev/null 2>&1 || true
+  fi
+fi
+
 shift  # consume the `up` subcommand
 exec "$real_devcontainer" up \
   "${dotfiles_args[@]+"${dotfiles_args[@]}"}" \
   "${remote_env_args[@]+"${remote_env_args[@]}"}" \
+  "${wslg_args[@]+"${wslg_args[@]}"}" \
+  "${dbr_args[@]+"${dbr_args[@]}"}" \
   "$@"
 {{- end }}

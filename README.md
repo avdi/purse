@@ -46,9 +46,9 @@ home/
   dot_local/bin/executable_dc         # → ~/.local/bin/dc  (devcontainer shorthand)
   dot_local/share/purse/shims/executable_devcontainer.tmpl
                                       # → ~/.local/share/purse/shims/devcontainer
-                                      #   shim that injects --dotfiles-* flags and
-                                      #   --remote-env GH_TOKEN/GITHUB_TOKEN/BUNDLE_GITHUB__COM
-                                      #   into `devcontainer up` (PATH-prepended in env.sh)
+                                      #   shim that wraps `devcontainer up`; see
+                                      #   "Devcontainer integration" below
+                                      #   (PATH-prepended in env.sh)
   run_onchange_install-packages.sh.tmpl   # installs packages on Linux/macOS
   run_onchange_install-packages.ps1.tmpl  # installs packages on Windows (winget)
   run_once_setup-shell.sh             # wires aliases + direnv into rc files (once)
@@ -105,6 +105,26 @@ This requires `zv` to be authenticated before running `chezmoi apply`. For bulk 
 ### `zv` CLI
 
 `zv` (Zoho Vault CLI) is installed automatically by a chezmoi pre-hook before every `apply` — `.install-zv.sh` on Linux, `.install-zv.ps1` on Windows. Both drop the binary into `~/.local/bin/` and exit immediately if `zv` is already on PATH. Authenticate once with `zv login`.
+
+## Devcontainer integration
+
+`~/.local/share/purse/shims/devcontainer` wraps the `@devcontainers/cli` so that
+`devcontainer up` (and the `dc` shorthand) behaves more like the VS Code Dev
+Containers extension. It's prepended to `PATH` by `env.sh`; non-`up` subcommands
+pass through untouched.
+
+For every `up` invocation the shim adds:
+
+| Behavior | Default | Opt-out |
+|---|---|---|
+| Inject `--dotfiles-{repository,install-command,target-path}` so this repo applies inside the container | on | pass any `--dotfiles-*` flag yourself |
+| Forward `GH_TOKEN`, `GITHUB_TOKEN`, `BUNDLE_GITHUB__COM` via `--remote-env`, lazy-fetching missing values from `gh auth token` | on | `PURSE_DEVCONTAINER_FORWARD_ENV=""` (or override the list) |
+| **WSLg X11/Wayland/PulseAudio forwarding** — mount `/tmp/.X11-unix` and `/mnt/wslg`, set `DISPLAY`, `WAYLAND_DISPLAY`, `XDG_RUNTIME_DIR`, `PULSE_SERVER` so GUI apps render on the host Windows desktop | on (when `/mnt/wslg` exists) | `PURSE_DEVCONTAINER_FORWARD_WSLG=0` |
+| **devcontainer-bridge (dbr)** — inject `--additional-features` for [`bradleybeddoes/devcontainer-bridge`](https://github.com/bradleybeddoes/devcontainer-bridge) so host-port forwarding and `xdg-open` → host browser work like in VS Code. Runs `dbr ensure` opportunistically if `dbr` is on the host's PATH. | on | `PURSE_DEVCONTAINER_FORWARD_DBR=0` |
+
+`dbr` requires a one-time host install (`curl -fsSL https://github.com/bradleybeddoes/devcontainer-bridge/releases/latest/download/install.sh | bash`) and runs a long-lived host daemon. Without it the injected feature is inert — the container daemon just retries silently — so containers still come up cleanly.
+
+To make `xdg-open` and `$BROWSER` actually reach the host browser, set `BROWSER=dbr-open` in your container shell rc (already wired into purse dotfiles).
 
 ## Links
 
