@@ -70,7 +70,7 @@ for name in $forward_env_names; do
   value="${!name:-}"
 
   # Lazy-fetch GitHub token if needed
-  if [ -z "$value" ] && [[ "$name" =~ ^(GH|GITHUB)_TOKEN$ ]]; then
+  if [ -z "$value" ] && [[ "$name" =~ ^(GH|GITHUB)_TOKEN$|^BUNDLE_GITHUB__COM$ ]]; then
     if command -v gh >/dev/null 2>&1; then
       value="$(gh auth token 2>/dev/null || true)"
     fi
