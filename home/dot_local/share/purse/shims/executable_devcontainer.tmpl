@@ -121,7 +121,8 @@ dbr_args=()
 if [ "$forward_dbr" = "1" ]; then
   dbr_args+=(--additional-features "{\"$dbr_feature\": {}}")
   if command -v dbr >/dev/null 2>&1; then
-    dbr ensure >/dev/null 2>&1 || true
+    # --host 127.0.0.1: see install-extras for why.
+    dbr ensure --host 127.0.0.1 >/dev/null 2>&1 || true
   else
     echo "devcontainer shim: dbr not installed — run \`install-extras\` to enable host port-forwarding and xdg-open → host browser" >&2
   fi

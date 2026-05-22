@@ -18,5 +18,9 @@ else
   curl -fsSL https://github.com/bradleybeddoes/devcontainer-bridge/releases/latest/download/install.sh | bash
 fi
 
+# --host 127.0.0.1 avoids dbr's default host.docker.internal probe, which on
+# WSL resolves to the Windows LAN IP and stalls long enough to bust the 5s
+# spawn deadline. The daemon still binds 0.0.0.0 so containers reach it via
+# host.docker.internal as normal.
 echo "→ dbr ensure (start/update host daemon)..."
-dbr ensure
+dbr ensure --host 127.0.0.1
