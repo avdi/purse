@@ -46,8 +46,9 @@ home/
   dot_local/bin/executable_dc         # → ~/.local/bin/dc  (devcontainer shorthand)
   dot_local/share/purse/shims/executable_devcontainer.tmpl
                                       # → ~/.local/share/purse/shims/devcontainer
-                                      #   shim that injects --dotfiles-* flags into
-                                      #   `devcontainer up` (PATH-prepended in env.sh)
+                                      #   shim that injects --dotfiles-* flags and
+                                      #   --remote-env GH_TOKEN/GITHUB_TOKEN/BUNDLE_GITHUB__COM
+                                      #   into `devcontainer up` (PATH-prepended in env.sh)
   run_onchange_install-packages.sh.tmpl   # installs packages on Linux/macOS
   run_onchange_install-packages.ps1.tmpl  # installs packages on Windows (winget)
   run_once_setup-shell.sh             # wires aliases + direnv into rc files (once)

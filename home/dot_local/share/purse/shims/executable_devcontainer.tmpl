@@ -2,7 +2,10 @@
 #!/usr/bin/env bash
 # devcontainer shim — when the subcommand is `up`, inject the same dotfiles
 # flags the VS Code Dev Containers extension would pass, so the standalone
-# CLI installs my dotfiles into new containers automatically.
+# CLI installs my dotfiles into new containers automatically. Also forwards
+# selected host env vars (GitHub/Bundler tokens by default) into the new
+# container via --remote-env, so private-repo auth works out of the box
+# without per-project .env wiring.
 #
 # Defers to the next `devcontainer` on PATH (the real binary, typically the
 # symlink npm drops into ~/.local/bin/ that points into node_modules).
@@ -16,6 +19,11 @@ set -euo pipefail
 dotfiles_repo="${PURSE_DOTFILES_REPOSITORY:-https://github.com/avdi/purse.git}"
 dotfiles_install="${PURSE_DOTFILES_INSTALL_COMMAND:-install.sh}"
 dotfiles_target="${PURSE_DOTFILES_TARGET_PATH:-~/dotfiles}"
+
+# Host env vars to forward into the container as --remote-env. Names that are
+# unset or empty on the host are skipped silently. Override the list via
+# PURSE_DEVCONTAINER_FORWARD_ENV (space-separated).
+forward_env_names="${PURSE_DEVCONTAINER_FORWARD_ENV:-GH_TOKEN GITHUB_TOKEN BUNDLE_GITHUB__COM}"
 
 self_canonical="$(realpath "$0" 2>/dev/null || printf '%s' "$0")"
 
@@ -39,22 +47,40 @@ if [ "${1:-}" != "up" ]; then
   exec "$real_devcontainer" "$@"
 fi
 
-# If the caller already supplied any --dotfiles-* flag, respect their choice
-# and forward verbatim.
+# Detect whether the caller already supplied any --dotfiles-* flag; if so,
+# skip our defaults but still forward remote-env vars.
+user_dotfiles=0
 for arg in "$@"; do
   case "$arg" in
     --dotfiles-repository|--dotfiles-repository=*|\
     --dotfiles-install-command|--dotfiles-install-command=*|\
     --dotfiles-target-path|--dotfiles-target-path=*)
-      exec "$real_devcontainer" "$@"
+      user_dotfiles=1
+      break
       ;;
   esac
 done
 
+# Build --remote-env args from forwarded host vars. Empty/unset names are
+# skipped so containers without these tokens still come up cleanly.
+remote_env_args=()
+for name in $forward_env_names; do
+  value="${!name:-}"
+  [ -n "$value" ] && remote_env_args+=(--remote-env "$name=$value")
+done
+
+dotfiles_args=()
+if [ "$user_dotfiles" -eq 0 ]; then
+  dotfiles_args=(
+    --dotfiles-repository "$dotfiles_repo"
+    --dotfiles-install-command "$dotfiles_install"
+    --dotfiles-target-path "$dotfiles_target"
+  )
+fi
+
 shift  # consume the `up` subcommand
 exec "$real_devcontainer" up \
-  --dotfiles-repository "$dotfiles_repo" \
-  --dotfiles-install-command "$dotfiles_install" \
-  --dotfiles-target-path "$dotfiles_target" \
+  "${dotfiles_args[@]+"${dotfiles_args[@]}"}" \
+  "${remote_env_args[@]+"${remote_env_args[@]}"}" \
   "$@"
 {{- end }}
