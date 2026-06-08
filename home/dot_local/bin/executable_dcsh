@@ -74,12 +74,34 @@ if [[ -z "$workspace" ]]; then
   workspace="$(find_workspace)"
 fi
 
+# ── detect config file from running container ────────────────────────────────
+# The devcontainer CLI matches containers by (workspace-folder, config-file).
+# If the running container was started with a non-default config (e.g. a
+# sidecar sub-config), we must pass --config so the CLI can find it.
+detect_config() {
+  local folder="$1"
+  local container_id
+  container_id=$(docker ps \
+    --filter "label=devcontainer.local_folder=$folder" \
+    --format '{{.ID}}' 2>/dev/null | head -1)
+  [[ -z "$container_id" ]] && return
+  docker inspect "$container_id" \
+    --format '{{index .Config.Labels "devcontainer.config_file"}}' 2>/dev/null
+}
+
+config_file="$(detect_config "$workspace")"
+
 # ── build exec arguments ─────────────────────────────────────────────────────
 exec_args=(
   --workspace-folder "$workspace"
   --terminal-columns "$(tput cols 2>/dev/null || echo 220)"
   --terminal-rows    "$(tput lines 2>/dev/null || echo 50)"
 )
+
+if [[ -n "$config_file" ]]; then
+  exec_args+=(--config "$config_file")
+  printf 'dcsh: config    → %s\n' "$config_file" >&2
+fi
 
 [[ -n "$remote_user" ]] && exec_args+=(--remote-env "LOGNAME=$remote_user")
 
