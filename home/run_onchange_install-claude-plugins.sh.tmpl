@@ -1,0 +1,32 @@
+{{- if ne .chezmoi.os "windows" -}}
+#!/bin/bash
+# chezmoi run_onchange: install Claude Code plugins
+#
+# Re-runs whenever the plugin manifest changes. The manifest is embedded below
+# so chezmoi detects the change and re-renders (and thus re-runs) this script.
+#
+# Plugin manifest:
+# {{ include "dot_claude/plugins/installed_plugins.json" | trim | replace "\n" "\n# " }}
+
+set -euo pipefail
+
+if ! command -v claude >/dev/null 2>&1; then
+  echo "⚠️  claude CLI not found; skipping plugin installation" >&2
+  exit 0
+fi
+
+installed_json="$HOME/.claude/plugins/installed_plugins.json"
+
+if [[ ! -f "$installed_json" ]]; then
+  echo "⚠️  $installed_json not found; skipping plugin installation" >&2
+  exit 0
+fi
+
+ruby -rjson -e \
+  'JSON.parse(File.read(ARGV[0]))["plugins"].each_key { |k| puts k }' \
+  "$installed_json" \
+| while read -r plugin; do
+    echo "→ claude plugin install $plugin"
+    claude plugin install "$plugin"
+  done
+{{- end }}
