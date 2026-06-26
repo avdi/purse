@@ -8,6 +8,9 @@
 # Options:
 #   -w, --workspace <path>   Workspace folder (default: nearest ancestor with
 #                            .devcontainer/ or .devcontainer.json, else cwd).
+#   -c, --config <path>      Path to devcontainer.json (required when the
+#                            container was started with a non-default config,
+#                            e.g. .devcontainer/sidecar/devcontainer.json).
 #   -s, --shell <shell>      Shell to launch (default: bash).
 #   -u, --user <user>        Remote user to exec as (passed via --remote-env).
 #   -h, --help               Show this help.
@@ -28,6 +31,7 @@ command -v devcontainer >/dev/null 2>&1 || die "'devcontainer' not found on PATH
 
 # ── defaults ────────────────────────────────────────────────────────────────
 workspace=""
+config_file=""
 shell_cmd="bash"
 remote_user=""
 extra_cmd=()
@@ -41,6 +45,8 @@ while [[ $# -gt 0 ]]; do
       ;;
     -w|--workspace)
       workspace="${2:?--workspace requires a path}"; shift 2 ;;
+    -c|--config)
+      config_file="${2:?--config requires a path}"; shift 2 ;;
     -s|--shell)
       shell_cmd="${2:?--shell requires a shell name}"; shift 2 ;;
     -u|--user)
@@ -89,7 +95,8 @@ detect_config() {
     --format '{{index .Config.Labels "devcontainer.config_file"}}' 2>/dev/null
 }
 
-config_file="$(detect_config "$workspace")"
+# An explicit --config wins; otherwise fall back to auto-detection.
+[[ -z "$config_file" ]] && config_file="$(detect_config "$workspace")"
 
 # ── build exec arguments ─────────────────────────────────────────────────────
 exec_args=(
