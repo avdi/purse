@@ -80,23 +80,38 @@ if [[ -z "$workspace" ]]; then
   workspace="$(find_workspace)"
 fi
 
-# ── detect config file from running container ────────────────────────────────
-# The devcontainer CLI matches containers by (workspace-folder, config-file).
-# If the running container was started with a non-default config (e.g. a
-# sidecar sub-config), we must pass --config so the CLI can find it.
-detect_config() {
-  local folder="$1"
-  local container_id
-  container_id=$(docker ps \
-    --filter "label=devcontainer.local_folder=$folder" \
-    --format '{{.ID}}' 2>/dev/null | head -1)
-  [[ -z "$container_id" ]] && return
-  docker inspect "$container_id" \
+# ── locate the running devcontainer ──────────────────────────────────────────
+# The devcontainer CLI normally matches containers by deriving a
+# `devcontainer.local_folder` label from --workspace-folder. That breaks when
+# the container was started by VS Code on Windows against a WSL workspace: the
+# label holds a UNC path (\\wsl.localhost\...) while we pass the Linux path, so
+# the CLI reports "Dev container not found".
+#
+# To be robust, find the container id directly and pass it via --container-id,
+# which skips local_folder matching entirely. We try the native local_folder
+# label first, then fall back to the `devcontainer.config_file` label, which is
+# a Linux path under the workspace even for VS Code/WSL containers.
+config_label() {
+  docker inspect "$1" \
     --format '{{index .Config.Labels "devcontainer.config_file"}}' 2>/dev/null
 }
 
-# An explicit --config wins; otherwise fall back to auto-detection.
-[[ -z "$config_file" ]] && config_file="$(detect_config "$workspace")"
+detect_container() {
+  local folder="$1" id
+  id=$(docker ps -q \
+    --filter "label=devcontainer.local_folder=$folder" 2>/dev/null | head -1)
+  if [[ -n "$id" ]]; then echo "$id"; return; fi
+  for id in $(docker ps -q --filter "label=devcontainer.config_file" 2>/dev/null); do
+    [[ "$(config_label "$id")" == "$folder/"* ]] && { echo "$id"; return; }
+  done
+}
+
+container_id=""
+[[ -n "$workspace" ]] && container_id="$(detect_container "$workspace")"
+
+# An explicit --config wins; otherwise derive it from the running container so
+# sidecar/non-default configs are picked up automatically.
+[[ -z "$config_file" && -n "$container_id" ]] && config_file="$(config_label "$container_id")"
 
 # ── build exec arguments ─────────────────────────────────────────────────────
 exec_args=(
@@ -104,6 +119,11 @@ exec_args=(
   --terminal-columns "$(tput cols 2>/dev/null || echo 220)"
   --terminal-rows    "$(tput lines 2>/dev/null || echo 50)"
 )
+
+if [[ -n "$container_id" ]]; then
+  exec_args+=(--container-id "$container_id")
+  printf 'dcsh: container → %s\n' "$container_id" >&2
+fi
 
 if [[ -n "$config_file" ]]; then
   exec_args+=(--config "$config_file")
