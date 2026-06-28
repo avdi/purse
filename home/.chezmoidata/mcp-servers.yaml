@@ -1,0 +1,31 @@
+# Declarative MCP server shortlist, registered into every present agent by
+# run_onchange_install-mcp-servers.sh. Token VALUES are never stored here — only
+# env-var reference strings, expanded by each agent at runtime from the shell env.
+mcpServers:
+  github:
+    description: "GitHub MCP (issues, PRs, repos, code search)"
+    transport: http
+    url: "https://api.githubcopilot.com/mcp/"
+    headers:
+      Authorization: "Bearer ${GITHUB_PERSONAL_ACCESS_TOKEN}"
+    requiresEnv:
+      - GITHUB_PERSONAL_ACCESS_TOKEN
+  playwright:
+    description: "Playwright browser automation MCP"
+    transport: stdio
+    command: npx
+    args: ["-y", "@playwright/mcp@latest"]
+    requiresEnv: []
+
+# Agents the installer will attempt to configure (only those whose CLI/config is
+# detected on the machine are actually touched).
+mcpAgents:
+  - claude
+  - codex
+  - antigravity
+  - auggie
+  - copilot
+  - cursor
+  - vscode
+  - opencode
+  - devin

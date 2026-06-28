@@ -1,0 +1,146 @@
+{{- if ne .chezmoi.os "windows" -}}
+#!/bin/bash
+# chezmoi run_onchange: register the "always want these" MCP servers into every
+# AI agent present on this machine. Desired servers + target agents are declared
+# in home/.chezmoidata/mcp-servers.yaml and rendered inline below, so chezmoi
+# re-runs this script whenever that manifest changes.
+#
+# Only env-var REFERENCES are written into agent configs (e.g. literal
+# ${GITHUB_PERSONAL_ACCESS_TOKEN}); secret values are never read or stored here.
+#
+# Manifest fingerprint: {{ .mcpServers | toJson | sha256sum }}
+
+set -euo pipefail
+
+command -v jq >/dev/null 2>&1 || { echo "⚠️  jq not found; skipping MCP setup" >&2; exit 0; }
+
+have() { command -v "$1" >/dev/null 2>&1; }
+warn() { echo "⚠️  $*" >&2; }
+
+# --- manifest values (parsed by chezmoi, not by this script) ------------------
+gh_url='{{ (index .mcpServers "github").url }}'
+gh_token_var='{{ index (index .mcpServers "github").requiresEnv 0 }}'
+pw_cmd='{{ (index .mcpServers "playwright").command }}'
+pw_args=({{ range (index .mcpServers "playwright").args }}'{{ . }}' {{ end }})  # bash array for `--` CLI forms
+pw_args_json='{{ (index .mcpServers "playwright").args | toJson }}'             # JSON array for jq builders
+
+# Literal env-var reference strings (NOT expanded by this installer — each agent
+# expands them at runtime). Syntax differs per agent.
+gh_bearer_dollar="Bearer \${${gh_token_var}}"        # ${VAR}
+gh_bearer_envcolon="Bearer \${env:${gh_token_var}}"  # ${env:VAR}
+gh_bearer_brace="Bearer {env:${gh_token_var}}"       # {env:VAR}
+
+# jq upsert by server name into a JSON config file, preserving other entries.
+# args: <cfg> <top-key> <server-name> <server-json>
+jq_upsert() {
+  local cfg="$1" key="$2" name="$3" server="$4" tmp
+  mkdir -p "$(dirname "$cfg")"
+  jq -e . "$cfg" >/dev/null 2>&1 || echo '{}' > "$cfg"
+  tmp=$(mktemp)
+  jq --arg k "$key" --arg name "$name" --argjson server "$server" \
+     '.[$k] = ((.[$k] // {}) + {($name): $server})' \
+     "$cfg" > "$tmp" && mv "$tmp" "$cfg"
+}
+
+# --- per-agent registration (each guarded by `have` in the loop below) --------
+register_claude() {
+  claude mcp remove github -s user >/dev/null 2>&1 || true
+  claude mcp add --transport http github -s user "$gh_url" \
+    --header "Authorization: $gh_bearer_dollar"
+  claude mcp remove playwright -s user >/dev/null 2>&1 || true
+  claude mcp add playwright -s user -- "$pw_cmd" "${pw_args[@]}"
+}
+
+register_codex() {
+  codex mcp remove github >/dev/null 2>&1 || true
+  codex mcp add github --url "$gh_url" --bearer-token-env-var "$gh_token_var"
+  codex mcp remove playwright >/dev/null 2>&1 || true
+  codex mcp add playwright -- "$pw_cmd" "${pw_args[@]}"
+}
+
+register_copilot() {
+  copilot mcp remove github >/dev/null 2>&1 || true
+  copilot mcp add --transport http github "$gh_url" \
+    --header "Authorization: $gh_bearer_dollar"
+  copilot mcp remove playwright >/dev/null 2>&1 || true
+  copilot mcp add playwright -- "$pw_cmd" "${pw_args[@]}"
+}
+
+register_devin() {
+  local cfg="$HOME/.config/devin/config.json"
+  local gh
+  gh=$(jq -n --arg url "$gh_url" --arg auth "$gh_bearer_dollar" \
+        '{url:$url, transport:"http", headers:{Authorization:$auth}}')
+  jq_upsert "$cfg" mcpServers github "$gh"
+  local pw
+  pw=$(jq -n --arg cmd "$pw_cmd" --argjson args "$pw_args_json" \
+        '{command:$cmd, args:$args}')
+  jq_upsert "$cfg" mcpServers playwright "$pw"
+}
+
+register_auggie() {
+  local gh pw
+  gh=$(jq -cn --arg url "$gh_url" --arg auth "$gh_bearer_dollar" \
+        '{type:"http", url:$url, headers:{Authorization:$auth}}')
+  auggie mcp add-json --replace -- github "$gh"
+  pw=$(jq -cn --arg cmd "$pw_cmd" --argjson args "$pw_args_json" \
+        '{command:$cmd, args:$args}')
+  auggie mcp add-json --replace -- playwright "$pw"
+}
+
+register_vscode() {
+  local gh pw
+  gh=$(jq -n --arg url "$gh_url" --arg auth "$gh_bearer_envcolon" \
+        '{name:"github", type:"http", url:$url, headers:{Authorization:$auth}}')
+  code --add-mcp "$gh"
+  pw=$(jq -n --arg cmd "$pw_cmd" --argjson args "$pw_args_json" \
+        '{name:"playwright", command:$cmd, args:$args}')
+  code --add-mcp "$pw"
+}
+
+register_cursor() {
+  local cfg="$HOME/.cursor/mcp.json" gh pw
+  gh=$(jq -n --arg url "$gh_url" --arg auth "$gh_bearer_envcolon" \
+        '{url:$url, headers:{Authorization:$auth}}')
+  jq_upsert "$cfg" mcpServers github "$gh"
+  pw=$(jq -n --arg cmd "$pw_cmd" --argjson args "$pw_args_json" \
+        '{command:$cmd, args:$args}')
+  jq_upsert "$cfg" mcpServers playwright "$pw"
+}
+
+register_opencode() {
+  local cfg="$HOME/.config/opencode/opencode.json" gh pw
+  gh=$(jq -n --arg url "$gh_url" --arg auth "$gh_bearer_brace" \
+        '{type:"remote", url:$url, enabled:true, headers:{Authorization:$auth}}')
+  jq_upsert "$cfg" mcp github "$gh"
+  pw=$(jq -n --arg cmd "$pw_cmd" --argjson args "$pw_args_json" \
+        '{type:"local", enabled:true, command:([$cmd] + $args)}')
+  jq_upsert "$cfg" mcp playwright "$pw"
+}
+
+# Antigravity (agy): global config is ~/.gemini/config/mcp_config.json and HTTP
+# servers use `serverUrl` (not `url`).
+register_antigravity() {
+  local cfg="$HOME/.gemini/config/mcp_config.json" gh pw
+  gh=$(jq -n --arg url "$gh_url" --arg auth "$gh_bearer_dollar" \
+        '{serverUrl:$url, headers:{Authorization:$auth}}')
+  jq_upsert "$cfg" mcpServers github "$gh"
+  pw=$(jq -n --arg cmd "$pw_cmd" --argjson args "$pw_args_json" \
+        '{command:$cmd, args:$args}')
+  jq_upsert "$cfg" mcpServers playwright "$pw"
+}
+
+for agent in {{ .mcpAgents | join " " }}; do
+  case "$agent" in
+    claude)      have claude   && { register_claude      || warn "claude MCP setup failed"; } ;;
+    codex)       have codex    && { register_codex       || warn "codex MCP setup failed"; } ;;
+    antigravity) have agy      && { register_antigravity || warn "antigravity MCP setup failed"; } ;;
+    auggie)      have auggie   && { register_auggie      || warn "auggie MCP setup failed"; } ;;
+    copilot)     have copilot  && { register_copilot     || warn "copilot MCP setup failed"; } ;;
+    cursor)      have cursor-agent && { register_cursor  || warn "cursor MCP setup failed"; } ;;
+    vscode)      have code     && { register_vscode      || warn "vscode MCP setup failed"; } ;;
+    opencode)    have opencode && { register_opencode    || warn "opencode MCP setup failed"; } ;;
+    devin)       have devin    && { register_devin       || warn "devin MCP setup failed"; } ;;
+  esac
+done
+{{- end }}

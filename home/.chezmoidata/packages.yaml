@@ -3,11 +3,14 @@ packages:
   apt:
     - ripgrep
     - direnv
+    - jq          # JSON processor — required by run_onchange_install-mcp-servers.sh
 
   # Homebrew packages (macOS, or Linux with brew)
   brew:
     - ripgrep
     - direnv
+    - jq          # JSON processor — required by run_onchange_install-mcp-servers.sh
+    - yq          # YAML processor (mikefarah) — general-purpose convenience
     - node        # Node.js LTS — needed for npm packages below
     - vscli       # VS Code devcontainer launcher
     - chruby      # lightweight Ruby version switcher (shell function)
@@ -30,6 +33,8 @@ packages:
   winget:
     - id: BurntSushi.ripgrep.MSVC  # ripgrep (rg)
     - id: direnv.direnv             # direnv
+    - id: jqlang.jq                 # JSON processor (required by MCP installer)
+    - id: MikeFarah.yq              # YAML processor — general-purpose convenience
     - id: michidk.vscli             # VS Code devcontainer launcher
     - id: Anthropic.ClaudeCode      # claude (native binary, not npm)
     - id: OpenJS.NodeJS.LTS         # Node.js LTS — needed for npm packages below
