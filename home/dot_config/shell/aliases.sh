@@ -89,8 +89,20 @@ for _chruby_sh in \
   if [ -f "$_chruby_sh" ]; then
     # shellcheck source=/dev/null
     . "$_chruby_sh"
-    # shellcheck source=/dev/null
-    . "${_chruby_sh%chruby.sh}auto.sh" 2>/dev/null || true
+    # Only enable .ruby-version auto-switching when chruby actually has rubies
+    # to switch between. chruby discovers them from ~/.rubies and /opt/rubies
+    # (chruby.sh); where Ruby is provided by the system/image (devcontainers,
+    # Codespaces) those are empty, so auto.sh would just spew "unknown Ruby"
+    # for every .ruby-version it reads. Skipping it keeps the system Ruby and
+    # stays quiet, while chruby remains available for manual use.
+    for _rubies_dir in "$HOME/.rubies" /opt/rubies; do
+      if [ -d "$_rubies_dir" ] && [ -n "$(ls -A "$_rubies_dir" 2>/dev/null)" ]; then
+        # shellcheck source=/dev/null
+        . "${_chruby_sh%chruby.sh}auto.sh" 2>/dev/null || true
+        break
+      fi
+    done
+    unset _rubies_dir
     break
   fi
 done
