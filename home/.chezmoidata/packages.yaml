@@ -13,6 +13,7 @@ packages:
     - chruby      # lightweight Ruby version switcher (shell function)
     - ruby-install  # installs Ruby versions for use with chruby
     - uv          # fast Python package manager and tool runner
+    - worktrunk   # git worktree manager
 
   # npm global packages — all coding-agent CLIs
   # Requires Node.js 22+ (auggie is the strictest)
@@ -33,3 +34,4 @@ packages:
     - id: Anthropic.ClaudeCode      # claude (native binary, not npm)
     - id: OpenJS.NodeJS.LTS         # Node.js LTS — needed for npm packages below
     - id: astral-sh.uv              # fast Python package manager and tool runner
+    - id: max-sixty.worktrunk       # git worktree manager

@@ -1,0 +1,55 @@
+{{- if ne .chezmoi.os "windows" -}}
+#!/bin/bash
+# chezmoi run_onchange: install worktrunk and configure shell integration.
+#
+# On Linux: downloads the prebuilt binary directly to ~/.local/bin/ so no
+# root access is needed. Update WT_VERSION below to trigger a reinstall.
+# On macOS: the binary is installed via Homebrew (packages script); this
+# script only handles the shell integration step.
+#
+# Shell integration (`wt config shell install`) is idempotent — it adds a
+# single eval line to rc files and skips if already present.
+
+set -euo pipefail
+
+if ! command -v wt >/dev/null 2>&1; then
+  _need_install=1
+else
+  _need_install=0
+fi
+
+{{- if eq .chezmoi.os "linux" }}
+
+WT_VERSION="0.62.0"
+
+_installed_ver() {
+  command -v wt >/dev/null 2>&1 || { echo "none"; return; }
+  wt --version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1
+}
+
+if [ "$(_installed_ver)" != "$WT_VERSION" ]; then
+  echo "→ worktrunk: installing v${WT_VERSION}..."
+  _arch="$(uname -m)"
+  case "$_arch" in
+    x86_64)  _wt_arch="x86_64-unknown-linux-musl" ;;
+    aarch64) _wt_arch="aarch64-unknown-linux-musl" ;;
+    *) echo "⚠️  worktrunk: unsupported arch $_arch" >&2; exit 1 ;;
+  esac
+  _tmpdir="$(mktemp -d)"
+  trap 'rm -rf "$_tmpdir"' EXIT
+  curl -fsSL \
+    "https://github.com/max-sixty/worktrunk/releases/download/v${WT_VERSION}/worktrunk-${_wt_arch}.tar.xz" \
+    | tar -xJ -C "$_tmpdir"
+  install -m755 "$_tmpdir/worktrunk-${_wt_arch}/wt"     "$HOME/.local/bin/wt"
+  install -m755 "$_tmpdir/worktrunk-${_wt_arch}/git-wt" "$HOME/.local/bin/git-wt"
+  echo "→ worktrunk: v${WT_VERSION} installed to ~/.local/bin/"
+  _need_install=0
+else
+  echo "→ worktrunk: v${WT_VERSION} already installed"
+fi
+
+{{- end }}
+
+echo "→ worktrunk: configuring shell integration..."
+wt config shell install --yes
+{{- end }}
