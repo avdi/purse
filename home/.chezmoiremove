@@ -8,3 +8,12 @@
 .local/bin/git-wt-overlay
 .local/bin/git-clone-bare
 .local/bin/gh-clone-bare
+
+# Retired upgrade-git (its only stated purpose was git >= 2.48 for worktrees).
+.local/bin/upgrade-git
+
+# worktrunk runtime installation (wt / git-wt binaries and config).
+.local/bin/wt
+.local/bin/git-wt
+.config/worktrunk/config.toml
+.config/worktrunk/config.toml.lock
