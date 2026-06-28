@@ -37,15 +37,6 @@ Write-Host "→ winget: installing packages..." -ForegroundColor Cyan
 winget install --id {{ .id }} --exact --accept-package-agreements --accept-source-agreements --silent
 {{ end }}
 
-# ---- shell integration for worktrunk ----------------------------------------
-# On Windows, winget installs worktrunk as 'git-wt' (avoids conflict with
-# Windows Terminal's 'wt' command). Run shell integration if git-wt is now available.
-
-if (Test-Command git-wt) {
-    Write-Host "→ worktrunk: running shell integration (git-wt config shell install)..." -ForegroundColor Cyan
-    git-wt config shell install 2>$null
-}
-
 # ---- Cursor agent CLI -------------------------------------------------------
 # Cursor's CLI is a separate product from the editor; the command is 'agent'.
 # winget installs the Cursor editor (Anysphere.Cursor), but the CLI needs a

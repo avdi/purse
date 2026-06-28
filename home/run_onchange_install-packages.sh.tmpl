@@ -65,24 +65,6 @@ elif command -v apt-get >/dev/null 2>&1; then
     echo "→ Node.js $(node --version) already installed (system), skipping"
   fi
 
-  # worktrunk (→ wt): install binary from GitHub releases
-  if ! command -v wt >/dev/null 2>&1; then
-    echo "→ worktrunk: installing from GitHub releases..."
-    _arch="$(uname -m)"
-    case "$_arch" in
-      x86_64)  _wt_arch="x86_64-unknown-linux-musl" ;;
-      aarch64) _wt_arch="aarch64-unknown-linux-musl" ;;
-      *)        echo "⚠️  worktrunk: unsupported arch $_arch"; _wt_arch="" ;;
-    esac
-    if [ -n "$_wt_arch" ]; then
-      _wt_ver="$(curl -fsSL https://api.github.com/repos/max-sixty/worktrunk/releases/latest | grep '"tag_name"' | cut -d'"' -f4)"
-      curl -fsSL "https://github.com/max-sixty/worktrunk/releases/download/${_wt_ver}/worktrunk-${_wt_arch}.tar.xz" \
-        | tar -xJ --strip-components=1 -C "$HOME/.local/bin" \
-            "worktrunk-${_wt_arch}/wt" "worktrunk-${_wt_arch}/git-wt"
-      chmod +x "$HOME/.local/bin/wt"
-    fi
-  fi
-
   # vscli: install binary from GitHub releases
   if ! command -v vscli >/dev/null 2>&1; then
     echo "→ vscli: installing from GitHub releases..."
@@ -129,17 +111,6 @@ elif command -v apt-get >/dev/null 2>&1; then
 else
   echo "⚠️  No supported package manager found (need brew on macOS or apt-get on Linux)" >&2
   exit 1
-fi
-
-# ---- worktrunk shell integration --------------------------------------------
-# 'wt switch' needs a shell function to cd; wt config shell install adds it.
-# Idempotent — checks before modifying rc files.
-
-if command -v wt >/dev/null 2>&1; then
-  echo "→ worktrunk: ensuring shell integration..."
-  # --yes skips the interactive approval prompt; </dev/null guards against
-  # any future version that prompts on something other than the approval step.
-  wt config shell install --yes </dev/null >/dev/null 2>&1 || true
 fi
 
 # ---- spec-kit (specify CLI) -------------------------------------------------

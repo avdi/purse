@@ -1,0 +1,10 @@
+# ~/.local/share/chezmoi/home/.chezmoiremove
+# Target paths chezmoi should delete from $HOME on apply.
+
+# Retired bare-umbrella worktree workflow (replaced by branch-clone bc-*).
+.local/bin/git-wt-add
+.local/bin/git-wt-rm
+.local/bin/git-wt-repair
+.local/bin/git-wt-overlay
+.local/bin/git-clone-bare
+.local/bin/gh-clone-bare

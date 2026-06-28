@@ -34,12 +34,6 @@ alias lt="lenticel"
 # committed/pushed there don't take effect on disk until this runs.
 alias purse-pull="chezmoi update"
 
-# Bare-umbrella worktree workflow. `wt` itself is reserved for worktrunk;
-# these are thin wrappers around the git-* scripts in ~/.local/bin.
-alias wtclone="git clone-bare"
-alias wtadd="git wt-add"
-alias wtrm="git wt-rm"
-alias wtrepair="git wt-repair"
 alias bcprune="git-bc-prune"
 
 # Branch-clone helpers — must be functions (not aliases) so that `cd` affects
