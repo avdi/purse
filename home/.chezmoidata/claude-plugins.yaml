@@ -1,0 +1,16 @@
+# Declarative manifest of Claude Code plugin marketplaces and plugins.
+#
+# The run_onchange_install-claude-plugins.sh script renders these values inline
+# and installs them on `chezmoi apply`. Claude Code's own runtime state file
+# (~/.claude/plugins/installed_plugins.json) is intentionally NOT managed by
+# chezmoi, since Claude rewrites it on every install.
+claudePlugins:
+  # marketplace name -> source spec passed to `claude plugin marketplace add`.
+  # Built-in marketplaces (e.g. claude-plugins-official) are only auto-seeded on
+  # an interactive first launch, so we register them explicitly here.
+  marketplaces:
+    claude-plugins-official: anthropics/claude-plugins-official
+
+  # Plugins to install, in `name@marketplace` form.
+  plugins:
+    - superpowers@claude-plugins-official
