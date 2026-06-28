@@ -130,17 +130,22 @@ register_antigravity() {
   jq_upsert "$cfg" mcpServers playwright "$pw"
 }
 
+# A missing agent is a normal, expected skip; a failed registration warns but must
+# not abort the whole run (or other agents on this machine get configured). Hence
+# `if have ...` guards, per-agent `|| warn`, and a final `exit 0`.
 for agent in {{ .mcpAgents | join " " }}; do
   case "$agent" in
-    claude)      have claude   && { register_claude      || warn "claude MCP setup failed"; } ;;
-    codex)       have codex    && { register_codex       || warn "codex MCP setup failed"; } ;;
-    antigravity) have agy      && { register_antigravity || warn "antigravity MCP setup failed"; } ;;
-    auggie)      have auggie   && { register_auggie      || warn "auggie MCP setup failed"; } ;;
-    copilot)     have copilot  && { register_copilot     || warn "copilot MCP setup failed"; } ;;
-    cursor)      have cursor-agent && { register_cursor  || warn "cursor MCP setup failed"; } ;;
-    vscode)      have code     && { register_vscode      || warn "vscode MCP setup failed"; } ;;
-    opencode)    have opencode && { register_opencode    || warn "opencode MCP setup failed"; } ;;
-    devin)       have devin    && { register_devin       || warn "devin MCP setup failed"; } ;;
+    claude)      if have claude;       then register_claude      || warn "claude MCP setup failed";      fi ;;
+    codex)       if have codex;        then register_codex       || warn "codex MCP setup failed";       fi ;;
+    antigravity) if have agy;          then register_antigravity || warn "antigravity MCP setup failed"; fi ;;
+    auggie)      if have auggie;       then register_auggie      || warn "auggie MCP setup failed";      fi ;;
+    copilot)     if have copilot;      then register_copilot     || warn "copilot MCP setup failed";     fi ;;
+    cursor)      if have cursor-agent; then register_cursor      || warn "cursor MCP setup failed";      fi ;;
+    vscode)      if have code;         then register_vscode      || warn "vscode MCP setup failed";      fi ;;
+    opencode)    if have opencode;     then register_opencode    || warn "opencode MCP setup failed";    fi ;;
+    devin)       if have devin;        then register_devin       || warn "devin MCP setup failed";       fi ;;
   esac
 done
+
+exit 0
 {{- end }}
