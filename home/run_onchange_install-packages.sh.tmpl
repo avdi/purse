@@ -23,6 +23,21 @@ node_major() {
   node -e 'process.stdout.write(process.version.slice(1).split(".")[0])'
 }
 
+# Run a command with root privileges. No-op wrapper when already root (common in
+# devcontainers, where sudo may be absent); uses sudo otherwise. Only ever
+# called when something actually needs installing, so a non-interactive apply
+# stays quiet as long as everything is already present.
+as_root() {
+  if [ "$(id -u)" -eq 0 ]; then
+    "$@"
+  elif command -v sudo >/dev/null 2>&1; then
+    sudo "$@"
+  else
+    echo "⚠️  root privileges required but sudo is unavailable: $*" >&2
+    return 1
+  fi
+}
+
 # ---- bootstrap Homebrew (macOS only) ----------------------------------------
 # On Linux we use apt + GitHub releases directly, so we don't auto-install brew.
 # Brew may already be present on Linux (e.g. for a newer git) and that's fine —
@@ -52,15 +67,26 @@ if [ "$(uname)" = "Darwin" ]; then
 
 elif command -v apt-get >/dev/null 2>&1; then
   # ---- Linux: apt + GitHub releases (preferred over brew) -------------------
-  echo "→ apt: {{ .packages.apt | join ", " }}"
-  sudo apt-get update -qq
-  sudo apt-get install -y --no-install-recommends {{ .packages.apt | join " " }}
+  # Only touch apt (and therefore sudo) when a package is actually missing.
+  # Keeps non-interactive applies clean and avoids needless password prompts
+  # when everything is already installed.
+  _apt_missing=()
+  for _pkg in {{ .packages.apt | join " " }}; do
+    dpkg -s "$_pkg" >/dev/null 2>&1 || _apt_missing+=("$_pkg")
+  done
+  if [ "${#_apt_missing[@]}" -gt 0 ]; then
+    echo "→ apt: installing ${_apt_missing[*]}"
+    as_root apt-get update -qq
+    as_root apt-get install -y --no-install-recommends "${_apt_missing[@]}"
+  else
+    echo "→ apt: already installed ({{ .packages.apt | join ", " }})"
+  fi
 
   # Node.js 22+ — use system node if already ≥22, otherwise NodeSource
   if [ "$(node_major)" -lt 22 ]; then
     echo "→ Node.js 22+ required; installing via NodeSource..."
-    curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash -
-    sudo apt-get install -y nodejs
+    curl -fsSL https://deb.nodesource.com/setup_22.x | as_root bash -
+    as_root apt-get install -y nodejs
   else
     echo "→ Node.js $(node --version) already installed (system), skipping"
   fi
@@ -94,7 +120,7 @@ elif command -v apt-get >/dev/null 2>&1; then
     echo "→ chruby: installing from source..."
     _chruby_ver="$(curl -fsSL https://api.github.com/repos/postmodern/chruby/releases/latest | grep '"tag_name"' | cut -d'"' -f4 | tr -d 'v')"
     curl -fsSL "https://github.com/postmodern/chruby/archive/v${_chruby_ver}.tar.gz" | tar -xz -C /tmp
-    sudo make -C "/tmp/chruby-${_chruby_ver}" install
+    as_root make -C "/tmp/chruby-${_chruby_ver}" install
     rm -rf "/tmp/chruby-${_chruby_ver}"
   fi
 
@@ -104,7 +130,7 @@ elif command -v apt-get >/dev/null 2>&1; then
     echo "→ ruby-install: installing from source..."
     _ri_ver="$(curl -fsSL https://api.github.com/repos/postmodern/ruby-install/releases/latest | grep '"tag_name"' | cut -d'"' -f4 | tr -d 'v')"
     curl -fsSL "https://github.com/postmodern/ruby-install/archive/v${_ri_ver}.tar.gz" | tar -xz -C /tmp
-    sudo make -C "/tmp/ruby-install-${_ri_ver}" install
+    as_root make -C "/tmp/ruby-install-${_ri_ver}" install
     rm -rf "/tmp/ruby-install-${_ri_ver}"
   fi
 
