@@ -30,6 +30,31 @@ These dotfiles are applied across several distinct contexts; keep all of them in
 
 Scripts that are platform-specific should guard themselves or be named/templated clearly. When adding a new tool or path assumption, consider whether it holds across all of the above.
 
+## MCP servers
+
+A short list of "always-want-these" MCP servers is registered declaratively into
+every AI agent present on the machine.
+
+- `home/.chezmoidata/mcp-servers.yaml` — the manifest: the servers (`mcpServers`)
+  and the agents to configure (`mcpAgents`). Currently ships **github** (remote
+  HTTP) and **playwright** (local stdio).
+- `home/run_onchange_install-mcp-servers.sh.tmpl` — the installer, re-run by
+  chezmoi whenever the manifest changes. It only touches agents whose CLI/config
+  is actually detected, and is idempotent (safe to re-run).
+
+Registration is per-agent: agents with a non-interactive MCP CLI are configured
+via that CLI (`claude`, `codex`, `copilot`, `auggie`, `vscode`); agents whose CLI
+triggers an OAuth/browser login or that lack a CLI are configured by merging JSON
+directly into their config file with `jq` (`cursor`, `opencode`, `devin`,
+`antigravity`).
+
+**Secrets:** the manifest and generated configs contain **only environment-variable
+reference strings** (e.g. `${GITHUB_PERSONAL_ACCESS_TOKEN}`) — never token values.
+Each agent expands them from the shell environment at runtime. To add a server,
+edit the manifest; do not hand-edit per-agent config files.
+
+`jq` is a hard dependency of the installer (declared in `packages.yaml`).
+
 ## Secrets — Zoho Vault
 
 Avdi uses [Zoho Vault](https://www.zoho.com/vault/) as his password/secret manager, **not** 1Password, Bitwarden, or the system keychain. When secrets need to be referenced in scripts or configs, expect them to come from Zoho Vault (typically via a CLI or manual retrieval), not from another secret store. Do not assume or generate integrations with other secret managers.
