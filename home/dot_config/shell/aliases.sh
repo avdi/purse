@@ -34,6 +34,10 @@ alias lt="lenticel"
 # committed/pushed there don't take effect on disk until this runs.
 alias purse-pull="chezmoi update"
 
+# cd to the chezmoi source clone (the purse repo) on this machine.
+purse-cd() { cd "$(chezmoi source-path)"; }
+alias cdpurse="purse-cd"
+
 alias bcprune="git-bc-prune"
 
 # Branch-clone helpers — must be functions (not aliases) so that `cd` affects
