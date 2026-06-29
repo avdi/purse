@@ -10,7 +10,9 @@ claudePlugins:
   # an interactive first launch, so we register them explicitly here.
   marketplaces:
     claude-plugins-official: anthropics/claude-plugins-official
+    context7-marketplace: upstash/context7
 
   # Plugins to install, in `name@marketplace` form.
   plugins:
     - superpowers@claude-plugins-official
+    - context7@context7-marketplace
