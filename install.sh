@@ -17,23 +17,17 @@ if ! command -v chezmoi >/dev/null 2>&1; then
   sh -c "$(curl -fsLS get.chezmoi.io)" -- -b "$HOME/.local/bin"
 fi
 
-# ---- guard against cross-device rename failures ----
-# In some devcontainer setups, ~/.config and ~/.local are on different
-# filesystems (e.g., ~/.local is a named Docker volume).  Chezmoi creates
-# temp files inside its config dir (~/.config/chezmoi/) and then atomically
-# renames them to their targets; when those targets live under ~/.local/ the
-# rename fails with EXDEV ("invalid cross-device link").  Symlinking chezmoi's
-# config dir into ~/.local/ before the first run puts temp files and their
-# targets on the same filesystem.  The check is idempotent: it only acts when
-# the config dir does not yet exist as a real directory or symlink.
-if [ ! -e "$HOME/.config/chezmoi" ] && [ ! -L "$HOME/.config/chezmoi" ]; then
-  mkdir -p "$HOME/.local/share/chezmoi-config"
-  mkdir -p "$HOME/.config"
-  ln -s "$HOME/.local/share/chezmoi-config" "$HOME/.config/chezmoi"
-fi
-
 # ---- apply dotfiles ----
-# --apply   : apply immediately after init
-# --source  : use this cloned repo as the source directory
-#             (chezmoi reads source state from <source>/home/ per .chezmoiroot)
-chezmoi init --apply --source="$DOTFILES_DIR"
+# --apply       : apply immediately after init
+# --source      : use this cloned repo as the source directory
+#                 (chezmoi reads source state from <source>/home/ per .chezmoiroot)
+# --safe=false  : write targets in place instead of atomically (temp file +
+#                 rename).  Devcontainers split $HOME across several mounts —
+#                 ~ on the overlay, ~/.config, ~/.local/share, ~/.local/state
+#                 each a separate named Docker volume — and rename() across
+#                 mounts fails with EXDEV ("invalid cross-device link"),
+#                 aborting the whole apply on the first target that lives on a
+#                 different mount than chezmoi's temp dir.  No single temp-dir
+#                 location satisfies every target, so disable atomic writes.
+#                 Harmless on single-filesystem hosts.
+chezmoi init --apply --safe=false --source="$DOTFILES_DIR"
