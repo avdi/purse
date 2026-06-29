@@ -1,0 +1,93 @@
+{{- if eq .chezmoi.os "windows" -}}
+# chezmoi run_onchange: install codebase-memory-mcp and configure all agents.
+#
+# codebase-memory-mcp is a single static binary that ships its own multi-agent
+# installer: `codebase-memory-mcp install -y` auto-detects every installed
+# coding agent (Claude Code, Codex, Gemini CLI, Zed, OpenCode, Antigravity,
+# VS Code, ...) and wires up the MCP entry, instruction files, and pre-tool
+# hooks for each. Unlike the npx-style servers in mcp-servers.yaml, this one
+# is deliberately NOT registered per-agent by the MCP installer — the binary
+# owns its own configuration.
+#
+# Unix/macOS is handled by run_onchange_install-codebase-memory-mcp.sh.tmpl.
+# Bump $CbmVersion to trigger a reinstall (re-runs when content changes).
+
+$ErrorActionPreference = 'Stop'
+[Net.ServicePointManager]::SecurityProtocol = `
+    [Net.SecurityProtocolType]::Tls12 -bor [Net.SecurityProtocolType]::Tls13
+
+$Repo       = 'DeusData/codebase-memory-mcp'
+$CbmVersion = '0.8.1'
+$InstallDir = "$env:LOCALAPPDATA\Programs\codebase-memory-mcp"
+$BinName    = 'codebase-memory-mcp.exe'
+$Dest       = Join-Path $InstallDir $BinName
+
+function Get-InstalledVersion {
+    if (-not (Test-Path $Dest)) { return 'none' }
+    try {
+        $out = & $Dest --version 2>$null
+        if ($out -match '([0-9]+\.[0-9]+\.[0-9]+)') { return $Matches[1] }
+    } catch {}
+    return 'unknown'
+}
+
+New-Item -ItemType Directory -Path $InstallDir -Force | Out-Null
+
+if ((Get-InstalledVersion) -ne $CbmVersion) {
+    Write-Host "-> codebase-memory-mcp: installing v$CbmVersion..." -ForegroundColor Cyan
+
+    $Archive = 'codebase-memory-mcp-windows-amd64.zip'
+    $Base    = "https://github.com/$Repo/releases/download/v$CbmVersion"
+    $TmpDir  = Join-Path ([System.IO.Path]::GetTempPath()) "cbm-$(Get-Random)"
+    New-Item -ItemType Directory -Path $TmpDir -Force | Out-Null
+
+    try {
+        Invoke-WebRequest -Uri "$Base/$Archive" -OutFile "$TmpDir\$Archive" -UseBasicParsing
+
+        # Verify checksum when reachable (non-fatal otherwise).
+        try {
+            Invoke-WebRequest -Uri "$Base/checksums.txt" -OutFile "$TmpDir\checksums.txt" -UseBasicParsing
+            $line = Get-Content "$TmpDir\checksums.txt" | Where-Object { $_ -like "*$Archive*" }
+            if ($line) {
+                $expected = ($line -split '\s+')[0]
+                $actual   = (Get-FileHash -Path "$TmpDir\$Archive" -Algorithm SHA256).Hash.ToLower()
+                if ($expected -ne $actual) {
+                    throw "checksum mismatch (expected $expected, got $actual)"
+                }
+            }
+        } catch {
+            Write-Warning "codebase-memory-mcp: could not verify checksum: $_"
+        }
+
+        Expand-Archive -Path "$TmpDir\$Archive" -DestinationPath $TmpDir -Force
+        $DlBin = Join-Path $TmpDir $BinName
+        if (-not (Test-Path $DlBin)) { throw "binary not found after extraction" }
+
+        # Rename-aside if the existing binary is locked (server running).
+        if (Test-Path $Dest) {
+            Remove-Item "$Dest.old" -Force -ErrorAction SilentlyContinue
+            Rename-Item $Dest "$Dest.old" -ErrorAction SilentlyContinue
+        }
+        Copy-Item $DlBin $Dest -Force
+
+        $ver = & $Dest --version 2>&1
+        Write-Host "-> codebase-memory-mcp: $ver"
+    } finally {
+        Remove-Item -Recurse -Force $TmpDir -ErrorAction SilentlyContinue
+    }
+} else {
+    Write-Host "-> codebase-memory-mcp: v$CbmVersion already installed"
+}
+
+# Ensure the install dir is on the user PATH.
+$UserPath = [Environment]::GetEnvironmentVariable('PATH', 'User')
+if ($UserPath -notlike "*$InstallDir*") {
+    [Environment]::SetEnvironmentVariable('PATH', "$UserPath;$InstallDir", 'User')
+    $env:PATH = "$env:PATH;$InstallDir"
+    Write-Host "-> codebase-memory-mcp: added $InstallDir to user PATH"
+}
+
+# Auto-configure every installed agent. Idempotent; -y = non-interactive.
+Write-Host "-> codebase-memory-mcp: configuring agents..." -ForegroundColor Cyan
+& $Dest install -y
+{{- end -}}
