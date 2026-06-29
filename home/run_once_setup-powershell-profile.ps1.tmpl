@@ -1,0 +1,43 @@
+{{- if eq .chezmoi.os "windows" -}}
+# chezmoi run_once: set up PowerShell profile (Windows only)
+#
+# Idempotently adds tool initialisation hooks to the current-user profile
+# ($PROFILE / CurrentUserCurrentHost). Appending to the profile rather than
+# managing it as a chezmoi-owned file lets the user add their own content
+# without conflicts.
+#
+# Unix/macOS shell setup is handled by run_once_setup-shell.sh.tmpl instead.
+{{ if ne .chezmoi.os "windows" }}
+Write-Host "This script is for Windows only. Skipping." -ForegroundColor Yellow
+exit 0
+{{ end }}
+$ErrorActionPreference = 'Stop'
+
+$profileDir = Split-Path $PROFILE -Parent
+if (-not (Test-Path $profileDir)) {
+    New-Item -ItemType Directory -Path $profileDir -Force | Out-Null
+}
+if (-not (Test-Path $PROFILE)) {
+    New-Item -ItemType File -Path $PROFILE -Force | Out-Null
+}
+
+function Add-ProfileBlock {
+    param([string]$Marker, [string]$Block)
+    $content = Get-Content $PROFILE -Raw -ErrorAction SilentlyContinue
+    if ($content -notmatch [regex]::Escape($Marker)) {
+        Add-Content -Path $PROFILE -Value ""
+        Add-Content -Path $PROFILE -Value $Block
+        Write-Host "Added '$Marker' block to $PROFILE"
+    }
+}
+
+# zoxide — frecency-based directory jumper
+Add-ProfileBlock `
+    -Marker '# zoxide init' `
+    -Block @'
+# zoxide init
+if (Get-Command zoxide -ErrorAction SilentlyContinue) {
+    Invoke-Expression (& { (zoxide init powershell | Out-String) })
+}
+'@
+{{- end -}}

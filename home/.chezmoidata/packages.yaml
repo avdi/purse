@@ -4,6 +4,7 @@ packages:
     - ripgrep
     - direnv
     - jq          # JSON processor — required by run_onchange_install-mcp-servers.sh
+    - zoxide      # frecency-based directory jumper
 
   # Homebrew packages (macOS, or Linux with brew)
   brew:
@@ -17,6 +18,7 @@ packages:
     - ruby-install  # installs Ruby versions for use with chruby
     - uv          # fast Python package manager and tool runner
     - worktrunk   # git worktree manager
+    - zoxide      # frecency-based directory jumper
 
   # npm global packages — all coding-agent CLIs
   # Requires Node.js 22+ (auggie is the strictest)
@@ -40,3 +42,4 @@ packages:
     - id: OpenJS.NodeJS.LTS         # Node.js LTS — needed for npm packages below
     - id: astral-sh.uv              # fast Python package manager and tool runner
     - id: max-sixty.worktrunk       # git worktree manager
+    - id: ajeetdsouza.zoxide        # frecency-based directory jumper

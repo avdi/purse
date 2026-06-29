@@ -114,3 +114,15 @@ for _chruby_sh in \
   fi
 done
 unset _chruby_sh
+
+# zoxide — frecency-based directory jumper; replaces cd with 'z' / 'zi'
+# Not initialized in devcontainers (not installed there by default), which is
+# intentional: single-project ephemeral environments get little value from a
+# frecency database that starts fresh each time.
+if command -v zoxide >/dev/null 2>&1; then
+  if [ -n "${ZSH_VERSION:-}" ]; then
+    eval "$(zoxide init zsh)"
+  else
+    eval "$(zoxide init bash)"
+  fi
+fi
