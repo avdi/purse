@@ -16,3 +16,6 @@ claudePlugins:
   plugins:
     - superpowers@claude-plugins-official
     - context7@context7-marketplace
+    - ralph-loop@claude-plugins-official
+    - claude-code-setup@claude-plugins-official
+    - claude-md-management@claude-plugins-official
