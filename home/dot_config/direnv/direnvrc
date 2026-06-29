@@ -1,0 +1,8 @@
+# Compatibility shim: dotenv_if_exists was added in direnv 2.26.0.
+# Ubuntu 22.04 ships 2.25.2, so define it here if missing.
+if ! declare -f dotenv_if_exists > /dev/null 2>&1; then
+  dotenv_if_exists() {
+    local path="${1:-.env}"
+    [[ -f "$path" ]] && dotenv "$path"
+  }
+fi
