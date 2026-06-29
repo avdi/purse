@@ -10,7 +10,9 @@
 #     PulseAudio env vars so GUI apps render on the host desktop;
 #   - injects the devcontainer-bridge (dbr) feature via --additional-features
 #     so host-side port forwarding and xdg-open work like in VS Code (requires
-#     `dbr` installed on the host; runs `dbr ensure` opportunistically).
+#     `dbr` installed on the host; runs `dbr ensure` opportunistically);
+#   - auto-injects --config from DEVCONTAINER_CONFIG (set per-project via
+#     direnv) when the caller hasn't already supplied --config.
 #
 # Defers to the next `devcontainer` on PATH (the real binary, typically the
 # symlink npm drops into ~/.local/bin/ that points into node_modules).
@@ -57,16 +59,19 @@ if [ "${1:-}" != "up" ]; then
   exec "$real_devcontainer" "$@"
 fi
 
-# Detect whether the caller already supplied any --dotfiles-* flag; if so,
-# skip our defaults but still forward remote-env vars.
+# Detect whether the caller already supplied any --dotfiles-* or --config
+# flag; if so, skip our defaults but still forward remote-env vars.
 user_dotfiles=0
+user_config=0
 for arg in "$@"; do
   case "$arg" in
     --dotfiles-repository|--dotfiles-repository=*|\
     --dotfiles-install-command|--dotfiles-install-command=*|\
     --dotfiles-target-path|--dotfiles-target-path=*)
       user_dotfiles=1
-      break
+      ;;
+    --config|--config=*)
+      user_config=1
       ;;
   esac
 done
@@ -87,6 +92,15 @@ for name in $forward_env_names; do
 
   [ -n "$value" ] && remote_env_args+=(--remote-env "$name=$value")
 done
+
+# Auto-inject --config from DEVCONTAINER_CONFIG when the caller didn't
+# supply one. Set this per-project via direnv (e.g. in .envrc or app.local.env):
+#   export DEVCONTAINER_CONFIG=.devcontainer/sidecar/devcontainer.json
+config_args=()
+if [ "$user_config" -eq 0 ] && [ -n "${DEVCONTAINER_CONFIG:-}" ]; then
+  config_args=(--config "$DEVCONTAINER_CONFIG")
+  printf 'devcontainer shim: config → %s\n' "$DEVCONTAINER_CONFIG" >&2
+fi
 
 dotfiles_args=()
 if [ "$user_dotfiles" -eq 0 ]; then
@@ -130,6 +144,7 @@ fi
 
 shift  # consume the `up` subcommand
 exec "$real_devcontainer" up \
+  "${config_args[@]+"${config_args[@]}"}" \
   "${dotfiles_args[@]+"${dotfiles_args[@]}"}" \
   "${remote_env_args[@]+"${remote_env_args[@]}"}" \
   "${wslg_args[@]+"${wslg_args[@]}"}" \

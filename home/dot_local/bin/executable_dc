@@ -6,5 +6,13 @@
 # Bare `devcontainer` also goes through the shim because env.sh prepends
 # the shim directory to PATH; this script just exists so `dc` works in any
 # shell context (including non-interactive ones that don't source env.sh).
+#
+# Loads the current directory's direnv environment before delegating, so
+# project-local variables (e.g. DEVCONTAINER_CONFIG) are visible even in
+# non-interactive shells that haven't sourced direnv's hook.
+
+if command -v direnv >/dev/null 2>&1; then
+  eval "$(direnv export bash 2>/dev/null)" || true
+fi
 
 exec "$HOME/.local/share/purse/shims/devcontainer" "$@"
