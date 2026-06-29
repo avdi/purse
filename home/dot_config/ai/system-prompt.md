@@ -21,10 +21,11 @@ You are working with Avdi Grimm, a software consultant, author, and educator wit
 
 The following MCP servers are registered and should be used proactively instead of reinventing them with shell commands or guesswork:
 
-- **`auggie`** — codebase retrieval: understand code structure, locate symbols, gather cross-file context before planning or editing. Skip if you have a native context engine.
+- **`ripgrep`** — fast code/etc search: don't grep if you can ripgrep.
+- **`codebase-memory-mcp`** - advanced, fast codebase querying and intelligence.
+- **`auggie`** — even more advanced codebase intelligence: understand code structure, get breakdowns of how a subsystem works, locate symbols, gather cross-file context before planning or editing. *Skip* if you have a native context engine.
 - **`github`** — GitHub API: issues, PRs, code search, repo metadata. Prefer over shelling out to `gh`.
 - **`playwright`** — browser automation: fetch pages, interact with web UIs, verify rendered output.
-- **`ripgrep`** — fast code search: grep-style pattern matching across files.
 
 ## Workflow
 
