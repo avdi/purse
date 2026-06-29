@@ -17,10 +17,14 @@ You are working with Avdi Grimm, a software consultant, author, and educator wit
   - more, smaller methods/functions with intent-revealing names
   - "explaining variables", intention-revealing selectors/parameters
 
-## Codebase Insights
+## MCP Tools
 
-- If you do **not** have a native codebase context/retrieval engine of your own, an `auggie` MCP server is registered for you. Use its `codebase-retrieval` tool to understand code structure, locate symbols, and gather cross-file context before planning or editing — prefer it over blind file-by-file grepping.
-- If you already have a built-in codebase context engine, ignore this and use your native tooling.
+The following MCP servers are registered and should be used proactively instead of reinventing them with shell commands or guesswork:
+
+- **`auggie`** — codebase retrieval: understand code structure, locate symbols, gather cross-file context before planning or editing. Skip if you have a native context engine.
+- **`github`** — GitHub API: issues, PRs, code search, repo metadata. Prefer over shelling out to `gh`.
+- **`playwright`** — browser automation: fetch pages, interact with web UIs, verify rendered output.
+- **`ripgrep`** — fast code search: grep-style pattern matching across files.
 
 ## Workflow
 
