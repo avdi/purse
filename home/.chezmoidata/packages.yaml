@@ -5,6 +5,7 @@ packages:
     - direnv
     - jq          # JSON processor — required by run_onchange_install-mcp-servers.sh
     - zoxide      # frecency-based directory jumper
+    - fzf         # fuzzy finder — used by zoxide's zi and standalone
 
   # Homebrew packages (macOS, or Linux with brew)
   brew:
@@ -19,6 +20,7 @@ packages:
     - uv          # fast Python package manager and tool runner
     - worktrunk   # git worktree manager
     - zoxide      # frecency-based directory jumper
+    - fzf         # fuzzy finder — used by zoxide's zi and standalone
 
   # npm global packages — all coding-agent CLIs
   # Requires Node.js 22+ (auggie is the strictest)
@@ -43,3 +45,4 @@ packages:
     - id: astral-sh.uv              # fast Python package manager and tool runner
     - id: max-sixty.worktrunk       # git worktree manager
     - id: ajeetdsouza.zoxide        # frecency-based directory jumper
+    - id: junegunn.fzf              # fuzzy finder — used by zoxide's zi and standalone

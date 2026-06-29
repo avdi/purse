@@ -115,6 +115,23 @@ for _chruby_sh in \
 done
 unset _chruby_sh
 
+# fzf — fuzzy finder; key bindings: Ctrl+R (history), Ctrl+T (file), Alt+C (cd)
+# Modern fzf (0.46+, brew) uses 'fzf --bash/--zsh'.
+# Older fzf (apt on Ubuntu ≤24.04) ships integration files instead; fall back
+# to those so both install paths work.
+if command -v fzf >/dev/null 2>&1; then
+  if [ -n "${ZSH_VERSION:-}" ]; then
+    _fzf_init="$(fzf --zsh </dev/null 2>/dev/null)" && eval "$_fzf_init" || \
+      { [ -f /usr/share/doc/fzf/examples/key-bindings.zsh ] && \
+          . /usr/share/doc/fzf/examples/key-bindings.zsh; }
+  else
+    _fzf_init="$(fzf --bash </dev/null 2>/dev/null)" && eval "$_fzf_init" || \
+      { [ -f /usr/share/doc/fzf/examples/key-bindings.bash ] && \
+          . /usr/share/doc/fzf/examples/key-bindings.bash; }
+  fi
+  unset _fzf_init
+fi
+
 # zoxide — frecency-based directory jumper; replaces cd with 'z' / 'zi'
 # Not initialized in devcontainers (not installed there by default), which is
 # intentional: single-project ephemeral environments get little value from a
