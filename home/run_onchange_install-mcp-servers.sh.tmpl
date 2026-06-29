@@ -23,6 +23,9 @@ gh_token_var='{{ index (index .mcpServers "github").requiresEnv 0 }}'
 pw_cmd='{{ (index .mcpServers "playwright").command }}'
 pw_args=({{ range (index .mcpServers "playwright").args }}'{{ . }}' {{ end }})  # bash array for `--` CLI forms
 pw_args_json='{{ (index .mcpServers "playwright").args | toJson }}'             # JSON array for jq builders
+ag_cmd='{{ (index .mcpServers "auggie").command }}'
+ag_args=({{ range (index .mcpServers "auggie").args }}'{{ . }}' {{ end }})
+ag_args_json='{{ (index .mcpServers "auggie").args | toJson }}'
 
 # Literal env-var reference strings (NOT expanded by this installer — each agent
 # expands them at runtime). Syntax differs per agent.
@@ -49,6 +52,8 @@ register_claude() {
     --header "Authorization: $gh_bearer_dollar"
   claude mcp remove playwright -s user >/dev/null 2>&1 || true
   claude mcp add playwright -s user -- "$pw_cmd" "${pw_args[@]}"
+  claude mcp remove auggie -s user >/dev/null 2>&1 || true
+  claude mcp add auggie -s user -- "$ag_cmd" "${ag_args[@]}"
 }
 
 register_codex() {
@@ -56,6 +61,8 @@ register_codex() {
   codex mcp add github --url "$gh_url" --bearer-token-env-var "$gh_token_var"
   codex mcp remove playwright >/dev/null 2>&1 || true
   codex mcp add playwright -- "$pw_cmd" "${pw_args[@]}"
+  codex mcp remove auggie >/dev/null 2>&1 || true
+  codex mcp add auggie -- "$ag_cmd" "${ag_args[@]}"
 }
 
 register_copilot() {
@@ -64,6 +71,8 @@ register_copilot() {
     --header "Authorization: $gh_bearer_dollar"
   copilot mcp remove playwright >/dev/null 2>&1 || true
   copilot mcp add playwright -- "$pw_cmd" "${pw_args[@]}"
+  copilot mcp remove auggie >/dev/null 2>&1 || true
+  copilot mcp add auggie -- "$ag_cmd" "${ag_args[@]}"
 }
 
 register_devin() {
@@ -76,6 +85,10 @@ register_devin() {
   pw=$(jq -n --arg cmd "$pw_cmd" --argjson args "$pw_args_json" \
         '{command:$cmd, args:$args}')
   jq_upsert "$cfg" mcpServers playwright "$pw"
+  local ag
+  ag=$(jq -n --arg cmd "$ag_cmd" --argjson args "$ag_args_json" \
+        '{command:$cmd, args:$args}')
+  jq_upsert "$cfg" mcpServers auggie "$ag"
 }
 
 register_auggie() {
@@ -96,6 +109,10 @@ register_vscode() {
   pw=$(jq -n --arg cmd "$pw_cmd" --argjson args "$pw_args_json" \
         '{name:"playwright", command:$cmd, args:$args}')
   code --add-mcp "$pw"
+  local ag
+  ag=$(jq -n --arg cmd "$ag_cmd" --argjson args "$ag_args_json" \
+        '{name:"auggie", command:$cmd, args:$args}')
+  code --add-mcp "$ag"
 }
 
 register_cursor() {
@@ -106,6 +123,10 @@ register_cursor() {
   pw=$(jq -n --arg cmd "$pw_cmd" --argjson args "$pw_args_json" \
         '{command:$cmd, args:$args}')
   jq_upsert "$cfg" mcpServers playwright "$pw"
+  local ag
+  ag=$(jq -n --arg cmd "$ag_cmd" --argjson args "$ag_args_json" \
+        '{command:$cmd, args:$args}')
+  jq_upsert "$cfg" mcpServers auggie "$ag"
 }
 
 register_opencode() {
@@ -116,6 +137,10 @@ register_opencode() {
   pw=$(jq -n --arg cmd "$pw_cmd" --argjson args "$pw_args_json" \
         '{type:"local", enabled:true, command:([$cmd] + $args)}')
   jq_upsert "$cfg" mcp playwright "$pw"
+  local ag
+  ag=$(jq -n --arg cmd "$ag_cmd" --argjson args "$ag_args_json" \
+        '{type:"local", enabled:true, command:([$cmd] + $args)}')
+  jq_upsert "$cfg" mcp auggie "$ag"
 }
 
 # Antigravity (agy): global config is ~/.gemini/config/mcp_config.json and HTTP
@@ -128,6 +153,10 @@ register_antigravity() {
   pw=$(jq -n --arg cmd "$pw_cmd" --argjson args "$pw_args_json" \
         '{command:$cmd, args:$args}')
   jq_upsert "$cfg" mcpServers playwright "$pw"
+  local ag
+  ag=$(jq -n --arg cmd "$ag_cmd" --argjson args "$ag_args_json" \
+        '{command:$cmd, args:$args}')
+  jq_upsert "$cfg" mcpServers auggie "$ag"
 }
 
 # A missing agent is a normal, expected skip; a failed registration warns but must

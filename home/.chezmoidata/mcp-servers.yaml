@@ -16,6 +16,12 @@ mcpServers:
     command: npx
     args: ["-y", "@playwright/mcp@latest"]
     requiresEnv: []
+  auggie:
+    description: "Augment CLI agent as MCP tool server"
+    transport: stdio
+    command: auggie
+    args: ["--mcp", "--mcp-auto-workspace"]
+    requiresEnv: []
 
 # Agents the installer will attempt to configure (only those whose CLI/config is
 # detected on the machine are actually touched).
