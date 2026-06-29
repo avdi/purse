@@ -22,6 +22,12 @@ mcpServers:
     command: auggie
     args: ["--mcp", "--mcp-auto-workspace"]
     requiresEnv: []
+  ripgrep:
+    description: "ripgrep code search via MCP"
+    transport: stdio
+    command: npx
+    args: ["-y", "mcp-ripgrep@latest"]
+    requiresEnv: []
 
 # Agents the installer will attempt to configure (only those whose CLI/config is
 # detected on the machine are actually touched).

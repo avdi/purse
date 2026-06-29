@@ -26,6 +26,9 @@ pw_args_json='{{ (index .mcpServers "playwright").args | toJson }}'             
 ag_cmd='{{ (index .mcpServers "auggie").command }}'
 ag_args=({{ range (index .mcpServers "auggie").args }}'{{ . }}' {{ end }})
 ag_args_json='{{ (index .mcpServers "auggie").args | toJson }}'
+rg_cmd='{{ (index .mcpServers "ripgrep").command }}'
+rg_args=({{ range (index .mcpServers "ripgrep").args }}'{{ . }}' {{ end }})
+rg_args_json='{{ (index .mcpServers "ripgrep").args | toJson }}'
 
 # Literal env-var reference strings (NOT expanded by this installer — each agent
 # expands them at runtime). Syntax differs per agent.
@@ -54,6 +57,8 @@ register_claude() {
   claude mcp add playwright -s user -- "$pw_cmd" "${pw_args[@]}"
   claude mcp remove auggie -s user >/dev/null 2>&1 || true
   claude mcp add auggie -s user -- "$ag_cmd" "${ag_args[@]}"
+  claude mcp remove ripgrep -s user >/dev/null 2>&1 || true
+  claude mcp add ripgrep -s user -- "$rg_cmd" "${rg_args[@]}"
 }
 
 register_codex() {
@@ -63,6 +68,8 @@ register_codex() {
   codex mcp add playwright -- "$pw_cmd" "${pw_args[@]}"
   codex mcp remove auggie >/dev/null 2>&1 || true
   codex mcp add auggie -- "$ag_cmd" "${ag_args[@]}"
+  codex mcp remove ripgrep >/dev/null 2>&1 || true
+  codex mcp add ripgrep -- "$rg_cmd" "${rg_args[@]}"
 }
 
 register_copilot() {
@@ -73,6 +80,8 @@ register_copilot() {
   copilot mcp add playwright -- "$pw_cmd" "${pw_args[@]}"
   copilot mcp remove auggie >/dev/null 2>&1 || true
   copilot mcp add auggie -- "$ag_cmd" "${ag_args[@]}"
+  copilot mcp remove ripgrep >/dev/null 2>&1 || true
+  copilot mcp add ripgrep -- "$rg_cmd" "${rg_args[@]}"
 }
 
 register_devin() {
@@ -89,6 +98,10 @@ register_devin() {
   ag=$(jq -n --arg cmd "$ag_cmd" --argjson args "$ag_args_json" \
         '{command:$cmd, args:$args}')
   jq_upsert "$cfg" mcpServers auggie "$ag"
+  local rg
+  rg=$(jq -n --arg cmd "$rg_cmd" --argjson args "$rg_args_json" \
+        '{command:$cmd, args:$args}')
+  jq_upsert "$cfg" mcpServers ripgrep "$rg"
 }
 
 register_auggie() {
@@ -99,6 +112,10 @@ register_auggie() {
   pw=$(jq -cn --arg cmd "$pw_cmd" --argjson args "$pw_args_json" \
         '{command:$cmd, args:$args}')
   auggie mcp add-json --replace -- playwright "$pw"
+  local rg
+  rg=$(jq -cn --arg cmd "$rg_cmd" --argjson args "$rg_args_json" \
+        '{command:$cmd, args:$args}')
+  auggie mcp add-json --replace -- ripgrep "$rg"
 }
 
 register_vscode() {
@@ -113,6 +130,10 @@ register_vscode() {
   ag=$(jq -n --arg cmd "$ag_cmd" --argjson args "$ag_args_json" \
         '{name:"auggie", command:$cmd, args:$args}')
   code --add-mcp "$ag"
+  local rg
+  rg=$(jq -n --arg cmd "$rg_cmd" --argjson args "$rg_args_json" \
+        '{name:"ripgrep", command:$cmd, args:$args}')
+  code --add-mcp "$rg"
 }
 
 register_cursor() {
@@ -127,6 +148,10 @@ register_cursor() {
   ag=$(jq -n --arg cmd "$ag_cmd" --argjson args "$ag_args_json" \
         '{command:$cmd, args:$args}')
   jq_upsert "$cfg" mcpServers auggie "$ag"
+  local rg
+  rg=$(jq -n --arg cmd "$rg_cmd" --argjson args "$rg_args_json" \
+        '{command:$cmd, args:$args}')
+  jq_upsert "$cfg" mcpServers ripgrep "$rg"
 }
 
 register_opencode() {
@@ -141,6 +166,10 @@ register_opencode() {
   ag=$(jq -n --arg cmd "$ag_cmd" --argjson args "$ag_args_json" \
         '{type:"local", enabled:true, command:([$cmd] + $args)}')
   jq_upsert "$cfg" mcp auggie "$ag"
+  local rg
+  rg=$(jq -n --arg cmd "$rg_cmd" --argjson args "$rg_args_json" \
+        '{type:"local", enabled:true, command:([$cmd] + $args)}')
+  jq_upsert "$cfg" mcp ripgrep "$rg"
 }
 
 # Antigravity (agy): global config is ~/.gemini/config/mcp_config.json and HTTP
@@ -157,6 +186,10 @@ register_antigravity() {
   ag=$(jq -n --arg cmd "$ag_cmd" --argjson args "$ag_args_json" \
         '{command:$cmd, args:$args}')
   jq_upsert "$cfg" mcpServers auggie "$ag"
+  local rg
+  rg=$(jq -n --arg cmd "$rg_cmd" --argjson args "$rg_args_json" \
+        '{command:$cmd, args:$args}')
+  jq_upsert "$cfg" mcpServers ripgrep "$rg"
 }
 
 # A missing agent is a normal, expected skip; a failed registration warns but must
