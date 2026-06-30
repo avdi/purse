@@ -9,6 +9,7 @@ packages:
 
   # Homebrew packages (macOS, or Linux with brew)
   brew:
+    - git
     - ripgrep
     - direnv
     - jq          # JSON processor — required by run_onchange_install-mcp-servers.sh

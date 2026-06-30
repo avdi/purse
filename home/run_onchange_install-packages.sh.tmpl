@@ -87,13 +87,20 @@ elif command -v apt-get >/dev/null 2>&1; then
   _git_major="${_git_cur%%.*}"
   _git_minor="${_git_cur##*.}"
   if [ -z "$_git_cur" ] || [ "$_git_major" -lt 2 ] || { [ "$_git_major" -eq 2 ] && [ "$_git_minor" -lt 48 ]; }; then
-    echo "→ git: ${_git_cur:-none} is too old (need ≥2.48); upgrading via git-core PPA..."
-    if ! command -v add-apt-repository >/dev/null 2>&1; then
-      as_root apt-get install -y --no-install-recommends software-properties-common
+    echo "→ git: ${_git_cur:-none} is too old (need ≥2.48); upgrading..."
+    if { [ "$(id -u)" -eq 0 ] || command -v sudo >/dev/null 2>&1; } && command -v apt-get >/dev/null 2>&1; then
+      if ! command -v add-apt-repository >/dev/null 2>&1; then
+        as_root apt-get install -y --no-install-recommends software-properties-common
+      fi
+      as_root add-apt-repository -y ppa:git-core/ppa
+      as_root apt-get update -qq
+      as_root apt-get install -y git
+    elif command -v brew >/dev/null 2>&1; then
+      echo "→ as_root/apt unavailable; trying brew install git..."
+      brew install git
+    else
+      echo "⚠️  git 2.48+ required but as_root/apt and brew are unavailable. Please install a newer git manually." >&2
     fi
-    as_root add-apt-repository -y ppa:git-core/ppa
-    as_root apt-get update -qq
-    as_root apt-get install -y git
   else
     echo "→ git: $(git --version) already ≥2.48, skipping"
   fi
