@@ -2,30 +2,38 @@
 # git-bc-prune — remove branch clones whose PR or branch is merged/closed.
 #
 # Usage:
-#   git bc-prune [-n] [-f] [dir]
-#   git-bc-prune [-n] [-f] [dir]
+#   git bc-prune [-n] [-f] [-y] [dir]
+#   git-bc-prune [-n] [-f] [-y] [dir]
 #
 #   [dir]           Directory to scan for branch-clone subdirectories.
 #                   Default: current directory.
 #   -n, --dry-run   Print what would be removed without actually removing.
-#   -f, --force     Pass --force to git-bc-rm (skip dirty/unpushed checks).
+#   -f, --force     Pass --force to git-bc-rm (remove even when the clone has
+#                   uncommitted or unpushed changes). Does NOT skip the
+#                   confirmation prompt.
+#   -y, --yes       Skip the per-clone confirmation prompt (assume "yes").
 #
-# Scans each git-repository subdirectory of [dir]. For each one:
+# Only subdirectories created by git-bc-add (those with a `bc.source` config
+# entry) are considered. Base/full clones — the seeds that branch clones are
+# created from — lack `bc.source` and are never removed.
+#
+# Scans each branch-clone subdirectory of [dir]. For each one:
 #   1. If `gh` is available, checks whether the checked-out branch has a
 #      merged or closed PR via `gh pr view`.
 #   2. Falls back to checking whether the remote-tracking branch is gone
 #      and all local commits are already reachable from the default branch.
-# Matching clones are removed via git-bc-rm.
+# Matching clones are removed via git-bc-rm — after confirmation unless --yes.
 
 set -euo pipefail
 
 usage() {
-  sed -n '2,18p' "$0" | sed 's/^# \{0,1\}//'
+  sed -n '2,25p' "$0" | sed 's/^# \{0,1\}//'
   exit "${1:-2}"
 }
 
 dry_run=false
 force=false
+assume_yes=false
 scan_dir="."
 
 while [ $# -gt 0 ]; do
@@ -33,6 +41,7 @@ while [ $# -gt 0 ]; do
     -h|--help)      usage 0 ;;
     -n|--dry-run)   dry_run=true ;;
     -f|--force)     force=true ;;
+    -y|--yes)       assume_yes=true ;;
     *)
       if [ "$scan_dir" = "." ]; then
         scan_dir="$1"
@@ -48,6 +57,31 @@ scan_dir="$(cd "$scan_dir" && pwd)"
 
 has_gh=false
 command -v gh >/dev/null 2>&1 && has_gh=true
+
+# True if dir is a branch clone created by git-bc-add (it records bc.source).
+# Base/full clones lack this marker and must never be pruned.
+is_branch_clone() {
+  local dir="$1"
+  [ -n "$(git -C "$dir" config --local --get bc.source 2>/dev/null)" ]
+}
+
+# Ask the user to confirm removing dir. Returns 0 for yes, 1 for no.
+# Reads from /dev/tty because the main loop's stdin is the `find` pipe.
+# With no controlling terminal, declines (safe default) unless --yes was given.
+confirm_remove() {
+  local dir="$1" reply
+  $assume_yes && return 0
+  if [ ! -t 1 ] || [ ! -r /dev/tty ]; then
+    printf 'git-bc-prune: no terminal for confirmation, skipping %s (use --yes)\n' "$dir" >&2
+    return 1
+  fi
+  printf 'Remove %s? [y/N] ' "$dir" > /dev/tty
+  IFS= read -r reply < /dev/tty || return 1
+  case "$reply" in
+    y|Y|yes|YES) return 0 ;;
+    *)           return 1 ;;
+  esac
+}
 
 # Emit the GitHub PR state for the branch checked out in dir: MERGED, CLOSED, OPEN, or "".
 gh_pr_state() {
@@ -86,6 +120,13 @@ while IFS= read -r subdir; do
   [ -d "$subdir" ] || continue
   git -C "$subdir" rev-parse --git-dir >/dev/null 2>&1 || continue
 
+  # Protect base/full clones: only prune clones made by git-bc-add.
+  if ! is_branch_clone "$subdir"; then
+    printf 'git-bc-prune: %s — not a branch clone (no bc.source), skipping\n' "$subdir"
+    skipped=$(( skipped + 1 ))
+    continue
+  fi
+
   branch="$(git -C "$subdir" symbolic-ref --short HEAD 2>/dev/null || true)"
   if [ -z "$branch" ]; then
     printf 'git-bc-prune: %s — detached HEAD, skipping\n' "$subdir"
@@ -118,6 +159,9 @@ while IFS= read -r subdir; do
     if $dry_run; then
       printf '  (dry-run: would remove)\n'
       pruned=$(( pruned + 1 ))
+    elif ! confirm_remove "$subdir"; then
+      printf '  skipped\n'
+      skipped=$(( skipped + 1 ))
     else
       rm_args=("$subdir")
       $force && rm_args+=("--force")
