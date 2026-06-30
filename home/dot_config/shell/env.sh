@@ -13,17 +13,20 @@
 alias codew="code --wait"
 export EDITOR="code --wait"
 
-# Prepend purse shims so they shadow real binaries on PATH. The devcontainer
-# shim that lives here injects --dotfiles-* flags into `up` invocations.
+# Prepend ~/.local/bin and purse shims so they shadow real binaries on PATH.
+# The devcontainer shim that lives here injects --dotfiles-* flags into `up` invocations.
 # Conditional on the directory existing so this is a no-op before chezmoi
 # has applied the dotfiles.
-if [ -d "$HOME/.local/share/purse/shims" ]; then
-  case ":$PATH:" in
-    *":$HOME/.local/share/purse/shims:"*) ;;
-    *) PATH="$HOME/.local/share/purse/shims:$PATH" ;;
-  esac
-  export PATH
-fi
+for _local_bin in "$HOME/.local/bin" "$HOME/.local/share/purse/shims"; do
+  if [ -d "$_local_bin" ]; then
+    case ":$PATH:" in
+      *":$_local_bin:"*) ;;
+      *) PATH="$_local_bin:$PATH" ;;
+    esac
+  fi
+done
+export PATH
+unset _local_bin
 
 # GPG needs to know the current TTY to prompt for passphrase on git signing.
 # Git commit signing is opt-in per-repo; without GPG_TTY, pinentry-curses fails

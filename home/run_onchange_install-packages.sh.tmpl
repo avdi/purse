@@ -95,14 +95,24 @@ elif command -v apt-get >/dev/null 2>&1; then
       as_root add-apt-repository -y ppa:git-core/ppa
       as_root apt-get update -qq
       as_root apt-get install -y git
-    elif command -v brew >/dev/null 2>&1; then
-      echo "→ as_root/apt unavailable; trying brew install git..."
-      brew install git
     else
-      echo "⚠️  git 2.48+ required but as_root/apt and brew are unavailable. Please install a newer git manually." >&2
+      echo "→ as_root/apt unavailable; fetching portable static binary..."
+      _git_static_ver="$(curl -fsSL https://api.github.com/repos/stefanzweifel/git-static/releases/latest | grep '"tag_name"' | cut -d'"' -f4)"
+      curl -fsSL "https://github.com/stefanzweifel/git-static/releases/download/${_git_static_ver}/git-linux-amd64" \
+        -o "$HOME/.local/bin/git"
+      chmod +x "$HOME/.local/bin/git"
     fi
   else
     echo "→ git: $(git --version) already ≥2.48, skipping"
+  fi
+
+  # worktrunk: git worktree manager (GitHub release fallback)
+  if ! command -v worktrunk >/dev/null 2>&1; then
+    echo "→ worktrunk: installing from GitHub releases..."
+    _wt_ver="$(curl -fsSL https://api.github.com/repos/max-sixty/worktrunk/releases/latest | grep '"tag_name"' | cut -d'"' -f4)"
+    curl -fsSL "https://github.com/max-sixty/worktrunk/releases/download/${_wt_ver}/worktrunk-x86_64-unknown-linux-musl.tar.gz" \
+      | tar -xz -C "$HOME/.local/bin" --strip-components=1 "worktrunk-x86_64-unknown-linux-musl/worktrunk"
+    chmod +x "$HOME/.local/bin/worktrunk"
   fi
 
   # Node.js 22+ — use system node if already ≥22, otherwise NodeSource
