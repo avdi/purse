@@ -97,22 +97,25 @@ elif command -v apt-get >/dev/null 2>&1; then
       as_root apt-get install -y git
     else
       echo "→ as_root/apt unavailable; fetching portable static binary..."
-      _git_static_ver="$(curl -fsSL https://api.github.com/repos/stefanzweifel/git-static/releases/latest | grep '"tag_name"' | cut -d'"' -f4)"
-      curl -fsSL "https://github.com/stefanzweifel/git-static/releases/download/${_git_static_ver}/git-linux-amd64" \
-        -o "$HOME/.local/bin/git"
+      _git_tmp="$(mktemp -d)"
+      curl -fsSL "https://github.com/darkvertex/static-git/releases/latest/download/git-binaries.linux-64bit.tar.gz" \
+        | tar -xz -C "$_git_tmp"
+      _git_bin="$(find "$_git_tmp" -name git -type f | head -1)"
+      cp "$_git_bin" "$HOME/.local/bin/git"
       chmod +x "$HOME/.local/bin/git"
+      rm -rf "$_git_tmp"
     fi
   else
     echo "→ git: $(git --version) already ≥2.48, skipping"
   fi
 
-  # worktrunk: git worktree manager (GitHub release fallback)
+  # worktrunk: git worktree manager (official installer → ~/.local/bin)
   if ! command -v worktrunk >/dev/null 2>&1; then
-    echo "→ worktrunk: installing from GitHub releases..."
+    echo "→ worktrunk: installing via official installer..."
     _wt_ver="$(curl -fsSL https://api.github.com/repos/max-sixty/worktrunk/releases/latest | grep '"tag_name"' | cut -d'"' -f4)"
-    curl -fsSL "https://github.com/max-sixty/worktrunk/releases/download/${_wt_ver}/worktrunk-x86_64-unknown-linux-musl.tar.gz" \
-      | tar -xz -C "$HOME/.local/bin" --strip-components=1 "worktrunk-x86_64-unknown-linux-musl/worktrunk"
-    chmod +x "$HOME/.local/bin/worktrunk"
+    curl --proto '=https' --tlsv1.2 -fsSL \
+      "https://github.com/max-sixty/worktrunk/releases/download/${_wt_ver}/worktrunk-installer.sh" \
+      | sh
   fi
 
   # Node.js 22+ — use system node if already ≥22, otherwise NodeSource
