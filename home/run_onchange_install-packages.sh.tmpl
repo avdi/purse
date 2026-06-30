@@ -82,6 +82,22 @@ elif command -v apt-get >/dev/null 2>&1; then
     echo "→ apt: already installed ({{ .packages.apt | join ", " }})"
   fi
 
+  # git 2.48+ — required for worktree.useRelativePaths (introduced in 2.48.0)
+  _git_cur="$(git --version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+' | head -1)"
+  _git_major="${_git_cur%%.*}"
+  _git_minor="${_git_cur##*.}"
+  if [ -z "$_git_cur" ] || [ "$_git_major" -lt 2 ] || { [ "$_git_major" -eq 2 ] && [ "$_git_minor" -lt 48 ]; }; then
+    echo "→ git: ${_git_cur:-none} is too old (need ≥2.48); upgrading via git-core PPA..."
+    if ! command -v add-apt-repository >/dev/null 2>&1; then
+      as_root apt-get install -y --no-install-recommends software-properties-common
+    fi
+    as_root add-apt-repository -y ppa:git-core/ppa
+    as_root apt-get update -qq
+    as_root apt-get install -y git
+  else
+    echo "→ git: $(git --version) already ≥2.48, skipping"
+  fi
+
   # Node.js 22+ — use system node if already ≥22, otherwise NodeSource
   if [ "$(node_major)" -lt 22 ]; then
     echo "→ Node.js 22+ required; installing via NodeSource..."
