@@ -113,6 +113,7 @@ elif command -v apt-get >/dev/null 2>&1 && have_root; then
     echo "→ Node.js $(node --version) already installed (system), skipping"
   fi
 
+
   # vscli: install binary from GitHub releases
   if ! command -v vscli >/dev/null 2>&1; then
     echo "→ vscli: installing from GitHub releases..."
@@ -171,6 +172,16 @@ EOF
     echo "⚠️  No supported package manager found (need brew on macOS or apt-get on Linux)" >&2
     exit 1
   fi
+fi
+
+
+# ---- npm core tools (e.g. devcontainer) -------------------------------------
+# These are "basic" tools installed whenever Node.js 22+ is present.
+# Uses ~/.local prefix to avoid needing root/sudo.
+if [ "$(node_major)" -ge 22 ]; then
+  echo "→ npm core: {{ .packages.npm | join ", " }}"
+  npm config set prefix "$HOME/.local"
+  npm install -g {{ .packages.npm | join " " }}
 fi
 
 # ---- spec-kit (specify CLI) -------------------------------------------------

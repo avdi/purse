@@ -15,6 +15,7 @@ packages:
     - jq          # JSON processor — required by run_onchange_install-mcp-servers.sh
     - yq          # YAML processor (mikefarah) — general-purpose convenience
     - node        # Node.js LTS — needed for npm packages below
+    - devcontainer # devcontainer CLI (@devcontainers/cli)
     - vscli       # VS Code devcontainer launcher
     - chruby      # lightweight Ruby version switcher (shell function)
     - ruby-install  # installs Ruby versions for use with chruby
@@ -23,18 +24,22 @@ packages:
     - zoxide      # frecency-based directory jumper
     - fzf         # fuzzy finder — used by zoxide's zi and standalone
 
-  # npm global packages — all coding-agent CLIs
-  # Requires Node.js 22+ (auggie is the strictest)
+  # npm global packages — core tools (always installed via run_onchange)
   npm:
     - "@devcontainers/cli"         # devcontainer (dc alias)
+
+  # npm global packages — coding-agent CLIs (installed via purse-install-agents)
+  # Requires Node.js 22+ (auggie is the strictest)
+  agents_npm:
     - "@anthropic-ai/claude-code"  # claude
     - "@openai/codex"              # codex
-    - "@google/gemini-cli"         # gemini
-    - "@augmentcode/auggie"        # auggie (Augment Code CLI)
+    - "devin-cli"                  # devin
+    - "@augmentcode/auggie"        # auggie
+    - "@google/antigravity-cli"    # antigravity (agy)
+    - "opencode-ai"                # opencode
 
   # Windows Package Manager (winget) packages
-  # Cursor CLI (command: 'agent') is installed separately via PowerShell script
-  # npm tools (codex, gemini, auggie) are installed after Node.js via npm
+  # (Agents like claude, codex, etc. are installed via purse-install-agents)
   winget:
     - id: BurntSushi.ripgrep.MSVC  # ripgrep (rg)
     - id: direnv.direnv             # direnv

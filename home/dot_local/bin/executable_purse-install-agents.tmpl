@@ -2,7 +2,7 @@
 # Install / update all AI coding agent CLIs.
 # Run manually whenever you want to install or refresh the agents.
 #
-# npm agents : {{ .packages.npm | join ", " }}
+# npm agents : {{ .packages.agents_npm | join ", " }}
 # cursor agent: curl https://cursor.com/install (installs as 'agent')
 
 set -euo pipefail
@@ -24,11 +24,11 @@ if [ "$(node_major)" -ge 22 ]; then
     sudo chown -R "$(id -u):$(id -g)" "$HOME/.cache/npm"
   fi
 
-  echo "→ npm: {{ .packages.npm | join ", " }}"
-  npm install -g {{ .packages.npm | join " " }}
+  echo "→ npm: {{ .packages.agents_npm | join ", " }}"
+  npm install -g {{ .packages.agents_npm | join " " }}
 else
   echo "⚠️  Node.js 22+ not found (have: $(node --version 2>/dev/null || echo none))"
-  echo "   Skipping npm agents: {{ .packages.npm | join ", " }}"
+  echo "   Skipping npm agents: {{ .packages.agents_npm | join ", " }}"
 fi
 
 # ---- cursor agent CLI -------------------------------------------------------

@@ -9,7 +9,6 @@
 #
 # winget packages : {{ range .packages.winget }}{{ .id }} {{ end }}
 # npm packages    : {{ .packages.npm | join ", " }}
-# cursor CLI      : irm 'https://cursor.com/install?win32=true' | iex  (installs as 'agent')
 {{ if ne .chezmoi.os "windows" }}
 Write-Host "This script is for Windows only. Skipping." -ForegroundColor Yellow
 exit 0
@@ -36,16 +35,6 @@ Write-Host "→ winget: installing packages..." -ForegroundColor Cyan
 {{ range .packages.winget }}
 winget install --id {{ .id }} --exact --accept-package-agreements --accept-source-agreements --silent
 {{ end }}
-
-# ---- Cursor agent CLI -------------------------------------------------------
-# Cursor's CLI is a separate product from the editor; the command is 'agent'.
-# winget installs the Cursor editor (Anysphere.Cursor), but the CLI needs a
-# separate PowerShell installer.
-
-if (-not (Test-Command agent)) {
-    Write-Host "→ Installing Cursor agent CLI (command: 'agent')..." -ForegroundColor Cyan
-    irm 'https://cursor.com/install?win32=true' | iex
-}
 
 # ---- npm packages -----------------------------------------------------------
 # Refresh PATH after winget installs Node.js so we don't need a new shell.

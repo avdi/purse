@@ -1,0 +1,38 @@
+{{- if eq .chezmoi.os "windows" -}}
+# Install / update all AI coding agent CLIs (Windows).
+# Run manually whenever you want to install or refresh the agents.
+#
+# npm agents : {{ .packages.agents_npm | join ", " }}
+# cursor agent: irm 'https://cursor.com/install?win32=true' | iex (installs as 'agent')
+
+$ErrorActionPreference = 'Stop'
+
+function Test-Command($cmd) {
+    return [bool](Get-Command $cmd -ErrorAction SilentlyContinue)
+}
+
+function Get-NodeMajor {
+    if (-not (Test-Command node)) { return 0 }
+    return [int](node -e 'process.stdout.write(process.version.slice(1).split(".")[0])')
+}
+
+# ---- npm agents -------------------------------------------------------------
+
+$nodeMajor = Get-NodeMajor
+if ($nodeMajor -ge 22) {
+    Write-Host "→ npm: {{ .packages.agents_npm | join ", " }}" -ForegroundColor Cyan
+    npm install -g {{ .packages.agents_npm | join " " }}
+} else {
+    $nodeVer = if (Test-Command node) { node --version } else { "none" }
+    Write-Warning "Node.js 22+ not found (have: $nodeVer)"
+    Write-Warning "   Skipping npm agents: {{ .packages.agents_npm | join ", " }}"
+}
+
+# ---- cursor agent CLI -------------------------------------------------------
+# Cursor's CLI is a separate binary from the editor; the command is 'agent'.
+
+if (-not (Test-Command agent)) {
+    Write-Host "→ Installing Cursor agent CLI (command: 'agent')..." -ForegroundColor Cyan
+    irm 'https://cursor.com/install?win32=true' | iex
+}
+{{- end -}}
