@@ -196,4 +196,40 @@ if command -v uv >/dev/null 2>&1; then
 else
   echo "⚠️  uv not found — skipping spec-kit install (re-run chezmoi apply after uv is on PATH)" >&2
 fi
+
+# ---- gk (GitKraken CLI) -----------------------------------------------------
+# Not in apt, and brew ships it as a macOS-only cask, so install the release
+# binary from GitHub into ~/.local/bin on every Unix host (root or not).
+# `gk mcp install --all` (run by purse-outfit-agents) registers its MCP server.
+if ! command -v gk >/dev/null 2>&1; then
+  if command -v unzip >/dev/null 2>&1; then
+    case "$(uname -s)" in
+      Darwin) _gk_os="darwin" ;;
+      Linux)  _gk_os="linux"  ;;
+      *)      _gk_os="" ;;
+    esac
+    case "$(uname -m)" in
+      x86_64|amd64)  _gk_arch="amd64" ;;
+      arm64|aarch64) _gk_arch="arm64" ;;
+      *)             _gk_arch="" ;;
+    esac
+    if [ -n "$_gk_os" ] && [ -n "$_gk_arch" ]; then
+      echo "→ gk: installing GitKraken CLI from GitHub releases..."
+      _gk_ver="$(curl -fsSL https://api.github.com/repos/gitkraken/gk-cli/releases/latest | grep '"tag_name"' | cut -d'"' -f4 | tr -d 'v')"
+      _gk_tmp="$(mktemp -d)"
+      if curl -fsSL -o "$_gk_tmp/gk.zip" \
+          "https://github.com/gitkraken/gk-cli/releases/download/v${_gk_ver}/gk_${_gk_ver}_${_gk_os}_${_gk_arch}.zip"; then
+        unzip -q -o "$_gk_tmp/gk.zip" gk -d "$HOME/.local/bin"
+        chmod +x "$HOME/.local/bin/gk"
+      else
+        echo "⚠️  gk: download failed (gk_${_gk_ver}_${_gk_os}_${_gk_arch}.zip)" >&2
+      fi
+      rm -rf "$_gk_tmp"
+    else
+      echo "⚠️  gk: unsupported platform $(uname -s)/$(uname -m) — skipping" >&2
+    fi
+  else
+    echo "⚠️  gk: unzip not found — skipping GitKraken CLI install" >&2
+  fi
+fi
 {{- end }}

@@ -4,8 +4,12 @@ packages:
     - ripgrep
     - direnv
     - jq          # JSON processor — required by purse-outfit-agents
+    - unzip       # needed to unpack the gk (GitKraken CLI) release zip
     - zoxide      # frecency-based directory jumper
     - fzf         # fuzzy finder — used by zoxide's zi and standalone
+  # gk (GitKraken CLI) isn't packaged for apt/brew-on-Linux (brew ships it as a
+  # macOS-only cask), so on Unix it's installed from GitHub releases by
+  # run_onchange_install-packages.sh. Windows uses winget (below).
 
   # Homebrew packages (macOS, or Linux with brew)
   brew:
@@ -52,3 +56,4 @@ packages:
     - id: max-sixty.worktrunk       # git worktree manager
     - id: ajeetdsouza.zoxide        # frecency-based directory jumper
     - id: junegunn.fzf              # fuzzy finder — used by zoxide's zi and standalone
+    - id: gitkraken.cli             # gk (GitKraken CLI) — its MCP server is wired up by purse-outfit-agents

@@ -1,11 +1,13 @@
 {{- if eq .chezmoi.os "windows" -}}
-# Outfit the installed AI agents (Windows): set up codebase-memory-mcp.
+# Outfit the installed AI agents (Windows): register the GitKraken MCP server
+# and set up codebase-memory-mcp.
 #
 # chezmoi installs this to ~/.local/bin/purse-outfit-agents.ps1.
 #
-# Run manually, after purse-install-agents.ps1. On Windows the only agent-
-# outfitting step is codebase-memory-mcp; the MCP-server shortlist and Claude
-# plugin steps in the Unix purse-outfit-agents are not wired up on Windows.
+# Run manually, after purse-install-agents.ps1. On Windows the agent-outfitting
+# steps are the GitKraken MCP server (`gk mcp install --all`) and
+# codebase-memory-mcp; the MCP-server shortlist and Claude plugin steps in the
+# Unix purse-outfit-agents are not wired up on Windows.
 #
 # codebase-memory-mcp is a single static binary that ships its own multi-agent
 # installer: `codebase-memory-mcp install -y` auto-detects every installed
@@ -94,6 +96,21 @@ if ($UserPath -notlike "*$InstallDir*") {
 Write-Host "-> codebase-memory-mcp: configuring agents..." -ForegroundColor Cyan
 & $Dest install -y
 
+# GitKraken MCP -- gk ships its own multi-client installer. `gk mcp install
+# --all` detects every installed MCP client and writes a stdio entry that runs
+# `gk mcp`. Auth (`gk auth login`) is only needed when the server runs, not to
+# write the config, so this is safe non-interactively.
+if (Get-Command gk -ErrorAction SilentlyContinue) {
+    Write-Host "-> GitKraken MCP: installing into all detected clients..." -ForegroundColor Cyan
+    try {
+        gk mcp install --all
+    } catch {
+        Write-Warning "gk mcp install failed: $_"
+    }
+} else {
+    Write-Warning "gk (GitKraken CLI) not found; skipping GitKraken MCP setup."
+}
+
 Write-Host ""
-Write-Host "Agents outfitted: codebase-memory-mcp." -ForegroundColor Green
+Write-Host "Agents outfitted: GitKraken MCP, codebase-memory-mcp." -ForegroundColor Green
 {{- end -}}

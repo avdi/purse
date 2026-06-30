@@ -1,6 +1,6 @@
 #!/bin/bash
 # Outfit the installed AI agents: register MCP servers, install Claude plugins,
-# and set up codebase-memory-mcp.
+# register the GitKraken MCP server, and set up codebase-memory-mcp.
 #
 # chezmoi installs this to ~/.local/bin/purse-outfit-agents.
 #
@@ -349,13 +349,29 @@ outfit_codebase_memory_mcp() {
   "$BINARY" install -y
 }
 
+# =============================================================================
+# 4. GitKraken MCP — gk ships its own multi-client installer. `gk mcp install
+#    --all` detects every installed MCP client and writes a stdio entry that
+#    runs `gk mcp`. Authentication (`gk auth login`) is only needed when the
+#    server runs, not to write the config, so this is safe non-interactively.
+# =============================================================================
+outfit_gitkraken_mcp() {
+  if ! have gk; then
+    warn "gk (GitKraken CLI) not found; skipping GitKraken MCP setup"
+    return 0
+  fi
+  echo "→ GitKraken MCP: installing into all detected clients..."
+  gk mcp install --all || warn "gk mcp install failed"
+}
+
 # --- run ---------------------------------------------------------------------
-# MCP servers and Claude plugins are internally resilient (per-item `|| warn`)
-# and run first; codebase-memory-mcp (the heavy binary download) runs last so a
-# network failure there can't block the cheaper steps.
+# MCP servers, Claude plugins, and GitKraken MCP are internally resilient
+# (per-item `|| warn`) and run first; codebase-memory-mcp (the heavy binary
+# download) runs last so a network failure there can't block the cheaper steps.
 outfit_mcp_servers
 outfit_claude_plugins
+outfit_gitkraken_mcp
 outfit_codebase_memory_mcp
 
 echo
-echo "✅ Agents outfitted: MCP servers, Claude plugins, codebase-memory-mcp."
+echo "✅ Agents outfitted: MCP servers, Claude plugins, GitKraken MCP, codebase-memory-mcp."

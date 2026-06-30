@@ -41,10 +41,19 @@ every AI agent present on the machine.
 - `home/dot_local/bin/executable_purse-outfit-agents.tmpl` → `purse-outfit-agents`
   — the installer. It's a **manually-invoked** step (not run on `chezmoi apply`),
   run after `purse-install-agents`, because alongside MCP registration it also
-  installs Claude plugins and the `codebase-memory-mcp` binary — together too slow
+  installs Claude plugins, registers the **GitKraken MCP** server (`gk mcp install
+  --all`), and installs the `codebase-memory-mcp` binary — together too slow
   to run inline. It only touches agents whose CLI/config is actually detected, and
   is idempotent (safe to re-run). The end-of-apply reminder (`run_after_show-setup-reminders`)
   nudges you to run it.
+
+The **GitKraken MCP** server is the exception to the declarative manifest above:
+`gk` (the GitKraken CLI) ships its own multi-client installer, so rather than
+listing it in `mcp-servers.yaml` we let `gk mcp install --all` detect every
+installed MCP client and write the stdio entry itself. `gk` is installed by
+`run_onchange_install-packages` — from GitHub releases into `~/.local/bin` on
+Unix (it's not in apt and brew ships it as a macOS-only cask), and via winget
+(`gitkraken.cli`) on Windows.
 
 Registration is per-agent: agents with a non-interactive MCP CLI are configured
 via that CLI (`claude`, `codex`, `copilot`, `auggie`, `vscode`); agents whose CLI
