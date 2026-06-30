@@ -163,7 +163,8 @@ while IFS= read -r subdir; do
       printf '  skipped\n'
       skipped=$(( skipped + 1 ))
     else
-      rm_args=("$subdir")
+      # Confirmation already handled above; tell git-bc-rm not to re-prompt.
+      rm_args=("$subdir" "--yes")
       $force && rm_args+=("--force")
       if git-bc-rm "${rm_args[@]}"; then
         pruned=$(( pruned + 1 ))

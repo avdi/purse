@@ -2,18 +2,39 @@
 # git-bc-rm — safely remove a branch clone created by git-bc-add.
 #
 # Usage:
-#   git bc-rm <clone-dir> [--force]
-#   git-bc-rm <clone-dir> [--force]
+#   git bc-rm <clone-dir> [-f] [-y]
+#   git-bc-rm <clone-dir> [-f] [-y]
 #
 #   <clone-dir>  Path to the branch clone to remove.
-#   --force      Remove even if the working tree is dirty or has unpushed
-#                commits on the checked-out branch.
+#   -f, --force  Remove even if the working tree is dirty or has unpushed
+#                commits on the checked-out branch. Does NOT skip confirmation.
+#   -y, --yes    Skip the confirmation prompt (assume "yes").
+#
+# Prompts for confirmation before removing unless --yes is given.
 
 set -euo pipefail
 
 usage() {
-  sed -n '2,11p' "$0" | sed 's/^# \{0,1\}//'
+  sed -n '2,13p' "$0" | sed 's/^# \{0,1\}//'
   exit "${1:-2}"
+}
+
+# Ask the user to confirm removing dir. Returns 0 for yes, 1 for no.
+# Reads from /dev/tty so it works even when invoked from a pipe/loop.
+# With no controlling terminal, declines (safe default) unless --yes was given.
+confirm_remove() {
+  local dir="$1" reply
+  $force_yes && return 0
+  if [ ! -t 1 ] || [ ! -r /dev/tty ]; then
+    echo "git-bc-rm: no terminal for confirmation, refusing to remove $dir (use --yes)" >&2
+    return 1
+  fi
+  printf 'Remove branch clone %s? [y/N] ' "$dir" > /dev/tty
+  IFS= read -r reply < /dev/tty || return 1
+  case "$reply" in
+    y|Y|yes|YES) return 0 ;;
+    *)           return 1 ;;
+  esac
 }
 
 # Find and remove all Docker containers associated with the given clone directory.
@@ -82,11 +103,13 @@ prune_devcontainers() {
 
 clone_dir=""
 force=false
+force_yes=false
 
 while [ $# -gt 0 ]; do
   case "$1" in
     -h|--help)   usage 0 ;;
     --force|-f)  force=true ;;
+    --yes|-y)    force_yes=true ;;
     *) if [ -z "$clone_dir" ]; then clone_dir="$1"; else usage 2; fi ;;
   esac
   shift
@@ -136,6 +159,12 @@ if ! $force; then
 fi
 
 abs="$(cd "$clone_dir" && pwd)"
+
+if ! confirm_remove "$abs"; then
+  echo "git-bc-rm: aborted, $abs not removed"
+  exit 0
+fi
+
 prune_devcontainers "$abs"
 rm -rf "$abs"
 echo "Removed branch clone: $abs"
