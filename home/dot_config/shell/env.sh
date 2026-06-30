@@ -28,6 +28,18 @@ done
 export PATH
 unset _local_bin
 
+# Local Homebrew — wired up by `purse-install-tools` in no-root environments
+# (installed to ~/.homebrew) or the standard linuxbrew prefix. `brew shellenv`
+# prepends brew's bin/man paths and exports HOMEBREW_* for the session.
+# No-op when neither prefix exists (e.g. macOS, where brew is already on PATH).
+for _brew in "$HOME/.homebrew/bin/brew" /home/linuxbrew/.linuxbrew/bin/brew; do
+  if [ -x "$_brew" ]; then
+    eval "$("$_brew" shellenv)"
+    break
+  fi
+done
+unset _brew
+
 # GPG needs to know the current TTY to prompt for passphrase on git signing.
 # Git commit signing is opt-in per-repo; without GPG_TTY, pinentry-curses fails
 # silently and signed commits/tags error out with "Inappropriate ioctl".

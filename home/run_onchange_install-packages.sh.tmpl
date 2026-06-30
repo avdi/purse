@@ -38,6 +38,11 @@ as_root() {
   fi
 }
 
+# True when we can install system packages: already root, or sudo is available.
+have_root() {
+  [ "$(id -u)" -eq 0 ] || command -v sudo >/dev/null 2>&1
+}
+
 # ---- bootstrap Homebrew (macOS only) ----------------------------------------
 # On Linux we use apt + GitHub releases directly, so we don't auto-install brew.
 # Brew may already be present on Linux (e.g. for a newer git) and that's fine —
@@ -65,7 +70,7 @@ if [ "$(uname)" = "Darwin" ]; then
   echo "→ brew (macOS): {{ .packages.brew | join ", " }}"
   brew install {{ .packages.brew | join " " }}
 
-elif command -v apt-get >/dev/null 2>&1; then
+elif command -v apt-get >/dev/null 2>&1 && have_root; then
   # ---- Linux: apt + GitHub releases (preferred over brew) -------------------
   # Only touch apt (and therefore sudo) when a package is actually missing.
   # Keeps non-interactive applies clean and avoids needless password prompts
@@ -82,37 +87,21 @@ elif command -v apt-get >/dev/null 2>&1; then
     echo "→ apt: already installed ({{ .packages.apt | join ", " }})"
   fi
 
-  # git 2.48+ — required for worktree.useRelativePaths (introduced in 2.48.0)
+  # git 2.48+ — required for worktree.useRelativePaths (introduced in 2.48.0).
+  # We're already in the root-capable branch, so upgrade via the git-core PPA.
   _git_cur="$(git --version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+' | head -1)"
   _git_major="${_git_cur%%.*}"
   _git_minor="${_git_cur##*.}"
   if [ -z "$_git_cur" ] || [ "$_git_major" -lt 2 ] || { [ "$_git_major" -eq 2 ] && [ "$_git_minor" -lt 48 ]; }; then
-    echo "→ git: ${_git_cur:-none} is too old (need ≥2.48); upgrading..."
-    if { [ "$(id -u)" -eq 0 ] || command -v sudo >/dev/null 2>&1; } && command -v apt-get >/dev/null 2>&1; then
-      if ! command -v add-apt-repository >/dev/null 2>&1; then
-        as_root apt-get install -y --no-install-recommends software-properties-common
-      fi
-      as_root add-apt-repository -y ppa:git-core/ppa
-      as_root apt-get update -qq
-      as_root apt-get install -y git
-    else
-      echo "→ as_root/apt unavailable; fetching portable static binary..."
-      _git_static_ver="$(curl -fsSL https://api.github.com/repos/stefanzweifel/git-static/releases/latest | grep '"tag_name"' | cut -d'"' -f4)"
-      curl -fsSL "https://github.com/stefanzweifel/git-static/releases/download/${_git_static_ver}/git-linux-amd64" \
-        -o "$HOME/.local/bin/git"
-      chmod +x "$HOME/.local/bin/git"
+    echo "→ git: ${_git_cur:-none} is too old (need ≥2.48); upgrading via git-core PPA..."
+    if ! command -v add-apt-repository >/dev/null 2>&1; then
+      as_root apt-get install -y --no-install-recommends software-properties-common
     fi
+    as_root add-apt-repository -y ppa:git-core/ppa
+    as_root apt-get update -qq
+    as_root apt-get install -y git
   else
     echo "→ git: $(git --version) already ≥2.48, skipping"
-  fi
-
-  # worktrunk: git worktree manager (GitHub release fallback)
-  if ! command -v worktrunk >/dev/null 2>&1; then
-    echo "→ worktrunk: installing from GitHub releases..."
-    _wt_ver="$(curl -fsSL https://api.github.com/repos/max-sixty/worktrunk/releases/latest | grep '"tag_name"' | cut -d'"' -f4)"
-    curl -fsSL "https://github.com/max-sixty/worktrunk/releases/download/${_wt_ver}/worktrunk-x86_64-unknown-linux-musl.tar.gz" \
-      | tar -xz -C "$HOME/.local/bin" --strip-components=1 "worktrunk-x86_64-unknown-linux-musl/worktrunk"
-    chmod +x "$HOME/.local/bin/worktrunk"
   fi
 
   # Node.js 22+ — use system node if already ≥22, otherwise NodeSource
@@ -168,8 +157,20 @@ elif command -v apt-get >/dev/null 2>&1; then
   fi
 
 else
-  echo "⚠️  No supported package manager found (need brew on macOS or apt-get on Linux)" >&2
-  exit 1
+  if [ "$(uname)" = "Linux" ]; then
+    cat >&2 <<'EOF'
+⚠️  No root/sudo on this Linux system — skipping system package installation.
+   git ≥2.48 (for worktree.useRelativePaths) and the rest of the toolset can't
+   be installed via apt here. Install them into your home directory with:
+
+       purse-install-tools
+
+   That installs Homebrew locally (if needed) and the full brew toolset.
+EOF
+  else
+    echo "⚠️  No supported package manager found (need brew on macOS or apt-get on Linux)" >&2
+    exit 1
+  fi
 fi
 
 # ---- spec-kit (specify CLI) -------------------------------------------------

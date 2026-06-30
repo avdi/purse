@@ -1,0 +1,64 @@
+#!/bin/bash
+# Install the full toolset via Homebrew — for environments without root.
+#
+# chezmoi installs this to ~/.local/bin/purse-install-tools.
+#
+# Why this exists, separate from run_onchange_install-packages.sh:
+#   On Linux with root we install tools via apt + NodeSource + source builds.
+#   Without root none of that works, so we fall back to Homebrew. A no-root
+#   Homebrew lives in a home-dir prefix (~/.homebrew), which can't use binary
+#   bottles — every formula builds from source and the whole run can take a
+#   long time. That's too slow to run inline on every `chezmoi apply`, so it is
+#   a deliberate, manually-invoked step.
+#
+# Re-running is safe (brew is idempotent).
+#
+# brew packages : {{ .packages.brew | join ", " }}
+
+set -euo pipefail
+
+# ---- locate or install Homebrew ---------------------------------------------
+# Prefer an existing brew (already on PATH, or a known prefix). Otherwise do an
+# unsupported home-dir install that needs no root.
+
+find_brew() {
+  if command -v brew >/dev/null 2>&1; then command -v brew; return; fi
+  for _b in "$HOME/.homebrew/bin/brew" /home/linuxbrew/.linuxbrew/bin/brew \
+            /opt/homebrew/bin/brew /usr/local/bin/brew; do
+    [ -x "$_b" ] && { echo "$_b"; return; }
+  done
+  return 1
+}
+
+brew_bin="$(find_brew || true)"
+
+if [ -z "$brew_bin" ]; then
+  echo "→ Homebrew not found; installing to ~/.homebrew (no root required)..."
+  echo "   Heads up: a home-dir prefix can't use bottles, so formulae build"
+  echo "   from source — this can take a long while."
+  mkdir -p "$HOME/.homebrew"
+  curl -fsSL https://github.com/Homebrew/brew/tarball/master \
+    | tar xz --strip-components 1 -C "$HOME/.homebrew"
+  brew_bin="$HOME/.homebrew/bin/brew"
+  eval "$("$brew_bin" shellenv)"
+  brew update --force --quiet
+else
+  echo "→ Using existing Homebrew: $brew_bin"
+  eval "$("$brew_bin" shellenv)"
+fi
+
+# ---- install the toolset -----------------------------------------------------
+
+echo "→ brew install: {{ .packages.brew | join ", " }}"
+brew install {{ .packages.brew | join " " }}
+
+cat <<'EOF'
+
+✅ Toolset installed via Homebrew.
+
+Next steps:
+  • Open a new shell so the tools land on PATH (env.sh wires ~/.homebrew /
+    linuxbrew automatically), or run: eval "$(brew shellenv)"
+  • Run `install-agents` to install the npm-based AI agent CLIs.
+  • Run `chezmoi apply` again to pick up uv-based tools (spec-kit).
+EOF
