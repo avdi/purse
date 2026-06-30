@@ -1,7 +1,7 @@
 # Declarative manifest of Claude Code plugin marketplaces and plugins.
 #
-# The run_onchange_install-claude-plugins.sh script renders these values inline
-# and installs them on `chezmoi apply`. Claude Code's own runtime state file
+# The purse-outfit-agents script renders these values inline and installs them
+# when run manually. Claude Code's own runtime state file
 # (~/.claude/plugins/installed_plugins.json) is intentionally NOT managed by
 # chezmoi, since Claude rewrites it on every install.
 claudePlugins:

@@ -38,3 +38,12 @@ if ! command -v agent >/dev/null 2>&1; then
   echo "→ Installing Cursor agent CLI (command: 'agent')..."
   curl https://cursor.com/install -fsS | bash
 fi
+
+cat <<'EOF'
+
+✅ AI agent CLIs installed.
+
+Next step:
+  • Run `purse-outfit-agents` to register MCP servers, install Claude plugins,
+    and set up codebase-memory-mcp across the agents you just installed.
+EOF

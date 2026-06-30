@@ -1,16 +1,19 @@
 {{- if eq .chezmoi.os "windows" -}}
-# chezmoi run_onchange: install codebase-memory-mcp and configure all agents.
+# Outfit the installed AI agents (Windows): set up codebase-memory-mcp.
+#
+# chezmoi installs this to ~/.local/bin/purse-outfit-agents.ps1.
+#
+# Run manually, after purse-install-agents.ps1. On Windows the only agent-
+# outfitting step is codebase-memory-mcp; the MCP-server shortlist and Claude
+# plugin steps in the Unix purse-outfit-agents are not wired up on Windows.
 #
 # codebase-memory-mcp is a single static binary that ships its own multi-agent
 # installer: `codebase-memory-mcp install -y` auto-detects every installed
 # coding agent (Claude Code, Codex, Gemini CLI, Zed, OpenCode, Antigravity,
 # VS Code, ...) and wires up the MCP entry, instruction files, and pre-tool
-# hooks for each. Unlike the npx-style servers in mcp-servers.yaml, this one
-# is deliberately NOT registered per-agent by the MCP installer — the binary
-# owns its own configuration.
+# hooks for each.
 #
-# Unix/macOS is handled by run_onchange_install-codebase-memory-mcp.sh.tmpl.
-# Bump $CbmVersion to trigger a reinstall (re-runs when content changes).
+# Bump $CbmVersion to force a reinstall. Re-running is safe (idempotent).
 
 $ErrorActionPreference = 'Stop'
 [Net.ServicePointManager]::SecurityProtocol = `
@@ -90,4 +93,7 @@ if ($UserPath -notlike "*$InstallDir*") {
 # Auto-configure every installed agent. Idempotent; -y = non-interactive.
 Write-Host "-> codebase-memory-mcp: configuring agents..." -ForegroundColor Cyan
 & $Dest install -y
+
+Write-Host ""
+Write-Host "Agents outfitted: codebase-memory-mcp." -ForegroundColor Green
 {{- end -}}

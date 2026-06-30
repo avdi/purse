@@ -1,0 +1,361 @@
+#!/bin/bash
+# Outfit the installed AI agents: register MCP servers, install Claude plugins,
+# and set up codebase-memory-mcp.
+#
+# chezmoi installs this to ~/.local/bin/purse-outfit-agents.
+#
+# This is a deliberate, manually-invoked step — run it after purse-install-agents:
+#   - It depends on the agent CLIs already being installed (claude, codex,
+#     auggie, cursor-agent, ...), which happens via purse-install-agents.
+#   - codebase-memory-mcp downloads a static binary and re-configures every
+#     detected agent; together these are too slow to run inline on every
+#     `chezmoi apply`.
+#
+# Only env-var REFERENCE strings are written into agent configs (e.g. literal
+# ${GITHUB_PERSONAL_ACCESS_TOKEN}); secret values are never read or stored here.
+#
+# Declarative manifests (rendered inline by chezmoi):
+#   MCP servers    : .chezmoidata/mcp-servers.yaml  (agents: {{ .mcpAgents | join ", " }})
+#   Claude plugins : .chezmoidata/claude-plugins.yaml
+# Re-running is safe (every step is idempotent).
+
+set -euo pipefail
+mkdir -p "$HOME/.local/bin"
+
+have() { command -v "$1" >/dev/null 2>&1; }
+warn() { echo "⚠️  $*" >&2; }
+
+# jq upsert by server name into a JSON config file, preserving other entries.
+# args: <cfg> <top-key> <server-name> <server-json>
+jq_upsert() {
+  local cfg="$1" key="$2" name="$3" server="$4" tmp
+  mkdir -p "$(dirname "$cfg")"
+  jq -e . "$cfg" >/dev/null 2>&1 || echo '{}' > "$cfg"
+  tmp=$(mktemp)
+  jq --arg k "$key" --arg name "$name" --argjson server "$server" \
+     '.[$k] = ((.[$k] // {}) + {($name): $server})' \
+     "$cfg" > "$tmp" && mv "$tmp" "$cfg"
+}
+
+# --- per-agent MCP registration (each guarded by `have` in the driver) -------
+# These rely on the manifest values declared as locals in outfit_mcp_servers
+# (bash dynamic scoping makes them visible here).
+register_claude() {
+  claude mcp remove github -s user >/dev/null 2>&1 || true
+  claude mcp add --transport http github -s user "$gh_url" \
+    --header "Authorization: $gh_bearer_dollar"
+  claude mcp remove playwright -s user >/dev/null 2>&1 || true
+  claude mcp add playwright -s user -- "$pw_cmd" "${pw_args[@]}"
+  claude mcp remove auggie -s user >/dev/null 2>&1 || true
+  claude mcp add auggie -s user -- "$ag_cmd" "${ag_args[@]}"
+  claude mcp remove ripgrep -s user >/dev/null 2>&1 || true
+  claude mcp add ripgrep -s user -- "$rg_cmd" "${rg_args[@]}"
+}
+
+register_codex() {
+  codex mcp remove github >/dev/null 2>&1 || true
+  codex mcp add github --url "$gh_url" --bearer-token-env-var "$gh_token_var"
+  codex mcp remove playwright >/dev/null 2>&1 || true
+  codex mcp add playwright -- "$pw_cmd" "${pw_args[@]}"
+  codex mcp remove auggie >/dev/null 2>&1 || true
+  codex mcp add auggie -- "$ag_cmd" "${ag_args[@]}"
+  codex mcp remove ripgrep >/dev/null 2>&1 || true
+  codex mcp add ripgrep -- "$rg_cmd" "${rg_args[@]}"
+}
+
+register_copilot() {
+  copilot mcp remove github >/dev/null 2>&1 || true
+  copilot mcp add --transport http github "$gh_url" \
+    --header "Authorization: $gh_bearer_dollar"
+  copilot mcp remove playwright >/dev/null 2>&1 || true
+  copilot mcp add playwright -- "$pw_cmd" "${pw_args[@]}"
+  copilot mcp remove auggie >/dev/null 2>&1 || true
+  copilot mcp add auggie -- "$ag_cmd" "${ag_args[@]}"
+  copilot mcp remove ripgrep >/dev/null 2>&1 || true
+  copilot mcp add ripgrep -- "$rg_cmd" "${rg_args[@]}"
+}
+
+register_devin() {
+  local cfg="$HOME/.config/devin/config.json"
+  local gh
+  gh=$(jq -n --arg url "$gh_url" --arg auth "$gh_bearer_dollar" \
+        '{url:$url, transport:"http", headers:{Authorization:$auth}}')
+  jq_upsert "$cfg" mcpServers github "$gh"
+  local pw
+  pw=$(jq -n --arg cmd "$pw_cmd" --argjson args "$pw_args_json" \
+        '{command:$cmd, args:$args}')
+  jq_upsert "$cfg" mcpServers playwright "$pw"
+  local ag
+  ag=$(jq -n --arg cmd "$ag_cmd" --argjson args "$ag_args_json" \
+        '{command:$cmd, args:$args}')
+  jq_upsert "$cfg" mcpServers auggie "$ag"
+  local rg
+  rg=$(jq -n --arg cmd "$rg_cmd" --argjson args "$rg_args_json" \
+        '{command:$cmd, args:$args}')
+  jq_upsert "$cfg" mcpServers ripgrep "$rg"
+}
+
+register_auggie() {
+  local gh pw
+  gh=$(jq -cn --arg url "$gh_url" --arg auth "$gh_bearer_dollar" \
+        '{type:"http", url:$url, headers:{Authorization:$auth}}')
+  auggie mcp add-json --replace -- github "$gh"
+  pw=$(jq -cn --arg cmd "$pw_cmd" --argjson args "$pw_args_json" \
+        '{command:$cmd, args:$args}')
+  auggie mcp add-json --replace -- playwright "$pw"
+  local rg
+  rg=$(jq -cn --arg cmd "$rg_cmd" --argjson args "$rg_args_json" \
+        '{command:$cmd, args:$args}')
+  auggie mcp add-json --replace -- ripgrep "$rg"
+}
+
+register_vscode() {
+  local gh pw
+  gh=$(jq -n --arg url "$gh_url" --arg auth "$gh_bearer_envcolon" \
+        '{name:"github", type:"http", url:$url, headers:{Authorization:$auth}}')
+  code --add-mcp "$gh"
+  pw=$(jq -n --arg cmd "$pw_cmd" --argjson args "$pw_args_json" \
+        '{name:"playwright", command:$cmd, args:$args}')
+  code --add-mcp "$pw"
+  local ag
+  ag=$(jq -n --arg cmd "$ag_cmd" --argjson args "$ag_args_json" \
+        '{name:"auggie", command:$cmd, args:$args}')
+  code --add-mcp "$ag"
+  local rg
+  rg=$(jq -n --arg cmd "$rg_cmd" --argjson args "$rg_args_json" \
+        '{name:"ripgrep", command:$cmd, args:$args}')
+  code --add-mcp "$rg"
+}
+
+register_cursor() {
+  local cfg="$HOME/.cursor/mcp.json" gh pw
+  gh=$(jq -n --arg url "$gh_url" --arg auth "$gh_bearer_envcolon" \
+        '{url:$url, headers:{Authorization:$auth}}')
+  jq_upsert "$cfg" mcpServers github "$gh"
+  pw=$(jq -n --arg cmd "$pw_cmd" --argjson args "$pw_args_json" \
+        '{command:$cmd, args:$args}')
+  jq_upsert "$cfg" mcpServers playwright "$pw"
+  local ag
+  ag=$(jq -n --arg cmd "$ag_cmd" --argjson args "$ag_args_json" \
+        '{command:$cmd, args:$args}')
+  jq_upsert "$cfg" mcpServers auggie "$ag"
+  local rg
+  rg=$(jq -n --arg cmd "$rg_cmd" --argjson args "$rg_args_json" \
+        '{command:$cmd, args:$args}')
+  jq_upsert "$cfg" mcpServers ripgrep "$rg"
+}
+
+register_opencode() {
+  local cfg="$HOME/.config/opencode/opencode.json" gh pw
+  gh=$(jq -n --arg url "$gh_url" --arg auth "$gh_bearer_brace" \
+        '{type:"remote", url:$url, enabled:true, headers:{Authorization:$auth}}')
+  jq_upsert "$cfg" mcp github "$gh"
+  pw=$(jq -n --arg cmd "$pw_cmd" --argjson args "$pw_args_json" \
+        '{type:"local", enabled:true, command:([$cmd] + $args)}')
+  jq_upsert "$cfg" mcp playwright "$pw"
+  local ag
+  ag=$(jq -n --arg cmd "$ag_cmd" --argjson args "$ag_args_json" \
+        '{type:"local", enabled:true, command:([$cmd] + $args)}')
+  jq_upsert "$cfg" mcp auggie "$ag"
+  local rg
+  rg=$(jq -n --arg cmd "$rg_cmd" --argjson args "$rg_args_json" \
+        '{type:"local", enabled:true, command:([$cmd] + $args)}')
+  jq_upsert "$cfg" mcp ripgrep "$rg"
+}
+
+# Antigravity (agy): global config is ~/.gemini/config/mcp_config.json and HTTP
+# servers use `serverUrl` (not `url`).
+register_antigravity() {
+  local cfg="$HOME/.gemini/config/mcp_config.json" gh pw
+  gh=$(jq -n --arg url "$gh_url" --arg auth "$gh_bearer_dollar" \
+        '{serverUrl:$url, headers:{Authorization:$auth}}')
+  jq_upsert "$cfg" mcpServers github "$gh"
+  pw=$(jq -n --arg cmd "$pw_cmd" --argjson args "$pw_args_json" \
+        '{command:$cmd, args:$args}')
+  jq_upsert "$cfg" mcpServers playwright "$pw"
+  local ag
+  ag=$(jq -n --arg cmd "$ag_cmd" --argjson args "$ag_args_json" \
+        '{command:$cmd, args:$args}')
+  jq_upsert "$cfg" mcpServers auggie "$ag"
+  local rg
+  rg=$(jq -n --arg cmd "$rg_cmd" --argjson args "$rg_args_json" \
+        '{command:$cmd, args:$args}')
+  jq_upsert "$cfg" mcpServers ripgrep "$rg"
+}
+
+# =============================================================================
+# 1. MCP server shortlist — register the "always want these" servers into every
+#    AI agent present on this machine.
+# =============================================================================
+outfit_mcp_servers() {
+  if ! have jq; then
+    warn "jq not found; skipping MCP server registration"
+    return 0
+  fi
+  echo "→ MCP servers: registering shortlist into present agents..."
+
+  # --- manifest values (parsed by chezmoi, not by this script) ---------------
+  local gh_url='{{ (index .mcpServers "github").url }}'
+  local gh_token_var='{{ index (index .mcpServers "github").requiresEnv 0 }}'
+  local pw_cmd='{{ (index .mcpServers "playwright").command }}'
+  local pw_args=({{ range (index .mcpServers "playwright").args }}'{{ . }}' {{ end }})  # bash array for `--` CLI forms
+  local pw_args_json='{{ (index .mcpServers "playwright").args | toJson }}'             # JSON array for jq builders
+  local ag_cmd='{{ (index .mcpServers "auggie").command }}'
+  local ag_args=({{ range (index .mcpServers "auggie").args }}'{{ . }}' {{ end }})
+  local ag_args_json='{{ (index .mcpServers "auggie").args | toJson }}'
+  local rg_cmd='{{ (index .mcpServers "ripgrep").command }}'
+  local rg_args=({{ range (index .mcpServers "ripgrep").args }}'{{ . }}' {{ end }})
+  local rg_args_json='{{ (index .mcpServers "ripgrep").args | toJson }}'
+
+  # Literal env-var reference strings (NOT expanded here — each agent expands
+  # them at runtime). Syntax differs per agent.
+  local gh_bearer_dollar="Bearer \${${gh_token_var}}"        # ${VAR}
+  local gh_bearer_envcolon="Bearer \${env:${gh_token_var}}"  # ${env:VAR}
+  local gh_bearer_brace="Bearer {env:${gh_token_var}}"       # {env:VAR}
+
+  # A missing agent is a normal, expected skip; a failed registration warns but
+  # must not abort the run (or later agents get skipped). Hence `if have ...`
+  # guards and per-agent `|| warn`.
+  local agent
+  for agent in {{ .mcpAgents | join " " }}; do
+    case "$agent" in
+      claude)      if have claude;       then register_claude      || warn "claude MCP setup failed";      fi ;;
+      codex)       if have codex;        then register_codex       || warn "codex MCP setup failed";       fi ;;
+      antigravity) if have agy;          then register_antigravity || warn "antigravity MCP setup failed"; fi ;;
+      auggie)      if have auggie;       then register_auggie      || warn "auggie MCP setup failed";      fi ;;
+      copilot)     if have copilot;      then register_copilot     || warn "copilot MCP setup failed";     fi ;;
+      cursor)      if have cursor-agent; then register_cursor      || warn "cursor MCP setup failed";      fi ;;
+      vscode)      if have code;         then register_vscode      || warn "vscode MCP setup failed";      fi ;;
+      opencode)    if have opencode;     then register_opencode    || warn "opencode MCP setup failed";    fi ;;
+      devin)       if have devin;        then register_devin       || warn "devin MCP setup failed";       fi ;;
+    esac
+  done
+}
+
+# =============================================================================
+# 2. Claude Code plugins — register marketplaces, then install plugins. Built-in
+#    marketplaces are only auto-seeded on an interactive first launch, so we
+#    register them explicitly here.
+# =============================================================================
+outfit_claude_plugins() {
+  if ! have claude; then
+    warn "claude CLI not found; skipping plugin installation"
+    return 0
+  fi
+  {{ range $name, $source := .claudePlugins.marketplaces }}
+  echo "→ claude plugin marketplace add {{ $source }}"
+  claude plugin marketplace add "{{ $source }}" || warn "marketplace add failed: {{ $source }}"
+  {{- end }}
+  {{ range .claudePlugins.plugins }}
+  echo "→ claude plugin install {{ . }}"
+  claude plugin install "{{ . }}" || warn "plugin install failed: {{ . }}"
+  {{- end }}
+}
+
+# =============================================================================
+# 3. codebase-memory-mcp — a single static binary that ships its own multi-agent
+#    installer (`install -y`): it auto-detects every installed coding agent and
+#    wires up the MCP entry, instruction files, and pre-tool hooks for each.
+#    Bump CBM_VERSION to force a reinstall.
+#
+#    Linux uses the fully-static "-portable" asset; the standard linux build
+#    dynamically links glibc 2.38+ and breaks on older distros. macOS has no
+#    portable variant.
+# =============================================================================
+outfit_codebase_memory_mcp() {
+  local REPO="DeusData/codebase-memory-mcp"
+  local CBM_VERSION="0.8.1"
+  local INSTALL_DIR="$HOME/.local/bin"
+  local BINARY="$INSTALL_DIR/codebase-memory-mcp"
+  mkdir -p "$INSTALL_DIR"
+
+  local _cur="none"
+  if have codebase-memory-mcp; then
+    _cur="$(codebase-memory-mcp --version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1)"
+  fi
+
+  if [ "$_cur" != "$CBM_VERSION" ]; then
+    echo "→ codebase-memory-mcp: installing v${CBM_VERSION}..."
+
+    local _os _arch _cbm_arch _portable _asset _base _tmpdir
+    case "$(uname -s)" in
+      Darwin) _os="darwin" ;;
+      Linux)  _os="linux"  ;;
+      *) warn "codebase-memory-mcp: unsupported OS $(uname -s) — skipping"; return 0 ;;
+    esac
+
+    _arch="$(uname -m)"
+    case "$_arch" in
+      arm64|aarch64) _cbm_arch="arm64" ;;
+      x86_64|amd64)
+        # macOS reports x86_64 under Rosetta even on Apple Silicon.
+        if [ "$_os" = "darwin" ] && sysctl -n machdep.cpu.brand_string 2>/dev/null | grep -qi apple; then
+          _cbm_arch="arm64"
+        else
+          _cbm_arch="amd64"
+        fi
+        ;;
+      *) warn "codebase-memory-mcp: unsupported arch $_arch — skipping"; return 0 ;;
+    esac
+
+    _portable=""
+    [ "$_os" = "linux" ] && _portable="-portable"
+
+    _asset="codebase-memory-mcp-${_os}-${_cbm_arch}${_portable}.tar.gz"
+    _base="https://github.com/${REPO}/releases/download/v${CBM_VERSION}"
+
+    _tmpdir="$(mktemp -d)"
+    # RETURN trap fires while this function's locals are still in scope.
+    trap 'rm -rf "$_tmpdir"' RETURN
+
+    curl -fsSL -o "$_tmpdir/$_asset" "${_base}/${_asset}"
+
+    # Verify checksum when the list is reachable (non-fatal if it isn't).
+    if curl -fsSL -o "$_tmpdir/checksums.txt" "${_base}/checksums.txt" 2>/dev/null; then
+      local _expected _actual
+      _expected="$(grep "$_asset" "$_tmpdir/checksums.txt" 2>/dev/null | awk '{print $1}')" || true
+      if [ -n "${_expected:-}" ]; then
+        if command -v sha256sum >/dev/null 2>&1; then
+          _actual="$(sha256sum "$_tmpdir/$_asset" | awk '{print $1}')"
+        elif command -v shasum >/dev/null 2>&1; then
+          _actual="$(shasum -a 256 "$_tmpdir/$_asset" | awk '{print $1}')"
+        else
+          _actual=""
+        fi
+        if [ -n "$_actual" ] && [ "$_expected" != "$_actual" ]; then
+          warn "codebase-memory-mcp: checksum mismatch — aborting install"
+          echo "    expected: $_expected" >&2
+          echo "    actual:   $_actual" >&2
+          return 1
+        fi
+      fi
+    fi
+
+    tar -xzf "$_tmpdir/$_asset" -C "$_tmpdir"
+    install -m755 "$_tmpdir/codebase-memory-mcp" "$BINARY"
+
+    if [ "$_os" = "darwin" ]; then
+      xattr -d com.apple.quarantine "$BINARY" 2>/dev/null || true
+      codesign --sign - --force "$BINARY" 2>/dev/null || true
+    fi
+
+    echo "→ codebase-memory-mcp: $("$BINARY" --version 2>&1)"
+  else
+    echo "→ codebase-memory-mcp: v${CBM_VERSION} already installed"
+  fi
+
+  # Auto-configure every installed agent. Idempotent; -y = non-interactive.
+  echo "→ codebase-memory-mcp: configuring agents..."
+  "$BINARY" install -y
+}
+
+# --- run ---------------------------------------------------------------------
+# MCP servers and Claude plugins are internally resilient (per-item `|| warn`)
+# and run first; codebase-memory-mcp (the heavy binary download) runs last so a
+# network failure there can't block the cheaper steps.
+outfit_mcp_servers
+outfit_claude_plugins
+outfit_codebase_memory_mcp
+
+echo
+echo "✅ Agents outfitted: MCP servers, Claude plugins, codebase-memory-mcp."

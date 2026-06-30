@@ -3,7 +3,7 @@ packages:
   apt:
     - ripgrep
     - direnv
-    - jq          # JSON processor — required by run_onchange_install-mcp-servers.sh
+    - jq          # JSON processor — required by purse-outfit-agents
     - zoxide      # frecency-based directory jumper
     - fzf         # fuzzy finder — used by zoxide's zi and standalone
 
@@ -12,7 +12,7 @@ packages:
     - git
     - ripgrep
     - direnv
-    - jq          # JSON processor — required by run_onchange_install-mcp-servers.sh
+    - jq          # JSON processor — required by purse-outfit-agents
     - yq          # YAML processor (mikefarah) — general-purpose convenience
     - node        # Node.js LTS — needed for npm packages below
     - devcontainer # devcontainer CLI (@devcontainers/cli)

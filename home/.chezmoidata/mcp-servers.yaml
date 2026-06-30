@@ -1,5 +1,5 @@
 # Declarative MCP server shortlist, registered into every present agent by
-# run_onchange_install-mcp-servers.sh. Token VALUES are never stored here — only
+# purse-outfit-agents. Token VALUES are never stored here — only
 # env-var reference strings, expanded by each agent at runtime from the shell env.
 mcpServers:
   github:

@@ -1,0 +1,29 @@
+{{- if eq .chezmoi.os "windows" -}}
+# chezmoi run_after: remind me of the manual setup steps that `chezmoi apply`
+# deliberately does NOT run. Runs on every apply; purely informational.
+#
+# On Windows the relevant manual steps are the agent CLIs and outfitting them
+# (purse-install-tools / purse-install-extras are Unix-only).
+
+$ErrorActionPreference = 'SilentlyContinue'
+
+# Only nag at an interactive console — stay silent in CI / unattended bootstrap.
+if (-not [Environment]::UserInteractive) { return }
+
+function Test-Command($cmd) {
+    return [bool](Get-Command $cmd -ErrorAction SilentlyContinue)
+}
+
+$agentsPresent = $false
+foreach ($a in @('claude','codex','agent','devin','auggie','agy','opencode')) {
+    if (Test-Command $a) { $agentsPresent = $true; break }
+}
+$noteAgents = if ($agentsPresent) { '' } else { '  <- no agent CLIs detected' }
+$noteOutfit = if (Test-Command 'codebase-memory-mcp') { '' } else { '  <- codebase-memory-mcp not installed' }
+
+Write-Host ""
+Write-Host "-- purse: manual setup commands (not run by 'chezmoi apply') --" -ForegroundColor Cyan
+Write-Host "  * purse-install-agents.ps1   AI agent CLIs (claude, codex, cursor, devin, auggie, agy, opencode)$noteAgents"
+Write-Host "  * purse-outfit-agents.ps1    codebase-memory-mcp$noteOutfit"
+Write-Host ""
+{{- end -}}

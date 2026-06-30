@@ -37,10 +37,14 @@ every AI agent present on the machine.
 
 - `home/.chezmoidata/mcp-servers.yaml` — the manifest: the servers (`mcpServers`)
   and the agents to configure (`mcpAgents`). Currently ships **github** (remote
-  HTTP) and **playwright** (local stdio).
-- `home/run_onchange_install-mcp-servers.sh.tmpl` — the installer, re-run by
-  chezmoi whenever the manifest changes. It only touches agents whose CLI/config
-  is actually detected, and is idempotent (safe to re-run).
+  HTTP), **playwright**, **auggie**, and **ripgrep** (local stdio).
+- `home/dot_local/bin/executable_purse-outfit-agents.tmpl` → `purse-outfit-agents`
+  — the installer. It's a **manually-invoked** step (not run on `chezmoi apply`),
+  run after `purse-install-agents`, because alongside MCP registration it also
+  installs Claude plugins and the `codebase-memory-mcp` binary — together too slow
+  to run inline. It only touches agents whose CLI/config is actually detected, and
+  is idempotent (safe to re-run). The end-of-apply reminder (`run_after_show-setup-reminders`)
+  nudges you to run it.
 
 Registration is per-agent: agents with a non-interactive MCP CLI are configured
 via that CLI (`claude`, `codex`, `copilot`, `auggie`, `vscode`); agents whose CLI
