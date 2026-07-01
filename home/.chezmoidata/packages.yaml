@@ -10,7 +10,16 @@ packages:
   # macOS-only cask), so on Unix it's installed from GitHub releases by
   # run_onchange_install-packages.sh. Windows uses winget (below).
 
-  # Homebrew packages (macOS, or Linux with brew)
+  # Homebrew packages — Linux, only those NOT covered by apt/NodeSource/GitHub-releases.
+  # apt covers: ripgrep, direnv, jq, fzf
+  # NodeSource covers: node; npm covers: devcontainer; GitHub releases cover: vscli, zoxide, uv
+  # source builds cover: chruby, ruby-install
+  # git is handled separately (PPA on Ubuntu, brew otherwise) by purse-install-extras.
+  brew_linux_only:
+    - yq          # YAML processor (mikefarah) — not in apt or any other Linux installer
+    - worktrunk   # git worktree manager — not in apt or any other Linux installer
+
+  # Homebrew packages (macOS, or Linux without root)
   brew:
     - git
     - ripgrep

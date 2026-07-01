@@ -65,16 +65,18 @@ else
 fi
 
 # ---- Homebrew toolset -------------------------------------------------------
-# Install the full toolset via Homebrew — for environments without root.
+# Three strategies, depending on platform:
 #
-# Why this exists, separate from run_onchange_install-packages.sh:
-#   On Linux with root we install tools via apt + NodeSource + source builds.
-#   Without root none of that works, so we fall back to Homebrew. A no-root
-#   Homebrew lives in a home-dir prefix (~/.homebrew), which can't use binary
-#   bottles — every formula builds from source and the whole run can take a
-#   long time. That's too slow to run inline on every `chezmoi apply`.
+#   macOS           → full brew list (brew is the only package manager)
+#   Linux, apt+root → brew_linux_only (yq, worktrunk + git if still needed);
+#                     apt/NodeSource/GitHub-releases already cover the rest
+#   Linux, no root  → full brew list (apt can't be used at all)
 #
-# brew packages: {{ .packages.brew | join ", " }}
+# A home-dir brew prefix (~/.homebrew) can't use pre-built bottles, so
+# everything builds from source — keep the Linux+root list minimal.
+#
+# brew packages (macOS / Linux no-root): {{ .packages.brew | join ", " }}
+# brew packages (Linux, apt available):  {{ .packages.brew_linux_only | join ", " }} + git if <2.48
 
 find_brew() {
   if command -v brew >/dev/null 2>&1; then command -v brew; return; fi
@@ -102,8 +104,21 @@ else
   eval "$("$brew_bin" shellenv)"
 fi
 
-echo "→ brew install: {{ .packages.brew | join ", " }}"
-brew install {{ .packages.brew | join " " }}
+if [ "$(uname)" = "Darwin" ]; then
+  echo "→ brew (macOS): {{ .packages.brew | join ", " }}"
+  brew install {{ .packages.brew | join " " }}
+elif command -v apt-get >/dev/null 2>&1 \
+    && { [ "$(id -u)" -eq 0 ] || command -v sudo >/dev/null 2>&1; }; then
+  # Linux with apt+root: only install what apt/NodeSource/GitHub-releases don't cover.
+  _brew_pkgs=( {{ .packages.brew_linux_only | join " " }} )
+  _git_needs_upgrade && _brew_pkgs+=(git)
+  echo "→ brew (Linux, apt available): ${_brew_pkgs[*]}"
+  brew install "${_brew_pkgs[@]}"
+else
+  # Linux without root: brew covers everything since apt is unavailable.
+  echo "→ brew (Linux, no apt/root): {{ .packages.brew | join ", " }}"
+  brew install {{ .packages.brew | join " " }}
+fi
 
 cat <<'EOF'
 
