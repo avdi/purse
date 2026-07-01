@@ -11,20 +11,19 @@ set -euo pipefail
 
 command -v zv >/dev/null 2>&1 || { echo "❌ zv not found — run: chezmoi apply" >&2; exit 1; }
 
-_vault_accessible() { zv list category >/dev/null 2>&1; }
-
-if _vault_accessible; then
-  exit 0
+# zv writes errors to stdout; capture both channels to be safe.
+# Branch on exit code; use captured output only to discriminate error type.
+err=""
+if err=$(zv list category 2>&1); then
+  exit 0  # vault is accessible
 fi
 
-err=$(zv list category 2>&1 || true)
-
-if printf '%s' "$err" | grep -qi "not logged in"; then
+if printf '%s' "$err" | grep -q "not logged in"; then
   echo "==> Not logged in. Starting zv login..." >&2
   zv login
   echo "==> Unlocking vault..." >&2
   zv unlock
-elif printf '%s' "$err" | grep -qi "lock"; then
+elif printf '%s' "$err" | grep -q "zv unlock"; then
   echo "==> Vault is locked. Unlocking..." >&2
   zv unlock
 else
@@ -32,7 +31,7 @@ else
   exit 1
 fi
 
-if ! _vault_accessible; then
+if ! zv list category >/dev/null 2>&1; then
   echo "❌ Still can't access vault after auth — try: zv login && zv unlock" >&2
   exit 1
 fi
