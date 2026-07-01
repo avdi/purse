@@ -2,8 +2,9 @@
 # Install / update all AI coding agent CLIs.
 # Run manually whenever you want to install or refresh the agents.
 #
-# npm agents : {{ .packages.agents_npm | join ", " }}
-# cursor agent: curl https://cursor.com/install (installs as 'agent')
+# npm agents      : {{ .packages.agents_npm | join ", " }}
+# cursor agent    : curl https://cursor.com/install (installs as 'agent')
+# antigravity (agy): curl https://antigravity.google/cli/install.sh | bash
 
 set -euo pipefail
 
@@ -38,6 +39,13 @@ if ! command -v agent >/dev/null 2>&1; then
   echo "→ Installing Cursor agent CLI (command: 'agent')..."
   curl https://cursor.com/install -fsS | bash
 fi
+
+# ---- antigravity CLI (agy) --------------------------------------------------
+# Antigravity CLI (Google) ships as a native binary, not an npm package.
+# Installer always fetches the latest release.
+
+echo "→ Installing/updating Antigravity CLI (agy)..."
+curl -fsSL https://antigravity.google/cli/install.sh | bash
 
 cat <<'EOF'
 

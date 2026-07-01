@@ -2,8 +2,9 @@
 # Install / update all AI coding agent CLIs (Windows).
 # Run manually whenever you want to install or refresh the agents.
 #
-# npm agents : {{ .packages.agents_npm | join ", " }}
-# cursor agent: irm 'https://cursor.com/install?win32=true' | iex (installs as 'agent')
+# npm agents      : {{ .packages.agents_npm | join ", " }}
+# cursor agent    : irm 'https://cursor.com/install?win32=true' | iex (installs as 'agent')
+# antigravity (agy): irm https://antigravity.google/cli/install.ps1 | iex
 
 $ErrorActionPreference = 'Stop'
 
@@ -35,4 +36,11 @@ if (-not (Test-Command agent)) {
     Write-Host "→ Installing Cursor agent CLI (command: 'agent')..." -ForegroundColor Cyan
     irm 'https://cursor.com/install?win32=true' | iex
 }
+
+# ---- antigravity CLI (agy) --------------------------------------------------
+# Antigravity CLI (Google) ships as a native binary, not an npm package.
+# Installer always fetches the latest release.
+
+Write-Host "→ Installing/updating Antigravity CLI (agy)..." -ForegroundColor Cyan
+irm https://antigravity.google/cli/install.ps1 | iex
 {{- end -}}

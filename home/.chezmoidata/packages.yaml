@@ -39,7 +39,6 @@ packages:
     - "@openai/codex"              # codex
     - "devin-cli"                  # devin
     - "@augmentcode/auggie"        # auggie
-    - "@google/antigravity-cli"    # antigravity (agy)
     - "opencode-ai"                # opencode
 
   # Windows Package Manager (winget) packages
