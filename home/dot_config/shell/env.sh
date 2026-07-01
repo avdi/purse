@@ -13,20 +13,32 @@
 alias codew="code --wait"
 export EDITOR="code --wait"
 
-# Prepend ~/.local/bin and purse shims so they shadow real binaries on PATH.
-# The devcontainer shim that lives here injects --dotfiles-* flags into `up` invocations.
-# Conditional on the directory existing so this is a no-op before chezmoi
-# has applied the dotfiles.
-for _local_bin in "$HOME/.local/bin" "$HOME/.local/share/purse/shims"; do
-  if [ -d "$_local_bin" ]; then
-    case ":$PATH:" in
-      *":$_local_bin:"*) ;;
-      *) PATH="$_local_bin:$PATH" ;;
-    esac
-  fi
-done
+# Prepend ~/.local/bin so user scripts shadow system binaries.
+# Deduplicated so sourcing this file multiple times is a no-op.
+if [ -d "$HOME/.local/bin" ]; then
+  case ":$PATH:" in
+    *":$HOME/.local/bin:"*) ;;
+    *) PATH="$HOME/.local/bin:$PATH" ;;
+  esac
+fi
+
+# purse shims must be FIRST in PATH to shadow the real devcontainer binary.
+# Use strip-and-prepend (not dedup-or-skip) so this holds even when a tool
+# installer appends its own PATH line to ~/.bashrc or ~/.profile after us.
+if [ -d "$HOME/.local/share/purse/shims" ]; then
+  _purse_shims="$HOME/.local/share/purse/shims"
+  _purse_newpath=""
+  _purse_rest="$PATH:"
+  while [ -n "$_purse_rest" ]; do
+    _purse_seg="${_purse_rest%%:*}"
+    _purse_rest="${_purse_rest#*:}"
+    [ "$_purse_seg" = "$_purse_shims" ] && continue
+    _purse_newpath="${_purse_newpath:+$_purse_newpath:}$_purse_seg"
+  done
+  PATH="$_purse_shims:$_purse_newpath"
+  unset _purse_shims _purse_newpath _purse_rest _purse_seg
+fi
 export PATH
-unset _local_bin
 
 # Local Homebrew — wired up by `purse-install-extras` in no-root environments
 # (installed to ~/.homebrew) or the standard linuxbrew prefix. `brew shellenv`
