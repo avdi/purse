@@ -354,11 +354,10 @@ outfit_codebase_memory_mcp() {
   #       cbm-session-reminder     (SessionStart — Code Discovery Protocol reminder)
   #   - Writes a skill file at ~/.claude/skills/codebase-memory/SKILL.md
   #
-  # NOTE: older versions of this binary also appended
-  # `export PATH="~/.local/bin:$PATH"` directly to ~/.bashrc as a side-effect.
-  # env.sh already owns PATH setup correctly; if that line ever reappears in
-  # ~/.bashrc it should be removed — env.sh's strip-and-prepend logic for the
-  # purse shims dir makes it both redundant and harmful.
+  # NOTE: this binary appends `export PATH="~/.local/bin:$PATH"` directly to
+  # ~/.bashrc as a side-effect. env.sh already owns PATH setup correctly, so
+  # that line should be removed after each run — it is both redundant and
+  # harmful because it re-buries the purse shims dir behind ~/.local/bin.
   echo "→ codebase-memory-mcp: configuring agents..."
   "$BINARY" install -y
 }
