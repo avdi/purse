@@ -345,6 +345,20 @@ outfit_codebase_memory_mcp() {
   fi
 
   # Auto-configure every installed agent. Idempotent; -y = non-interactive.
+  #
+  # `install -y` does the following for each detected agent:
+  #   - Registers codebase-memory-mcp as an MCP stdio server in the agent's
+  #     config (e.g. ~/.claude/settings.json, ~/.augment/settings.json)
+  #   - Installs Claude hooks into ~/.claude/hooks/:
+  #       cbm-code-discovery-gate  (PreToolUse — augments graph context)
+  #       cbm-session-reminder     (SessionStart — Code Discovery Protocol reminder)
+  #   - Writes a skill file at ~/.claude/skills/codebase-memory/SKILL.md
+  #
+  # NOTE: older versions of this binary also appended
+  # `export PATH="~/.local/bin:$PATH"` directly to ~/.bashrc as a side-effect.
+  # env.sh already owns PATH setup correctly; if that line ever reappears in
+  # ~/.bashrc it should be removed — env.sh's strip-and-prepend logic for the
+  # purse shims dir makes it both redundant and harmful.
   echo "→ codebase-memory-mcp: configuring agents..."
   "$BINARY" install -y
 }
