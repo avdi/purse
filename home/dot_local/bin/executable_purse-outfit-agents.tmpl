@@ -360,6 +360,13 @@ outfit_codebase_memory_mcp() {
   # harmful because it re-buries the purse shims dir behind ~/.local/bin.
   echo "→ codebase-memory-mcp: configuring agents..."
   "$BINARY" install -y
+
+  # Strip the rogue PATH line that install -y appends to ~/.bashrc.
+  # env.sh owns PATH setup; this line is redundant and buries the purse shims.
+  if [ -f "$HOME/.bashrc" ]; then
+    sed -i '/^export PATH=.*\.local\/bin.*PATH/d' "$HOME/.bashrc"
+    echo "→ codebase-memory-mcp: cleaned up rogue PATH line from ~/.bashrc"
+  fi
 }
 
 # =============================================================================
