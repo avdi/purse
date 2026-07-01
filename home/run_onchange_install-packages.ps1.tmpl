@@ -53,19 +53,4 @@ if ($nodeMajor -ge 22) {
     Write-Warning "  Run 'winget upgrade OpenJS.NodeJS.LTS' then re-run chezmoi apply."
 }
 
-# ---- spec-kit (specify CLI) -------------------------------------------------
-# Spec-Driven Development toolkit — installed as a uv tool.
-# Refresh PATH so uv (installed above via winget) is visible without a new shell.
-
-$env:PATH = [System.Environment]::GetEnvironmentVariable('PATH', 'Machine') + ';' +
-            [System.Environment]::GetEnvironmentVariable('PATH', 'User')
-
-if (Test-Command uv) {
-    Write-Host "→ spec-kit: installing/upgrading via uv tool..." -ForegroundColor Cyan
-    # --link-mode=copy: keeps uv quiet where its cache and install target are
-    # on different filesystems and hardlinking isn't supported.
-    uv tool install --force --link-mode=copy specify-cli --from git+https://github.com/github/spec-kit.git
-} else {
-    Write-Warning "uv not found — skipping spec-kit install. Re-run chezmoi apply after uv is on PATH."
-}
 {{- end -}}

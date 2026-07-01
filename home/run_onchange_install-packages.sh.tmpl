@@ -204,19 +204,6 @@ if [ "$(node_major)" -ge 22 ]; then
   npm install -g {{ .packages.npm | join " " }}
 fi
 
-# ---- spec-kit (specify CLI) -------------------------------------------------
-# Spec-Driven Development toolkit — installed as a uv tool.
-
-if command -v uv >/dev/null 2>&1; then
-  echo "→ spec-kit: installing/upgrading via uv tool..."
-  # --link-mode=copy: in devcontainers the uv cache and ~/.local/share/uv
-  # often sit on different filesystems (named Docker volume), so hardlinking
-  # fails and uv warns before falling back to copy. Copy directly to stay quiet.
-  uv tool install --force --link-mode=copy specify-cli --from git+https://github.com/github/spec-kit.git
-else
-  echo "⚠️  uv not found — skipping spec-kit install (re-run chezmoi apply after uv is on PATH)" >&2
-fi
-
 # ---- gk (GitKraken CLI) -----------------------------------------------------
 # Not in apt, and brew ships it as a macOS-only cask, so install the release
 # binary from GitHub into ~/.local/bin on every Unix host (root or not).

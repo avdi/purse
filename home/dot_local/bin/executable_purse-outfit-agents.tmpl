@@ -370,7 +370,25 @@ outfit_codebase_memory_mcp() {
 }
 
 # =============================================================================
-# 4. GitKraken MCP — gk ships its own multi-client installer. `gk mcp install
+# 4. spec-kit (specify CLI) — Spec-Driven Development toolkit, installed as a
+#    uv tool. Moved here from run_onchange_install-packages so initial setup
+#    doesn't require uv to be available upfront.
+# =============================================================================
+outfit_spec_kit() {
+  if ! have uv; then
+    warn "uv not found; skipping spec-kit install"
+    return 0
+  fi
+  echo "→ spec-kit: installing/upgrading via uv tool..."
+  # --link-mode=copy: in devcontainers the uv cache and install target often
+  # sit on different filesystems (named Docker volume), so hardlinking fails.
+  uv tool install --force --link-mode=copy specify-cli \
+    --from git+https://github.com/github/spec-kit.git \
+    || warn "spec-kit install failed"
+}
+
+# =============================================================================
+# 5. GitKraken MCP — gk ships its own multi-client installer. `gk mcp install
 #    --all` detects every installed MCP client and writes a stdio entry that
 #    runs `gk mcp`. Authentication (`gk auth login`) is only needed when the
 #    server runs, not to write the config, so this is safe non-interactively.
@@ -390,8 +408,9 @@ outfit_gitkraken_mcp() {
 # download) runs last so a network failure there can't block the cheaper steps.
 outfit_mcp_servers
 outfit_claude_plugins
+outfit_spec_kit
 outfit_gitkraken_mcp
 outfit_codebase_memory_mcp
 
 echo
-echo "✅ Agents outfitted: MCP servers, Claude plugins, GitKraken MCP, codebase-memory-mcp."
+echo "✅ Agents outfitted: MCP servers, Claude plugins, spec-kit, GitKraken MCP, codebase-memory-mcp."
