@@ -1,0 +1,38 @@
+#!/usr/bin/env bash
+# purse-zv-ensure-auth — ensure zv is logged in and vault is unlocked
+#
+# Detects the current auth state and runs zv login / zv unlock as needed.
+# Safe to call before any zv operation; exits non-zero if vault is still
+# inaccessible after attempting auth.
+#
+# Usage: purse-zv-ensure-auth
+
+set -euo pipefail
+
+command -v zv >/dev/null 2>&1 || { echo "❌ zv not found — run: chezmoi apply" >&2; exit 1; }
+
+_vault_accessible() { zv list category >/dev/null 2>&1; }
+
+if _vault_accessible; then
+  exit 0
+fi
+
+err=$(zv list category 2>&1 || true)
+
+if printf '%s' "$err" | grep -qi "not logged in"; then
+  echo "==> Not logged in. Starting zv login..." >&2
+  zv login
+  echo "==> Unlocking vault..." >&2
+  zv unlock
+elif printf '%s' "$err" | grep -qi "lock"; then
+  echo "==> Vault is locked. Unlocking..." >&2
+  zv unlock
+else
+  echo "❌ Unexpected zv error: ${err}" >&2
+  exit 1
+fi
+
+if ! _vault_accessible; then
+  echo "❌ Still can't access vault after auth — try: zv login && zv unlock" >&2
+  exit 1
+fi
