@@ -72,6 +72,26 @@ edit the manifest; do not hand-edit per-agent config files.
 
 Avdi uses [Zoho Vault](https://www.zoho.com/vault/) as his password/secret manager, **not** 1Password, Bitwarden, or the system keychain. When secrets need to be referenced in scripts or configs, expect them to come from Zoho Vault (typically via a CLI or manual retrieval), not from another secret store. Do not assume or generate integrations with other secret managers.
 
+## PATH hygiene
+
+`env.sh` is the single owner of PATH construction. It prepends `~/.local/bin`
+(dedup) and then unconditionally strips-and-prepends `~/.local/share/purse/shims`
+so the devcontainer shim always shadows the real binary regardless of what else
+has touched PATH.
+
+**Known problem:** AI agent and tool installers routinely append lines like
+`export PATH="$HOME/.local/bin:$PATH"` directly to `~/.bashrc` or `~/.profile`
+as a side-effect of their install step. This re-buries the purse shims behind
+`~/.local/bin` and breaks `dc up` config injection. Confirmed offenders so far:
+`codebase-memory-mcp` (writes to `~/.bashrc`), Antigravity CLI (writes to both
+`~/.bashrc` and `~/.profile`).
+
+`purse-outfit-agents` automatically scrubs these lines from both files after
+running the codebase-memory-mcp installer. If the shim ever stops winning again,
+check both files for new installer-injected PATH lines matching
+`^export PATH=.*\.local/bin.*PATH` and add them to the scrub loop (or just
+re-run `purse-outfit-agents`).
+
 ## Style
 
 - Shell scripts use `bash` with `set -euo pipefail`.
