@@ -97,9 +97,13 @@ done
 # supply one. Set this per-project via direnv (e.g. in .envrc or app.local.env):
 #   export DEVCONTAINER_CONFIG=.devcontainer/sidecar/devcontainer.json
 config_args=()
-if [ "$user_config" -eq 0 ] && [ -n "${DEVCONTAINER_CONFIG:-}" ]; then
+if [ "$user_config" -eq 1 ]; then
+  printf 'devcontainer shim: --config already supplied by caller — skipping DEVCONTAINER_CONFIG\n' >&2
+elif [ -n "${DEVCONTAINER_CONFIG:-}" ]; then
   config_args=(--config "$DEVCONTAINER_CONFIG")
-  printf 'devcontainer shim: config → %s\n' "$DEVCONTAINER_CONFIG" >&2
+  printf 'devcontainer shim: config → %s (from DEVCONTAINER_CONFIG)\n' "$DEVCONTAINER_CONFIG" >&2
+else
+  printf 'devcontainer shim: DEVCONTAINER_CONFIG not set — letting devcontainer CLI find config\n' >&2
 fi
 
 dotfiles_args=()
@@ -143,6 +147,14 @@ if [ "$forward_dbr" = "1" ]; then
 fi
 
 shift  # consume the `up` subcommand
+printf 'devcontainer shim: exec → %s up%s%s%s%s%s ...\n' \
+  "$real_devcontainer" \
+  "${config_args[*]:+ ${config_args[*]}}" \
+  "${dotfiles_args[*]:+ --dotfiles-repository ... (omitted)}" \
+  "${remote_env_args[*]:+ --remote-env ... (omitted)}" \
+  "${wslg_args[*]:+ --mount ... (wslg, omitted)}" \
+  "${dbr_args[*]:+ --additional-features ... (dbr, omitted)}" \
+  >&2
 exec "$real_devcontainer" up \
   "${config_args[@]+"${config_args[@]}"}" \
   "${dotfiles_args[@]+"${dotfiles_args[@]}"}" \
