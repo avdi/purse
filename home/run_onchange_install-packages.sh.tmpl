@@ -88,18 +88,34 @@ elif command -v apt-get >/dev/null 2>&1 && have_root; then
   fi
 
   # git 2.48+ — required for worktree.useRelativePaths (introduced in 2.48.0).
-  # We're already in the root-capable branch, so upgrade via the git-core PPA.
   _git_cur="$(git --version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+' | head -1)"
   _git_major="${_git_cur%%.*}"
   _git_minor="${_git_cur##*.}"
   if [ -z "$_git_cur" ] || [ "$_git_major" -lt 2 ] || { [ "$_git_major" -eq 2 ] && [ "$_git_minor" -lt 48 ]; }; then
-    echo "→ git: ${_git_cur:-none} is too old (need ≥2.48); upgrading via git-core PPA..."
-    if ! command -v add-apt-repository >/dev/null 2>&1; then
-      as_root apt-get install -y --no-install-recommends software-properties-common
+    echo "→ git: ${_git_cur:-none} is too old (need ≥2.48); upgrading..."
+    _distro_id="$(. /etc/os-release && echo "${ID}")"
+    _distro_codename="$(. /etc/os-release && echo "${VERSION_CODENAME:-${UBUNTU_CODENAME:-}}")"
+    if [ "$_distro_id" = "ubuntu" ]; then
+      # Add git-core PPA directly — avoids add-apt-repository's Launchpad API
+      # calls, which fail in containers (no dbus, no launchpadlib connectivity).
+      echo "→ git: adding git-core PPA for Ubuntu ${_distro_codename}..."
+      as_root mkdir -p /etc/apt/keyrings
+      curl -fsSL "https://keyserver.ubuntu.com/pks/lookup?op=get&search=0xE1DD270288B4E6030699E45FA1715D88E1DF1F24" \
+        | as_root gpg --dearmor -o /etc/apt/keyrings/git-core-ppa.gpg
+      echo "deb [signed-by=/etc/apt/keyrings/git-core-ppa.gpg] https://ppa.launchpadcontent.net/git-core/ppa/ubuntu ${_distro_codename} main" \
+        | as_root tee /etc/apt/sources.list.d/git-core-ppa.list > /dev/null
+      as_root apt-get update -qq
+      as_root apt-get install -y git
+    elif [ "$_distro_id" = "debian" ]; then
+      # PPAs are Ubuntu-only; use Debian backports instead.
+      echo "→ git: adding Debian ${_distro_codename}-backports..."
+      echo "deb http://deb.debian.org/debian ${_distro_codename}-backports main" \
+        | as_root tee /etc/apt/sources.list.d/debian-backports.list > /dev/null
+      as_root apt-get update -qq
+      as_root apt-get install -y -t "${_distro_codename}-backports" git
+    else
+      echo "⚠️  Unknown distro '${_distro_id}'; skipping git upgrade" >&2
     fi
-    as_root add-apt-repository -y ppa:git-core/ppa
-    as_root apt-get update -qq
-    as_root apt-get install -y git
   else
     echo "→ git: $(git --version) already ≥2.48, skipping"
   fi
