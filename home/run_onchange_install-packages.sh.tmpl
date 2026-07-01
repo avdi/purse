@@ -107,12 +107,24 @@ elif command -v apt-get >/dev/null 2>&1 && have_root; then
       as_root apt-get update -qq
       as_root apt-get install -y git
     elif [ "$_distro_id" = "debian" ]; then
-      # PPAs are Ubuntu-only; use Debian backports instead.
+      # PPAs are Ubuntu-only. Try Debian backports first; fall back to brew if
+      # backports doesn't carry 2.48+ yet (bookworm-backports is still on 2.39).
       echo "→ git: adding Debian ${_distro_codename}-backports..."
       echo "deb http://deb.debian.org/debian ${_distro_codename}-backports main" \
         | as_root tee /etc/apt/sources.list.d/debian-backports.list > /dev/null
       as_root apt-get update -qq
       as_root apt-get install -y -t "${_distro_codename}-backports" git
+      _git_after="$(git --version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+' | head -1)"
+      _git_after_major="${_git_after%%.*}"; _git_after_minor="${_git_after##*.}"
+      if [ "$_git_after_major" -lt 2 ] || { [ "$_git_after_major" -eq 2 ] && [ "$_git_after_minor" -lt 48 ]; }; then
+        if command -v brew >/dev/null 2>&1; then
+          echo "→ git: backports has ${_git_after}; upgrading via brew..."
+          brew install git
+        else
+          echo "⚠️  git ${_git_after} on Debian ${_distro_codename}: 2.48+ not in backports and brew unavailable." \
+               "worktree.useRelativePaths will be silently ignored by git." >&2
+        fi
+      fi
     else
       echo "⚠️  Unknown distro '${_distro_id}'; skipping git upgrade" >&2
     fi
