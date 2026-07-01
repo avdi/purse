@@ -26,7 +26,7 @@ if [ "$(node_major)" -ge 22 ]; then
   fi
 
   echo "→ npm: {{ .packages.agents_npm | join ", " }}"
-  npm install -g {{ .packages.agents_npm | join " " }}
+  npm install -g --force {{ .packages.agents_npm | join " " }}
 else
   echo "⚠️  Node.js 22+ not found (have: $(node --version 2>/dev/null || echo none))"
   echo "   Skipping npm agents: {{ .packages.agents_npm | join ", " }}"

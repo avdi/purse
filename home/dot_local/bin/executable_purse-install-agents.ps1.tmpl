@@ -22,7 +22,7 @@ function Get-NodeMajor {
 $nodeMajor = Get-NodeMajor
 if ($nodeMajor -ge 22) {
     Write-Host "→ npm: {{ .packages.agents_npm | join ", " }}" -ForegroundColor Cyan
-    npm install -g {{ .packages.agents_npm | join " " }}
+    npm install -g --force {{ .packages.agents_npm | join " " }}
 } else {
     $nodeVer = if (Test-Command node) { node --version } else { "none" }
     Write-Warning "Node.js 22+ not found (have: $nodeVer)"
