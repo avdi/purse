@@ -25,7 +25,13 @@ note_outfit=""
 have codebase-memory-mcp || note_outfit="  ← codebase-memory-mcp not installed"
 
 note_extras=""
-have dbr || note_extras="  ← dbr not installed"
+have dbr || note_extras="dbr not installed"
+_git_v="$(git --version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+' | head -1)"
+_git_maj="${_git_v%%.*}"; _git_min="${_git_v##*.}"
+if [ -z "$_git_v" ] || [ "$_git_maj" -lt 2 ] || { [ "$_git_maj" -eq 2 ] && [ "$_git_min" -lt 48 ]; }; then
+  note_extras="${note_extras:+${note_extras}; }git ${_git_v:-none} < 2.48"
+fi
+[ -n "$note_extras" ] && note_extras="  ← ${note_extras}"
 
 cat <<EOF
 

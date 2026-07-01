@@ -28,6 +28,42 @@ fi
 echo "→ dbr ensure (start/update host daemon)..."
 dbr ensure --host 127.0.0.1
 
+# ---- git 2.48+ (for worktree.useRelativePaths) ------------------------------
+# On Ubuntu+apt: inject the git-core PPA key/source directly — no
+# add-apt-repository, which drags in ~35 heavy dependencies and breaks in
+# containers. On all other systems, brew (below) provides a current git since
+# git is already in packages.brew.
+
+_git_version_xy() { git --version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+' | head -1; }
+
+_git_needs_upgrade() {
+  _v="$(_git_version_xy)"; _maj="${_v%%.*}"; _min="${_v##*.}"
+  [ -z "$_v" ] || [ "$_maj" -lt 2 ] || { [ "$_maj" -eq 2 ] && [ "$_min" -lt 48 ]; }
+}
+
+if _git_needs_upgrade; then
+  _distro_id="$(. /etc/os-release 2>/dev/null && printf '%s' "${ID:-}")"
+  _distro_codename="$(. /etc/os-release 2>/dev/null && printf '%s' "${VERSION_CODENAME:-${UBUNTU_CODENAME:-}}")"
+  if [ "$_distro_id" = "ubuntu" ] && command -v apt-get >/dev/null 2>&1 \
+      && [ -n "$_distro_codename" ] \
+      && { [ "$(id -u)" -eq 0 ] || command -v sudo >/dev/null 2>&1; }; then
+    _apt_root() { [ "$(id -u)" -eq 0 ] && "$@" || sudo "$@"; }
+    echo "→ git: adding git-core PPA for Ubuntu ${_distro_codename}..."
+    _apt_root mkdir -p /etc/apt/keyrings
+    curl -fsSL "https://keyserver.ubuntu.com/pks/lookup?op=get&search=0xE1DD270288B4E6030699E45FA1715D88E1DF1F24" \
+      | _apt_root gpg --dearmor -o /etc/apt/keyrings/git-core-ppa.gpg
+    printf 'deb [signed-by=/etc/apt/keyrings/git-core-ppa.gpg] https://ppa.launchpadcontent.net/git-core/ppa/ubuntu %s main\n' \
+      "$_distro_codename" \
+      | _apt_root tee /etc/apt/sources.list.d/git-core-ppa.list > /dev/null
+    _apt_root apt-get update -qq
+    _apt_root apt-get install -y git
+  else
+    echo "→ git: not Ubuntu or no apt/root — brew will provide git 2.48+ below"
+  fi
+else
+  echo "→ git: $(_git_version_xy) already ≥2.48"
+fi
+
 # ---- Homebrew toolset -------------------------------------------------------
 # Install the full toolset via Homebrew — for environments without root.
 #
