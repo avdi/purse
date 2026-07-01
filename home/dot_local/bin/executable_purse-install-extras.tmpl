@@ -1,25 +1,44 @@
-#!/bin/bash
-# Install the full toolset via Homebrew — for environments without root.
+#!/usr/bin/env bash
+# Install optional / environment-specific extras that are too slow or too
+# context-sensitive to run inline on every `chezmoi apply`.
 #
-# chezmoi installs this to ~/.local/bin/purse-install-tools.
+# chezmoi installs this to ~/.local/bin/purse-install-extras.
+# Re-running is safe; each section is idempotent.
+
+set -euo pipefail
+
+# ---- devcontainer-bridge (dbr) ----------------------------------------------
+# Enables host-side port forwarding and xdg-open → host browser inside
+# devcontainers. The purse devcontainer shim injects the dbr feature into
+# every `devcontainer up`; having dbr running on the host activates it.
+#
+# Project: https://github.com/bradleybeddoes/devcontainer-bridge
+
+if command -v dbr >/dev/null 2>&1; then
+  echo "→ dbr already installed ($(dbr --version 2>/dev/null || echo version unknown))"
+else
+  echo "→ Installing devcontainer-bridge (dbr)..."
+  curl -fsSL https://github.com/bradleybeddoes/devcontainer-bridge/releases/latest/download/install.sh | bash
+fi
+
+# --host 127.0.0.1 avoids dbr's default host.docker.internal probe, which on
+# WSL resolves to the Windows LAN IP and stalls long enough to bust the 5s
+# spawn deadline. The daemon still binds 0.0.0.0 so containers reach it via
+# host.docker.internal as normal.
+echo "→ dbr ensure (start/update host daemon)..."
+dbr ensure --host 127.0.0.1
+
+# ---- Homebrew toolset -------------------------------------------------------
+# Install the full toolset via Homebrew — for environments without root.
 #
 # Why this exists, separate from run_onchange_install-packages.sh:
 #   On Linux with root we install tools via apt + NodeSource + source builds.
 #   Without root none of that works, so we fall back to Homebrew. A no-root
 #   Homebrew lives in a home-dir prefix (~/.homebrew), which can't use binary
 #   bottles — every formula builds from source and the whole run can take a
-#   long time. That's too slow to run inline on every `chezmoi apply`, so it is
-#   a deliberate, manually-invoked step.
+#   long time. That's too slow to run inline on every `chezmoi apply`.
 #
-# Re-running is safe (brew is idempotent).
-#
-# brew packages : {{ .packages.brew | join ", " }}
-
-set -euo pipefail
-
-# ---- locate or install Homebrew ---------------------------------------------
-# Prefer an existing brew (already on PATH, or a known prefix). Otherwise do an
-# unsupported home-dir install that needs no root.
+# brew packages: {{ .packages.brew | join ", " }}
 
 find_brew() {
   if command -v brew >/dev/null 2>&1; then command -v brew; return; fi
@@ -47,17 +66,15 @@ else
   eval "$("$brew_bin" shellenv)"
 fi
 
-# ---- install the toolset -----------------------------------------------------
-
 echo "→ brew install: {{ .packages.brew | join ", " }}"
 brew install {{ .packages.brew | join " " }}
 
 cat <<'EOF'
 
-✅ Toolset installed via Homebrew.
+✅ Extras installed.
 
 Next steps:
-  • Open a new shell so the tools land on PATH (env.sh wires ~/.homebrew /
+  • Open a new shell so Homebrew tools land on PATH (env.sh wires ~/.homebrew /
     linuxbrew automatically), or run: eval "$(brew shellenv)"
   • Run `purse-install-agents` to install the npm-based AI agent CLIs.
   • Then run `purse-outfit-agents` to wire up MCP servers, Claude plugins,

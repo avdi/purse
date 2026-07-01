@@ -14,13 +14,6 @@ have() { command -v "$1" >/dev/null 2>&1; }
 
 # A bullet is shown for every command; the trailing note adapts to current state
 # so a fully-set-up machine reads as "nothing left to do".
-note_tools=""
-if [ "$(uname)" = "Linux" ] && ! have brew \
-   && [ ! -x "$HOME/.homebrew/bin/brew" ] && [ ! -x /home/linuxbrew/.linuxbrew/bin/brew ] \
-   && ! { [ "$(id -u)" = "0" ] || have sudo; }; then
-  note_tools="  ← no root + no brew detected"
-fi
-
 agents_present=0
 for _a in claude codex cursor-agent devin auggie agy opencode; do
   have "$_a" && { agents_present=1; break; }
@@ -37,10 +30,9 @@ have dbr || note_extras="  ← dbr not installed"
 cat <<EOF
 
 ── purse: manual setup commands (not run by \`chezmoi apply\`) ──
-  • purse-install-tools    Homebrew + full toolset, no root needed${note_tools}
+  • purse-install-extras   Homebrew + full toolset (no root needed) + devcontainer-bridge (dbr)${note_extras}
   • purse-install-agents   AI agent CLIs (claude, codex, cursor, devin, auggie, agy, opencode)${note_agents}
   • purse-outfit-agents    MCP servers + Claude plugins + GitKraken MCP + codebase-memory-mcp${note_outfit}
-  • purse-install-extras   host-side devcontainer-bridge (dbr)${note_extras}
 
 EOF
 

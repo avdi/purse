@@ -28,7 +28,7 @@ done
 export PATH
 unset _local_bin
 
-# Local Homebrew — wired up by `purse-install-tools` in no-root environments
+# Local Homebrew — wired up by `purse-install-extras` in no-root environments
 # (installed to ~/.homebrew) or the standard linuxbrew prefix. `brew shellenv`
 # prepends brew's bin/man paths and exports HOMEBREW_* for the session.
 # No-op when neither prefix exists (e.g. macOS, where brew is already on PATH).
