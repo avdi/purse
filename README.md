@@ -67,7 +67,7 @@ automatically whenever the rendered package list changes.
 
 Secrets (API keys, tokens, etc.) live in [Zoho Vault](https://www.zoho.com/vault/) and are never committed. The workflow has two layers:
 
-### 1. Runtime env vars — `setup-secrets`
+### 1. Runtime env vars — `purse-setup-secrets`
 
 `~/.config/purse/secret-ids.env` maps environment variable names to Zoho Vault numeric IDs. IDs are non-sensitive and safe to commit.
 
@@ -77,14 +77,14 @@ ANTHROPIC_API_KEY=2000002716908
 GITHUB_TOKEN=2000003012345
 ```
 
-Run `setup-secrets` to pull the current values and write them to `~/.config/shell/secrets.sh` (mode 600, never committed). That file is auto-sourced by `~/.config/shell/env.sh` on every new shell.
+Run `purse-setup-secrets` (alias: `setup-secrets`) to pull the current values and write them to `~/.config/shell/secrets.sh` (mode 600, never committed). That file is auto-sourced by `~/.config/shell/env.sh` on every new shell.
 
 **Adding a new secret:**
 
 1. Add the secret to Zoho Vault (title = env var name, password = the value).
 2. Find its numeric ID: `zv search -k "secret-name" --name --output json | jq '.[0]'`
 3. Add `ENV_VAR_NAME=<id>` to `~/.config/purse/secret-ids.env`.
-4. Run `setup-secrets`.
+4. Run `purse-setup-secrets`.
 5. Commit the updated file: `chezmoi add ~/.config/purse/secret-ids.env`.
 
 ### 2. Chezmoi template secrets — `secretJSON`
@@ -100,7 +100,7 @@ For secrets needed at `chezmoi apply` time (e.g. to render a config file), use t
 api_key = "{{ $pass }}"
 ```
 
-This requires `zv` to be authenticated before running `chezmoi apply`. For bulk env-var secrets, prefer `setup-secrets` — it authenticates interactively only when needed and doesn't block `chezmoi apply`.
+This requires `zv` to be authenticated before running `chezmoi apply`. For bulk env-var secrets, prefer `purse-setup-secrets` — it authenticates interactively only when needed and doesn't block `chezmoi apply`.
 
 ### `zv` CLI
 
