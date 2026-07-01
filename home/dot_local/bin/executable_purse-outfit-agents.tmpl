@@ -361,17 +361,7 @@ outfit_codebase_memory_mcp() {
   echo "→ codebase-memory-mcp: configuring agents..."
   "$BINARY" install -y
 
-  # Strip rogue PATH lines that tool installers append to shell init files.
-  # env.sh owns PATH setup via strip-and-prepend; these lines are redundant
-  # and harmful — they re-bury the purse shims dir behind ~/.local/bin.
-  # Known offenders: codebase-memory-mcp (bashrc), Antigravity (bashrc + profile).
-  for _rc in "$HOME/.bashrc" "$HOME/.profile"; do
-    if [ -f "$_rc" ]; then
-      sed -i '/^export PATH=.*\.local\/bin.*PATH/d' "$_rc"
-      echo "→ codebase-memory-mcp: cleaned up rogue PATH lines from $_rc"
-    fi
-  done
-  unset _rc
+  purse-scrub-path-stompers
 }
 
 # =============================================================================

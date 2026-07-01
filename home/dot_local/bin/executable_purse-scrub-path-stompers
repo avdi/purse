@@ -1,0 +1,34 @@
+#!/usr/bin/env bash
+# purse-scrub-path-stompers — remove rogue PATH lines that tool installers
+# inject into shell init files, which re-bury the purse shims dir behind
+# ~/.local/bin and break devcontainer shim dispatch.
+#
+# Safe to run at any time; idempotent. Called automatically by
+# purse-outfit-agents after codebase-memory-mcp install -y.
+#
+# Known offenders:
+#   codebase-memory-mcp  → appends to ~/.bashrc
+#   Antigravity CLI      → appends to ~/.bashrc and ~/.profile
+#
+# Pattern matched: lines of the form
+#   export PATH="$HOME/.local/bin:$PATH"   (or variations)
+
+set -euo pipefail
+
+readonly ROGUE_PATH_PATTERN='^export PATH=.*\.local/bin.*PATH'
+
+scrub_file() {
+  local file="$1"
+  [ -f "$file" ] || return 0
+  local before after
+  before=$(grep -c "$ROGUE_PATH_PATTERN" "$file" 2>/dev/null || true)
+  [ "$before" -gt 0 ] || { echo "  $file — clean"; return 0; }
+  sed -i "/$ROGUE_PATH_PATTERN/d" "$file"
+  after=$(grep -c "$ROGUE_PATH_PATTERN" "$file" 2>/dev/null || true)
+  echo "  $file — removed $((before - after)) line(s)"
+}
+
+echo "purse-scrub-path-stompers: scanning shell init files..."
+scrub_file "$HOME/.bashrc"
+scrub_file "$HOME/.profile"
+echo "purse-scrub-path-stompers: done"
