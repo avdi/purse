@@ -131,6 +131,26 @@ elif command -v apt-get >/dev/null 2>&1 && have_root; then
     fi
   fi
 
+  # zoxide: apt ships a very old version (0.4.3) that lacks bash completion; install
+  # the modern release from GitHub into ~/.local/bin (which precedes /usr/bin in PATH).
+  if [ ! -f "$HOME/.local/bin/zoxide" ]; then
+    echo "→ zoxide: installing from GitHub releases..."
+    _zoxide_ver="$(curl -fsSL https://api.github.com/repos/ajeetdsouza/zoxide/releases/latest | grep '"tag_name"' | cut -d'"' -f4 | tr -d 'v')"
+    case "$(uname -m)" in
+      x86_64)  _zoxide_target="x86_64-unknown-linux-musl" ;;
+      aarch64) _zoxide_target="aarch64-unknown-linux-musl" ;;
+      armv7*)  _zoxide_target="armv7-unknown-linux-musleabihf" ;;
+      *)       _zoxide_target="" ;;
+    esac
+    if [ -n "$_zoxide_target" ]; then
+      curl -fsSL "https://github.com/ajeetdsouza/zoxide/releases/download/v${_zoxide_ver}/zoxide-${_zoxide_ver}-${_zoxide_target}.tar.gz" \
+        | tar -xz -C "$HOME/.local/bin" zoxide
+      chmod +x "$HOME/.local/bin/zoxide"
+    else
+      echo "⚠️  zoxide: unsupported arch $(uname -m) — skipping" >&2
+    fi
+  fi
+
   # uv: fast Python package manager and tool runner (not in apt — use the official installer)
   if ! command -v uv >/dev/null 2>&1; then
     echo "→ uv: installing via official installer..."

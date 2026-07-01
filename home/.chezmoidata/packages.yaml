@@ -5,7 +5,6 @@ packages:
     - direnv
     - jq          # JSON processor — required by purse-outfit-agents
     - unzip       # needed to unpack the gk (GitKraken CLI) release zip
-    - zoxide      # frecency-based directory jumper
     - fzf         # fuzzy finder — used by zoxide's zi and standalone
   # gk (GitKraken CLI) isn't packaged for apt/brew-on-Linux (brew ships it as a
   # macOS-only cask), so on Unix it's installed from GitHub releases by
