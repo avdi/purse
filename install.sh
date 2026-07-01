@@ -30,4 +30,4 @@ fi
 #                 different mount than chezmoi's temp dir.  No single temp-dir
 #                 location satisfies every target, so disable atomic writes.
 #                 Harmless on single-filesystem hosts.
-chezmoi init --apply --safe=false --source="$DOTFILES_DIR"
+chezmoi init --apply --safe=false --force --source="$DOTFILES_DIR"
