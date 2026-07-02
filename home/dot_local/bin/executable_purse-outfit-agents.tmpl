@@ -286,7 +286,39 @@ outfit_claude_plugins() {
 }
 
 # =============================================================================
-# 3. codebase-memory-mcp — download the static binary. MCP registration is
+# 3. Claude Code hooks — register the cbm-code-discovery-gate hook into
+#    ~/.claude/settings.json. It intercepts Grep/Glob PreToolUse events and
+#    injects graph context from codebase-memory-mcp via hook-augment (in-process,
+#    300 ms timeout, every failure path exits 0 — physically cannot block a call).
+#    Idempotent: removes any existing Grep|Glob entry before re-adding.
+# =============================================================================
+outfit_claude_hooks() {
+  if ! have claude || ! have jq; then
+    warn "claude or jq not found; skipping Claude hook registration"
+    return 0
+  fi
+  echo "→ Claude hooks: registering cbm-code-discovery-gate..."
+
+  local cfg="$HOME/.claude/settings.json"
+  mkdir -p "$(dirname "$cfg")"
+  jq -e . "$cfg" >/dev/null 2>&1 || echo '{}' > "$cfg"
+
+  local entry tmp
+  entry=$(jq -cn '{
+    matcher: "Grep|Glob",
+    hooks: [{"type":"command","command":"~/.claude/hooks/cbm-code-discovery-gate","timeout":5}]
+  }')
+  tmp=$(mktemp)
+  jq --argjson entry "$entry" '
+    .hooks.PreToolUse = (
+      ((.hooks.PreToolUse // []) | map(select(.matcher != "Grep|Glob")))
+      + [$entry]
+    )
+  ' "$cfg" > "$tmp" && mv "$tmp" "$cfg"
+}
+
+# =============================================================================
+# 4. codebase-memory-mcp — download the static binary. MCP registration is
 #    handled by outfit_mcp_servers above (declarative manifest), not by the
 #    binary's own `install -y` which has unwanted side-effects (PATH stomping,
 #    opinionated CLAUDE.md injection, hooks). Bump CBM_VERSION to force a
@@ -380,7 +412,7 @@ outfit_codebase_memory_mcp() {
 }
 
 # =============================================================================
-# 4. spec-kit (specify CLI) — Spec-Driven Development toolkit, installed as a
+# 5. spec-kit (specify CLI) — Spec-Driven Development toolkit, installed as a
 #    uv tool. Moved here from run_onchange_install-packages so initial setup
 #    doesn't require uv to be available upfront.
 # =============================================================================
@@ -398,7 +430,7 @@ outfit_spec_kit() {
 }
 
 # =============================================================================
-# 5. GitKraken MCP — gk ships its own multi-client installer. `gk mcp install
+# 6. GitKraken MCP — gk ships its own multi-client installer. `gk mcp install
 #    --all` detects every installed MCP client and writes a stdio entry that
 #    runs `gk mcp`. Authentication (`gk auth login`) is only needed when the
 #    server runs, not to write the config, so this is safe non-interactively.
@@ -418,6 +450,7 @@ outfit_gitkraken_mcp() {
 # download) runs last so a network failure there can't block the cheaper steps.
 outfit_mcp_servers
 outfit_claude_plugins
+outfit_claude_hooks
 outfit_spec_kit
 outfit_gitkraken_mcp
 outfit_codebase_memory_mcp
