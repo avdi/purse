@@ -50,6 +50,8 @@ register_claude() {
   claude mcp add auggie -s user -- "$ag_cmd" "${ag_args[@]}"
   claude mcp remove ripgrep -s user >/dev/null 2>&1 || true
   claude mcp add ripgrep -s user -- "$rg_cmd" "${rg_args[@]}"
+  claude mcp remove codebase-memory-mcp -s user >/dev/null 2>&1 || true
+  claude mcp add codebase-memory-mcp -s user -- "$cbm_cmd" "${cbm_args[@]}"
 }
 
 register_codex() {
@@ -61,6 +63,8 @@ register_codex() {
   codex mcp add auggie -- "$ag_cmd" "${ag_args[@]}"
   codex mcp remove ripgrep >/dev/null 2>&1 || true
   codex mcp add ripgrep -- "$rg_cmd" "${rg_args[@]}"
+  codex mcp remove codebase-memory-mcp >/dev/null 2>&1 || true
+  codex mcp add codebase-memory-mcp -- "$cbm_cmd" "${cbm_args[@]}"
 }
 
 register_copilot() {
@@ -73,6 +77,8 @@ register_copilot() {
   copilot mcp add auggie -- "$ag_cmd" "${ag_args[@]}"
   copilot mcp remove ripgrep >/dev/null 2>&1 || true
   copilot mcp add ripgrep -- "$rg_cmd" "${rg_args[@]}"
+  copilot mcp remove codebase-memory-mcp >/dev/null 2>&1 || true
+  copilot mcp add codebase-memory-mcp -- "$cbm_cmd" "${cbm_args[@]}"
 }
 
 register_devin() {
@@ -93,6 +99,10 @@ register_devin() {
   rg=$(jq -n --arg cmd "$rg_cmd" --argjson args "$rg_args_json" \
         '{command:$cmd, args:$args}')
   jq_upsert "$cfg" mcpServers ripgrep "$rg"
+  local cbm
+  cbm=$(jq -n --arg cmd "$cbm_cmd" --argjson args "$cbm_args_json" \
+        '{command:$cmd, args:$args}')
+  jq_upsert "$cfg" mcpServers codebase-memory-mcp "$cbm"
 }
 
 register_auggie() {
@@ -107,6 +117,10 @@ register_auggie() {
   rg=$(jq -cn --arg cmd "$rg_cmd" --argjson args "$rg_args_json" \
         '{command:$cmd, args:$args}')
   auggie mcp add-json --replace -- ripgrep "$rg"
+  local cbm
+  cbm=$(jq -cn --arg cmd "$cbm_cmd" --argjson args "$cbm_args_json" \
+        '{command:$cmd, args:$args}')
+  auggie mcp add-json --replace -- codebase-memory-mcp "$cbm"
 }
 
 register_vscode() {
@@ -125,6 +139,10 @@ register_vscode() {
   rg=$(jq -n --arg cmd "$rg_cmd" --argjson args "$rg_args_json" \
         '{name:"ripgrep", command:$cmd, args:$args}')
   code --add-mcp "$rg"
+  local cbm
+  cbm=$(jq -n --arg cmd "$cbm_cmd" --argjson args "$cbm_args_json" \
+        '{name:"codebase-memory-mcp", command:$cmd, args:$args}')
+  code --add-mcp "$cbm"
 }
 
 register_cursor() {
@@ -143,6 +161,10 @@ register_cursor() {
   rg=$(jq -n --arg cmd "$rg_cmd" --argjson args "$rg_args_json" \
         '{command:$cmd, args:$args}')
   jq_upsert "$cfg" mcpServers ripgrep "$rg"
+  local cbm
+  cbm=$(jq -n --arg cmd "$cbm_cmd" --argjson args "$cbm_args_json" \
+        '{command:$cmd, args:$args}')
+  jq_upsert "$cfg" mcpServers codebase-memory-mcp "$cbm"
 }
 
 register_opencode() {
@@ -161,6 +183,10 @@ register_opencode() {
   rg=$(jq -n --arg cmd "$rg_cmd" --argjson args "$rg_args_json" \
         '{type:"local", enabled:true, command:([$cmd] + $args)}')
   jq_upsert "$cfg" mcp ripgrep "$rg"
+  local cbm
+  cbm=$(jq -n --arg cmd "$cbm_cmd" --argjson args "$cbm_args_json" \
+        '{type:"local", enabled:true, command:([$cmd] + $args)}')
+  jq_upsert "$cfg" mcp codebase-memory-mcp "$cbm"
 }
 
 # Antigravity (agy): global config is ~/.gemini/config/mcp_config.json and HTTP
@@ -181,6 +207,10 @@ register_antigravity() {
   rg=$(jq -n --arg cmd "$rg_cmd" --argjson args "$rg_args_json" \
         '{command:$cmd, args:$args}')
   jq_upsert "$cfg" mcpServers ripgrep "$rg"
+  local cbm
+  cbm=$(jq -n --arg cmd "$cbm_cmd" --argjson args "$cbm_args_json" \
+        '{command:$cmd, args:$args}')
+  jq_upsert "$cfg" mcpServers codebase-memory-mcp "$cbm"
 }
 
 # =============================================================================
@@ -206,6 +236,9 @@ outfit_mcp_servers() {
   local rg_cmd='{{ (index .mcpServers "ripgrep").command }}'
   local rg_args=({{ range (index .mcpServers "ripgrep").args }}'{{ . }}' {{ end }})
   local rg_args_json='{{ (index .mcpServers "ripgrep").args | toJson }}'
+  local cbm_cmd='{{ (index .mcpServers "codebase-memory-mcp").command }}'
+  local cbm_args=({{ range (index .mcpServers "codebase-memory-mcp").args }}'{{ . }}' {{ end }})
+  local cbm_args_json='{{ (index .mcpServers "codebase-memory-mcp").args | toJson }}'
 
   # Literal env-var reference strings (NOT expanded here — each agent expands
   # them at runtime). Syntax differs per agent.
@@ -253,10 +286,11 @@ outfit_claude_plugins() {
 }
 
 # =============================================================================
-# 3. codebase-memory-mcp — a single static binary that ships its own multi-agent
-#    installer (`install -y`): it auto-detects every installed coding agent and
-#    wires up the MCP entry, instruction files, and pre-tool hooks for each.
-#    Bump CBM_VERSION to force a reinstall.
+# 3. codebase-memory-mcp — download the static binary. MCP registration is
+#    handled by outfit_mcp_servers above (declarative manifest), not by the
+#    binary's own `install -y` which has unwanted side-effects (PATH stomping,
+#    opinionated CLAUDE.md injection, hooks). Bump CBM_VERSION to force a
+#    reinstall of the binary.
 #
 #    Linux uses the fully-static "-portable" asset; the standard linux build
 #    dynamically links glibc 2.38+ and breaks on older distros. macOS has no
@@ -343,25 +377,6 @@ outfit_codebase_memory_mcp() {
   else
     echo "→ codebase-memory-mcp: v${CBM_VERSION} already installed"
   fi
-
-  # Auto-configure every installed agent. Idempotent; -y = non-interactive.
-  #
-  # `install -y` does the following for each detected agent:
-  #   - Registers codebase-memory-mcp as an MCP stdio server in the agent's
-  #     config (e.g. ~/.claude/settings.json, ~/.augment/settings.json)
-  #   - Installs Claude hooks into ~/.claude/hooks/:
-  #       cbm-code-discovery-gate  (PreToolUse — augments graph context)
-  #       cbm-session-reminder     (SessionStart — Code Discovery Protocol reminder)
-  #   - Writes a skill file at ~/.claude/skills/codebase-memory/SKILL.md
-  #
-  # NOTE: this binary appends `export PATH="~/.local/bin:$PATH"` directly to
-  # ~/.bashrc as a side-effect. env.sh already owns PATH setup correctly, so
-  # that line should be removed after each run — it is both redundant and
-  # harmful because it re-buries the purse shims dir behind ~/.local/bin.
-  echo "→ codebase-memory-mcp: configuring agents..."
-  "$BINARY" install -y
-
-  purse-scrub-path-stompers
 }
 
 # =============================================================================
@@ -406,6 +421,11 @@ outfit_claude_plugins
 outfit_spec_kit
 outfit_gitkraken_mcp
 outfit_codebase_memory_mcp
+
+# Scrub any PATH lines injected into ~/.bashrc / ~/.profile by tool installers
+# (known offenders: antigravity CLI). env.sh owns PATH setup; duplicates here
+# re-bury the purse shims dir behind ~/.local/bin.
+purse-scrub-path-stompers
 
 echo
 echo "✅ Agents outfitted: MCP servers, Claude plugins, spec-kit, GitKraken MCP, codebase-memory-mcp."

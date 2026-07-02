@@ -42,7 +42,7 @@ every AI agent present on the machine.
   — the installer. It's a **manually-invoked** step (not run on `chezmoi apply`),
   run after `purse-install-agents`, because alongside MCP registration it also
   installs Claude plugins, registers the **GitKraken MCP** server (`gk mcp install
-  --all`), and installs the `codebase-memory-mcp` binary — together too slow
+  --all`), and downloads the `codebase-memory-mcp` binary — together too slow
   to run inline. It only touches agents whose CLI/config is actually detected, and
   is idempotent (safe to re-run). The end-of-apply reminder (`run_after_show-setup-reminders`)
   nudges you to run it.
@@ -83,12 +83,11 @@ has touched PATH.
 `export PATH="$HOME/.local/bin:$PATH"` directly to `~/.bashrc` or `~/.profile`
 as a side-effect of their install step. This re-buries the purse shims behind
 `~/.local/bin` and breaks `dc up` config injection. Confirmed offenders so far:
-`codebase-memory-mcp` (writes to `~/.bashrc`), Antigravity CLI (writes to both
-`~/.bashrc` and `~/.profile`).
+Antigravity CLI (writes to both `~/.bashrc` and `~/.profile`).
 
-`purse-outfit-agents` automatically scrubs these lines from both files after
-running the codebase-memory-mcp installer. If the shim ever stops winning again,
-check both files for new installer-injected PATH lines matching
+`purse-outfit-agents` automatically scrubs these lines from both files at the
+end of its run. If the shim ever stops winning again, check both files for
+new installer-injected PATH lines matching
 `^export PATH=.*\.local/bin.*PATH` and add them to the scrub loop (or just
 re-run `purse-outfit-agents`).
 

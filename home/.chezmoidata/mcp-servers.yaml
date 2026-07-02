@@ -28,6 +28,12 @@ mcpServers:
     command: npx
     args: ["-y", "mcp-ripgrep@latest"]
     requiresEnv: []
+  codebase-memory-mcp:
+    description: "Codebase knowledge graph MCP"
+    transport: stdio
+    command: codebase-memory-mcp
+    args: []
+    requiresEnv: []
 
 # Agents the installer will attempt to configure (only those whose CLI/config is
 # detected on the machine are actually touched).

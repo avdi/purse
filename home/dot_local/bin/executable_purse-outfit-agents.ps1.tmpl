@@ -1,19 +1,18 @@
 {{- if eq .chezmoi.os "windows" -}}
 # Outfit the installed AI agents (Windows): register the GitKraken MCP server
-# and set up codebase-memory-mcp.
+# and download the codebase-memory-mcp binary.
 #
 # chezmoi installs this to ~/.local/bin/purse-outfit-agents.ps1.
 #
 # Run manually, after purse-install-agents.ps1. On Windows the agent-outfitting
-# steps are the GitKraken MCP server (`gk mcp install --all`) and
-# codebase-memory-mcp; the MCP-server shortlist and Claude plugin steps in the
-# Unix purse-outfit-agents are not wired up on Windows.
+# steps are the GitKraken MCP server (`gk mcp install --all`) and downloading
+# the codebase-memory-mcp binary. Full declarative MCP-server shortlist
+# registration (as done in the Unix purse-outfit-agents) is not yet wired up
+# on Windows.
 #
-# codebase-memory-mcp is a single static binary that ships its own multi-agent
-# installer: `codebase-memory-mcp install -y` auto-detects every installed
-# coding agent (Claude Code, Codex, Gemini CLI, Zed, OpenCode, Antigravity,
-# VS Code, ...) and wires up the MCP entry, instruction files, and pre-tool
-# hooks for each.
+# codebase-memory-mcp is registered as an MCP server by the declarative manifest
+# (mcp-servers.yaml), not by its own `install -y` which has unwanted side-effects
+# (PATH stomping, opinionated CLAUDE.md injection).
 #
 # Bump $CbmVersion to force a reinstall. Re-running is safe (idempotent).
 
@@ -92,10 +91,6 @@ if ($UserPath -notlike "*$InstallDir*") {
     Write-Host "-> codebase-memory-mcp: added $InstallDir to user PATH"
 }
 
-# Auto-configure every installed agent. Idempotent; -y = non-interactive.
-Write-Host "-> codebase-memory-mcp: configuring agents..." -ForegroundColor Cyan
-& $Dest install -y
-
 # GitKraken MCP -- gk ships its own multi-client installer. `gk mcp install
 # --all` detects every installed MCP client and writes a stdio entry that runs
 # `gk mcp`. Auth (`gk auth login`) is only needed when the server runs, not to
@@ -112,5 +107,5 @@ if (Get-Command gk -ErrorAction SilentlyContinue) {
 }
 
 Write-Host ""
-Write-Host "Agents outfitted: GitKraken MCP, codebase-memory-mcp." -ForegroundColor Green
+Write-Host "Agents outfitted: GitKraken MCP, codebase-memory-mcp binary installed." -ForegroundColor Green
 {{- end -}}
