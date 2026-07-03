@@ -141,7 +141,7 @@ fi
 # where the toolchain lives (ruby, DBs, etc.), not on the WSL host.
 #
 # Second argument:
-#   <branch>  — wt switch -c to a new branch
+#   <branch>  — wt switch to existing remote branch, or -c to create
 #   <number>  — GitHub issue; switch to linked PR branch or ask agent for one
 #   (omitted) — stay in the base workspace, no worktree switch
 #
@@ -184,8 +184,18 @@ work() {
   # Run wt switch inside the container, then hand off to a login shell there.
   local wt_sub=()
   case "$target" in
-    pr:*)  wt_sub=(switch "$target") ;;
-    new:*) wt_sub=(switch -c "${target#new:}") ;;
+    pr:*)
+      wt_sub=(switch "$target")
+      ;;
+    new:*)
+      local br="${target#new:}"
+      git fetch origin --prune --quiet 2>/dev/null || true
+      if git show-ref --verify --quiet "refs/remotes/origin/${br}"; then
+        wt_sub=(switch "$br")
+      else
+        wt_sub=(switch -c "$br")
+      fi
+      ;;
   esac
   dcsh -- wt "${wt_sub[@]}" -x 'bash --login'
 }
