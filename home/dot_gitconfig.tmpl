@@ -1,3 +1,11 @@
+# Machine-local overrides live in an UNMANAGED file so tools that mutate git
+# config at runtime (notably VS Code's Dev Containers extension, which injects a
+# credential.helper) don't dirty this chezmoi-managed file. It's listed in
+# .chezmoiignore, so chezmoi never sees drift there. This include comes first;
+# keys defined below in the managed config therefore win, while the local file
+# supplies anything machine-specific. Create it with `git config` or by hand.
+[include]
+	path = ~/.config/git/local.gitconfig
 [user]
 	email = avdi@avdi.codes
 	name = Avdi Grimm
