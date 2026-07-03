@@ -1,11 +1,18 @@
-# Machine-local overrides live in an UNMANAGED file so tools that mutate git
-# config at runtime (notably VS Code's Dev Containers extension, which injects a
-# credential.helper) don't dirty this chezmoi-managed file. It's listed in
-# .chezmoiignore, so chezmoi never sees drift there. This include comes first;
-# keys defined below in the managed config therefore win, while the local file
-# supplies anything machine-specific. Create it with `git config` or by hand.
-[include]
-	path = ~/.config/git/local.gitconfig
+# chezmoi-managed git config, installed at ~/.config/git/config (XDG).
+#
+# Git reads this as "global" config, in addition to ~/.gitconfig. We keep the
+# real, managed configuration here — NOT in ~/.gitconfig — so that VS Code's
+# Dev Containers extension (which injects a credential.helper into ~/.gitconfig
+# at container-attach time) mutates only the unmanaged stub and never dirties
+# anything chezmoi tracks. See run_once_setup-gitconfig-stub for the stub, and
+# .chezmoiignore where ~/.gitconfig is left unmanaged.
+#
+# Credential-helper ordering note: git aggregates credential.helper across all
+# config files, reading XDG (~/.config/git/config, this file) BEFORE ~/.gitconfig.
+# The `gh auth git-credential` helper below therefore runs first; VS Code's
+# forwarded helper (injected into the stub) acts as a fallback for containers
+# that lack their own gh/token auth. This gives correct behaviour in the "mixed"
+# case with forwarding left on (VS Code default) and no per-repo settings.
 [user]
 	email = avdi@avdi.codes
 	name = Avdi Grimm

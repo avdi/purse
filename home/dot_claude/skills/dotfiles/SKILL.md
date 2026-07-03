@@ -39,7 +39,7 @@ home/
     skills/              # Agent skills (read by Claude Code + Augment)
       dotfiles/
         SKILL.md
-  dot_gitconfig.tmpl     # ~/.gitconfig (templated)
+  dot_config/git/config.tmpl  # ~/.config/git/config (managed git config; ~/.gitconfig is an unmanaged stub)
   run_onchange_setup-ai-symlinks.sh  # Wires LLM tool symlinks
 ```
 

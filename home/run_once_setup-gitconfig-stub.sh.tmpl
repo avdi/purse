@@ -1,0 +1,42 @@
+{{- if ne .chezmoi.os "windows" -}}
+#!/bin/sh
+# chezmoi run_once: ensure ~/.gitconfig is a thin, UNMANAGED stub.
+#
+# The real, managed git config lives at ~/.config/git/config (XDG), which git
+# reads as global config. We deliberately leave ~/.gitconfig unmanaged (see
+# .chezmoiignore) so VS Code's Dev Containers extension can inject its
+# credential.helper there without ever dirtying a chezmoi-tracked file.
+#
+# For that to work the stub must EXIST: VS Code only copies the host
+# ~/.gitconfig into a container when none is present, so an existing (even
+# empty) file suppresses the copy and confines VS Code to appending its helper.
+#
+# This script also slims down a pre-flip ~/.gitconfig that still carries the
+# old fully-managed content, so existing machines transition cleanly on the
+# next apply. We detect that by the managed marker string below.
+#
+# Windows is gated out — chezmoi can't fork/exec a .sh file there; the same
+# behaviour is needed on Windows and is tracked as a .ps1 follow-up.
+
+gitconfig="$HOME/.gitconfig"
+marker="Machine-local overrides live in an UNMANAGED file"
+
+if [ -f "$gitconfig" ] && grep -q "$marker" "$gitconfig" 2>/dev/null; then
+  echo "gitconfig-stub: found pre-flip managed ~/.gitconfig, replacing with stub"
+  rm -f "$gitconfig"
+fi
+
+if [ ! -f "$gitconfig" ]; then
+  cat > "$gitconfig" <<'EOF'
+# UNMANAGED git config stub. The real, chezmoi-managed configuration lives at
+# ~/.config/git/config (XDG), which git reads as global config. This file is
+# intentionally left unmanaged (see .chezmoiignore) so tools that mutate git
+# config at runtime — notably VS Code's Dev Containers extension, which injects
+# a credential.helper — write here instead of the managed file. Machine-local
+# overrides may also be added here by hand.
+EOF
+  echo "gitconfig-stub: created stub at $gitconfig"
+else
+  echo "gitconfig-stub: ~/.gitconfig already present, leaving as-is"
+fi
+{{- end }}
