@@ -409,6 +409,9 @@ outfit_codebase_memory_mcp() {
   else
     echo "→ codebase-memory-mcp: v${CBM_VERSION} already installed"
   fi
+
+  echo "→ codebase-memory-mcp: enabling auto-index..."
+  "$BINARY" config set auto_index true
 }
 
 # =============================================================================

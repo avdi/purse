@@ -83,6 +83,9 @@ if ((Get-InstalledVersion) -ne $CbmVersion) {
     Write-Host "-> codebase-memory-mcp: v$CbmVersion already installed"
 }
 
+Write-Host "-> codebase-memory-mcp: enabling auto-index..."
+& $Dest config set auto_index true
+
 # Ensure the install dir is on the user PATH.
 $UserPath = [Environment]::GetEnvironmentVariable('PATH', 'User')
 if ($UserPath -notlike "*$InstallDir*") {
