@@ -166,6 +166,14 @@ work() {
     target="new:${second}"
   fi
 
+  # z cd's without firing direnv's prompt hook, so project-local vars (notably
+  # DEVCONTAINER_CONFIG) aren't in this function's env yet. Load them explicitly
+  # so dc up brings up the right profile — don't rely on dc's own direnv export,
+  # which diffs against whatever stale state the interactive shell carried in.
+  if command -v direnv >/dev/null 2>&1; then
+    eval "$(direnv export bash 2>/dev/null)" || true
+  fi
+
   dc up || return 1
 
   if [[ -z "$target" ]]; then
