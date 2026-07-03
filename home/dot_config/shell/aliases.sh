@@ -205,11 +205,18 @@ _work_switch_for_issue() {
   echo "work: no PR found for issue #${issue_num}: ${issue_title}" >&2
 
   prompt="Suggest a git branch name for GitHub issue #${issue_num}: ${issue_title}. Use lowercase with hyphens, optionally prefixed with the issue number (e.g. '42-fix-the-bug'). Reply with only the branch name, nothing else."
-  branch=$(purse-default-agent -p "$prompt" 2>/dev/null \
-    | sed 's/\x1b\[[0-9;]*m//g' | tr -d '\r' | grep -v '^\s*$' | tail -1)
+
+  # Only trust the agent's answer if it actually exited 0; a piped command
+  # substitution would otherwise swallow failures (e.g. claude's "Not logged
+  # in" message on stdout) and use them as the branch name.
+  local raw
+  if raw=$(purse-default-agent -p "$prompt" 2>/dev/null); then
+    branch=$(printf '%s\n' "$raw" | sed 's/\x1b\[[0-9;]*m//g' | tr -d '\r' \
+      | grep -v '^[[:space:]]*$' | tail -1)
+  fi
 
   if [[ -z "$branch" ]]; then
-    read -r -p "Branch name: " branch </dev/tty
+    read -r -p "Branch name for issue #${issue_num}: " branch </dev/tty
   fi
 
   [[ -n "$branch" ]] || { echo "work: no branch name given" >&2; return 1; }
