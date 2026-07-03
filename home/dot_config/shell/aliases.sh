@@ -190,7 +190,8 @@ work() {
     new:*)
       local br="${target#new:}"
       git fetch origin --prune --quiet 2>/dev/null || true
-      if git show-ref --verify --quiet "refs/remotes/origin/${br}"; then
+      if git show-ref --verify --quiet "refs/remotes/origin/${br}" \
+         || git show-ref --verify --quiet "refs/heads/${br}"; then
         wt_sub=(switch "$br")
       else
         wt_sub=(switch -c "$br")
