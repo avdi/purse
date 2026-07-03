@@ -132,6 +132,59 @@ if command -v fzf >/dev/null 2>&1; then
   unset _fzf_init
 fi
 
+# work <project> [branch-or-issue#]  (alias: wb)
+#
+# z to the project dir, optionally switch/create a worktree branch, then
+# ensure a devcontainer is running (dc up) and shell into it (dcsh).
+#
+# Second argument:
+#   <branch>  — wt switch -c to a new branch
+#   <number>  — GitHub issue; switch to linked PR branch or ask agent for one
+#   (omitted) — stay in the base workspace, no worktree switch
+work() {
+  local project="${1:?usage: work <project> [branch-or-issue]}"
+  local arg="${2:-}"
+
+  z "$project" || return 1
+
+  if [[ -z "$arg" ]]; then
+    : # base workspace — no worktree switch
+  elif [[ "$arg" =~ ^[0-9]+$ ]]; then
+    _work_switch_for_issue "$arg" || return 1
+  else
+    wt switch -c "$arg" || return 1
+  fi
+
+  dc up && dcsh
+}
+
+_work_switch_for_issue() {
+  local issue_num="$1"
+  local pr_num branch issue_title prompt
+
+  pr_num=$(gh api "repos/{owner}/{repo}/issues/${issue_num}/timeline" \
+    --jq '[.[] | select(.event == "cross-referenced" and .source.type == "pullrequest") | .source.issue.number] | first // empty' \
+    2>/dev/null)
+
+  if [[ -n "$pr_num" ]]; then
+    wt switch "pr:${pr_num}"
+  else
+    issue_title=$(gh issue view "$issue_num" --json title --jq '.title' 2>/dev/null) \
+      || issue_title="issue #${issue_num}"
+    prompt="Suggest a git branch name for GitHub issue #${issue_num}: ${issue_title}. Use lowercase with hyphens, optionally prefixed with the issue number (e.g. '42-fix-the-bug'). Reply with only the branch name, nothing else."
+    branch=$(purse-default-agent -p "$prompt") || return 1
+    branch="${branch//[[:space:]]/-}"
+    wt switch -c "$branch"
+  fi
+}
+
+alias wb=work
+
+# wt — git worktree manager shell integration (enables directory switching)
+if command -v wt >/dev/null 2>&1; then
+  eval "$(command wt config shell init bash 2>/dev/null)" 2>/dev/null || true
+fi
+
 # zoxide — frecency-based directory jumper; replaces cd with 'z' / 'zi'
 # Not initialized in devcontainers (not installed there by default), which is
 # intentional: single-project ephemeral environments get little value from a

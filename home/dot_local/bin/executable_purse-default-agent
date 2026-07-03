@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+# purse-default-agent — invoke the preferred AI agent CLI.
+#
+# Defaults to claude; override with $AGENT.
+#
+# Usage: purse-default-agent [<agent-flags>...] [<prompt>]
+#   purse-default-agent -p "Suggest a branch name for issue #42"
+#
+# The $AGENT variable should name an agent CLI that accepts the same flags
+# as claude (e.g. -p for non-interactive/print mode).
+
+exec "${AGENT:-claude}" "$@"
