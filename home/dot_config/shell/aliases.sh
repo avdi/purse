@@ -168,14 +168,25 @@ _work_switch_for_issue() {
 
   if [[ -n "$pr_num" ]]; then
     wt switch "pr:${pr_num}"
-  else
-    issue_title=$(gh issue view "$issue_num" --json title --jq '.title' 2>/dev/null) \
-      || issue_title="issue #${issue_num}"
-    prompt="Suggest a git branch name for GitHub issue #${issue_num}: ${issue_title}. Use lowercase with hyphens, optionally prefixed with the issue number (e.g. '42-fix-the-bug'). Reply with only the branch name, nothing else."
-    branch=$(purse-default-agent -p "$prompt") || return 1
-    branch="${branch//[[:space:]]/-}"
-    wt switch -c "$branch"
+    return
   fi
+
+  issue_title=$(gh issue view "$issue_num" --json title --jq '.title' 2>/dev/null) \
+    || issue_title="issue #${issue_num}"
+
+  echo "work: no PR found for issue #${issue_num}: ${issue_title}" >&2
+
+  prompt="Suggest a git branch name for GitHub issue #${issue_num}: ${issue_title}. Use lowercase with hyphens, optionally prefixed with the issue number (e.g. '42-fix-the-bug'). Reply with only the branch name, nothing else."
+  branch=$(purse-default-agent -p "$prompt" 2>/dev/null \
+    | sed 's/\x1b\[[0-9;]*m//g' | tr -d '\r' | grep -v '^\s*$' | tail -1)
+
+  if [[ -z "$branch" ]]; then
+    read -r -p "Branch name: " branch </dev/tty
+  fi
+
+  [[ -n "$branch" ]] || { echo "work: no branch name given" >&2; return 1; }
+  branch="${branch//[[:space:]]/-}"
+  wt switch -c "$branch"
 }
 
 alias wb=work
