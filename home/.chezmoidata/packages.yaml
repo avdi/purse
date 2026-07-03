@@ -14,7 +14,8 @@ packages:
   # apt covers: ripgrep, direnv, jq, fzf
   # NodeSource covers: node; npm covers: devcontainer; GitHub releases cover: vscli, zoxide, uv
   # source builds cover: chruby, ruby-install
-  # git is handled separately (PPA on Ubuntu, brew otherwise) by purse-install-extras.
+  # git is handled separately by purse-install-extras: PPA on Ubuntu, built from
+  # source on other apt+root systems (e.g. Debian), brew when there's no root.
   brew_linux_only:
     - yq          # YAML processor (mikefarah) — not in apt or any other Linux installer
     - worktrunk   # git worktree manager — not in apt or any other Linux installer

@@ -29,10 +29,20 @@ echo "→ dbr ensure (start/update host daemon)..."
 dbr ensure --host 127.0.0.1
 
 # ---- git 2.48+ (for worktree.useRelativePaths) ------------------------------
-# On Ubuntu+apt: inject the git-core PPA key/source directly — no
-# add-apt-repository, which drags in ~35 heavy dependencies and breaks in
-# containers. On all other systems, brew (below) provides a current git since
-# git is already in packages.brew.
+# worktree.useRelativePaths sets extensions.relativeworktrees on the repo,
+# which older git refuses to parse — so a worktree created by a modern host git
+# can't be read by an old container git. This upgrades any git <2.48.
+#
+#   Ubuntu + apt + root  → inject the git-core PPA key/source directly (no
+#                          add-apt-repository, which drags in ~35 heavy deps and
+#                          breaks in containers).
+#   other apt + root     → build from source with the SYSTEM gcc (Debian's
+#                          backports has no newer git, and brew would compile an
+#                          entire gcc toolchain first — ~1min from source here
+#                          vs. the heat death of the universe via brew).
+#   otherwise            → brew (below) provides a current git.
+
+GIT_SOURCE_VERSION="2.51.0"
 
 _git_version_xy() { git --version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+' | head -1; }
 
@@ -41,13 +51,29 @@ _git_needs_upgrade() {
   [ -z "$_v" ] || [ "$_maj" -lt 2 ] || { [ "$_maj" -eq 2 ] && [ "$_min" -lt 48 ]; }
 }
 
+# Build git from source with the system toolchain, install to /usr/local.
+# NO_GETTEXT drops i18n (msgfmt needs libselinux, often broken in slim images);
+# NO_TCLTK drops the Tcl/Tk GUI. Neither is needed for CLI/worktree use.
+_git_build_from_source() {
+  _apt_root apt-get install -y -qq \
+    build-essential libz-dev libssl-dev libcurl4-openssl-dev libexpat1-dev
+  _tmp="$(mktemp -d)"
+  echo "→ git: building ${GIT_SOURCE_VERSION} from source (system gcc) in ${_tmp}..."
+  curl -fsSL "https://github.com/git/git/archive/refs/tags/v${GIT_SOURCE_VERSION}.tar.gz" \
+    | tar xz -C "$_tmp" --strip-components 1
+  make -C "$_tmp" -j"$(nproc)" prefix=/usr/local NO_TCLTK=1 NO_GETTEXT=1 all
+  _apt_root make -C "$_tmp" prefix=/usr/local NO_TCLTK=1 NO_GETTEXT=1 install
+  rm -rf "$_tmp"
+  hash -r
+}
+
 if _git_needs_upgrade; then
   _distro_id="$(. /etc/os-release 2>/dev/null && printf '%s' "${ID:-}")"
   _distro_codename="$(. /etc/os-release 2>/dev/null && printf '%s' "${VERSION_CODENAME:-${UBUNTU_CODENAME:-}}")"
-  if [ "$_distro_id" = "ubuntu" ] && command -v apt-get >/dev/null 2>&1 \
-      && [ -n "$_distro_codename" ] \
-      && { [ "$(id -u)" -eq 0 ] || command -v sudo >/dev/null 2>&1; }; then
-    _apt_root() { [ "$(id -u)" -eq 0 ] && "$@" || sudo "$@"; }
+  _have_apt_root="$( { command -v apt-get >/dev/null 2>&1 && { [ "$(id -u)" -eq 0 ] || command -v sudo >/dev/null 2>&1; }; } && echo yes || echo no)"
+  _apt_root() { [ "$(id -u)" -eq 0 ] && "$@" || sudo "$@"; }
+  if [ "$_distro_id" = "ubuntu" ] && [ "$_have_apt_root" = "yes" ] \
+      && [ -n "$_distro_codename" ]; then
     echo "→ git: adding git-core PPA for Ubuntu ${_distro_codename}..."
     _apt_root mkdir -p /etc/apt/keyrings
     curl -fsSL "https://keyserver.ubuntu.com/pks/lookup?op=get&search=0xE1DD270288B4E6030699E45FA1715D88E1DF1F24" \
@@ -57,8 +83,11 @@ if _git_needs_upgrade; then
       | _apt_root tee /etc/apt/sources.list.d/git-core-ppa.list > /dev/null
     _apt_root apt-get update -qq
     _apt_root apt-get install -y git
+  elif [ "$_have_apt_root" = "yes" ]; then
+    _git_build_from_source
+    echo "→ git: now $(_git_version_xy) (built from source)"
   else
-    echo "→ git: not Ubuntu or no apt/root — brew will provide git 2.48+ below"
+    echo "→ git: no apt/root — brew will provide git 2.48+ below"
   fi
 else
   echo "→ git: $(_git_version_xy) already ≥2.48"
@@ -68,15 +97,16 @@ fi
 # Three strategies, depending on platform:
 #
 #   macOS           → full brew list (brew is the only package manager)
-#   Linux, apt+root → brew_linux_only (yq, worktrunk + git if still needed);
-#                     apt/NodeSource/GitHub-releases already cover the rest
+#   Linux, apt+root → brew_linux_only (yq, worktrunk); apt/NodeSource/
+#                     GitHub-releases already cover the rest, and git was
+#                     handled above (PPA or from source)
 #   Linux, no root  → full brew list (apt can't be used at all)
 #
 # A home-dir brew prefix (~/.homebrew) can't use pre-built bottles, so
 # everything builds from source — keep the Linux+root list minimal.
 #
 # brew packages (macOS / Linux no-root): {{ .packages.brew | join ", " }}
-# brew packages (Linux, apt available):  {{ .packages.brew_linux_only | join ", " }} + git if <2.48
+# brew packages (Linux, apt available):  {{ .packages.brew_linux_only | join ", " }}
 
 find_brew() {
   if command -v brew >/dev/null 2>&1; then command -v brew; return; fi
@@ -109,9 +139,9 @@ if [ "$(uname)" = "Darwin" ]; then
   brew install {{ .packages.brew | join " " }}
 elif command -v apt-get >/dev/null 2>&1 \
     && { [ "$(id -u)" -eq 0 ] || command -v sudo >/dev/null 2>&1; }; then
-  # Linux with apt+root: only install what apt/NodeSource/GitHub-releases don't cover.
+  # Linux with apt+root: only install what apt/NodeSource/GitHub-releases don't
+  # cover. git is already handled above (PPA or built from source).
   _brew_pkgs=( {{ .packages.brew_linux_only | join " " }} )
-  _git_needs_upgrade && _brew_pkgs+=(git)
   echo "→ brew (Linux, apt available): ${_brew_pkgs[*]}"
   brew install "${_brew_pkgs[@]}"
 else

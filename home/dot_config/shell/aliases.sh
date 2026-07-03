@@ -134,34 +134,52 @@ fi
 
 # work <project> [branch-or-issue#]  (alias: wb)
 #
-# z to the project dir, optionally switch/create a worktree branch, then
-# ensure a devcontainer is running (dc up) and shell into it (dcsh).
+# z to the project dir, ensure a devcontainer is running (dc up), shell into
+# it (dcsh), and — inside the container — switch/create the worktree (wt).
+#
+# wt runs inside the container (not the host) so its pre-start hooks execute
+# where the toolchain lives (ruby, DBs, etc.), not on the WSL host.
 #
 # Second argument:
 #   <branch>  — wt switch -c to a new branch
 #   <number>  — GitHub issue; switch to linked PR branch or ask agent for one
 #   (omitted) — stay in the base workspace, no worktree switch
+#
+# work <issue#>  — single numeric arg: resolve the repo from GitHub first.
 work() {
   local first="${1:?usage: work <project> [branch-or-issue] | work <issue#>}"
   local second="${2:-}"
+  local target=""
 
   if [[ -z "$second" && "$first" =~ ^[0-9]+$ ]]; then
-    # Single issue# — resolve repo from GitHub then proceed
     local project
     project=$(_work_project_for_issue "$first") || return 1
     z "$project" || return 1
-    _work_switch_for_issue "$first" || return 1
+    target=$(_work_resolve_issue_target "$first") || return 1
   elif [[ -z "$second" ]]; then
     z "$first" || return 1
   elif [[ "$second" =~ ^[0-9]+$ ]]; then
     z "$first" || return 1
-    _work_switch_for_issue "$second" || return 1
+    target=$(_work_resolve_issue_target "$second") || return 1
   else
     z "$first" || return 1
-    wt switch -c "$second" || return 1
+    target="new:${second}"
   fi
 
-  dc up && dcsh
+  dc up || return 1
+
+  if [[ -z "$target" ]]; then
+    dcsh
+    return
+  fi
+
+  # Run wt switch inside the container, then hand off to a login shell there.
+  local wt_sub=()
+  case "$target" in
+    pr:*)  wt_sub=(switch "$target") ;;
+    new:*) wt_sub=(switch -c "${target#new:}") ;;
+  esac
+  dcsh -- wt "${wt_sub[@]}" -x 'bash --login'
 }
 
 _work_project_for_issue() {
@@ -186,7 +204,9 @@ _work_project_for_issue() {
   echo "$repo"
 }
 
-_work_switch_for_issue() {
+# Resolve a wt switch target for an issue (run on the host, where gh is
+# authenticated). Echoes either "pr:<N>" or "new:<branch>" on stdout.
+_work_resolve_issue_target() {
   local issue_num="$1"
   local pr_num branch issue_title prompt
 
@@ -195,7 +215,7 @@ _work_switch_for_issue() {
     2>/dev/null)
 
   if [[ -n "$pr_num" ]]; then
-    wt switch "pr:${pr_num}"
+    printf 'pr:%s\n' "$pr_num"
     return
   fi
 
@@ -221,7 +241,7 @@ _work_switch_for_issue() {
 
   [[ -n "$branch" ]] || { echo "work: no branch name given" >&2; return 1; }
   branch="${branch//[[:space:]]/-}"
-  wt switch -c "$branch"
+  printf 'new:%s\n' "$branch"
 }
 
 alias wb=work
