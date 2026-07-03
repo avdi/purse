@@ -142,20 +142,48 @@ fi
 #   <number>  — GitHub issue; switch to linked PR branch or ask agent for one
 #   (omitted) — stay in the base workspace, no worktree switch
 work() {
-  local project="${1:?usage: work <project> [branch-or-issue]}"
-  local arg="${2:-}"
+  local first="${1:?usage: work <project> [branch-or-issue] | work <issue#>}"
+  local second="${2:-}"
 
-  z "$project" || return 1
-
-  if [[ -z "$arg" ]]; then
-    : # base workspace — no worktree switch
-  elif [[ "$arg" =~ ^[0-9]+$ ]]; then
-    _work_switch_for_issue "$arg" || return 1
+  if [[ -z "$second" && "$first" =~ ^[0-9]+$ ]]; then
+    # Single issue# — resolve repo from GitHub then proceed
+    local project
+    project=$(_work_project_for_issue "$first") || return 1
+    z "$project" || return 1
+    _work_switch_for_issue "$first" || return 1
+  elif [[ -z "$second" ]]; then
+    z "$first" || return 1
+  elif [[ "$second" =~ ^[0-9]+$ ]]; then
+    z "$first" || return 1
+    _work_switch_for_issue "$second" || return 1
   else
-    wt switch -c "$arg" || return 1
+    z "$first" || return 1
+    wt switch -c "$second" || return 1
   fi
 
   dc up && dcsh
+}
+
+_work_project_for_issue() {
+  local issue_num="$1"
+  local repo
+
+  # Search repos where the user is assignee or author, filter for exact number match
+  for flag in "--assignee @me" "--author @me"; do
+    # shellcheck disable=SC2086
+    repo=$(gh search issues "$issue_num" $flag \
+      --json repository,number --limit 50 \
+      --jq "[.[] | select(.number == ${issue_num})] | .[0].repository.name // empty" \
+      2>/dev/null)
+    [[ -n "$repo" ]] && break
+  done
+
+  if [[ -z "$repo" ]]; then
+    echo "work: cannot find issue #${issue_num} in your GitHub repos" >&2
+    return 1
+  fi
+
+  echo "$repo"
 }
 
 _work_switch_for_issue() {
