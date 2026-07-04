@@ -1,0 +1,12 @@
+# Declarative global-skills shortlist, installed into every present agent by
+# purse-outfit-agents via `npx skills add ... -g -y`.
+#
+# Each entry installs one skill from the given source repo. The `skill` field
+# maps to the --skill flag; omit it (or use '*') to install all skills from
+# the repo.
+#
+# Add entries here and re-run purse-outfit-agents to propagate.
+globalSkills:
+  - source: "https://github.com/vercel-labs/skills"
+    skill: "find-skills"
+    description: "Helps agents discover and install skills from the ecosystem"

@@ -449,7 +449,26 @@ outfit_skills_ref() {
 }
 
 # =============================================================================
-# 7. GitKraken MCP — gk ships its own multi-client installer. `gk mcp install
+# 7. Global skills — install the declarative shortlist from
+#    .chezmoidata/global-skills.yaml into every present agent, globally.
+#    Each entry maps to: npx skills add <source> --skill <skill> -g -y
+#    Requires node/npx; skips gracefully if absent.
+# =============================================================================
+outfit_global_skills() {
+  if ! have npx; then
+    warn "npx not found; skipping global skills installation"
+    return 0
+  fi
+  echo "→ global skills: installing shortlist..."
+  {{ range .globalSkills -}}
+  echo "  • {{ .description }} ({{ .source }}{{ if .skill }} --skill {{ .skill }}{{ end }})"
+  npx --yes skills add "{{ .source }}"{{ if .skill }} --skill "{{ .skill }}"{{ end }} -g -y \
+    || warn "skills install failed: {{ .source }}{{ if .skill }} --skill {{ .skill }}{{ end }}"
+  {{ end -}}
+}
+
+# =============================================================================
+# 8. GitKraken MCP — gk ships its own multi-client installer. `gk mcp install
 #    --all` detects every installed MCP client and writes a stdio entry that
 #    runs `gk mcp`. Authentication (`gk auth login`) is only needed when the
 #    server runs, not to write the config, so this is safe non-interactively.
@@ -472,6 +491,7 @@ outfit_claude_plugins
 outfit_claude_hooks
 outfit_spec_kit
 outfit_skills_ref
+outfit_global_skills
 outfit_gitkraken_mcp
 outfit_codebase_memory_mcp
 
@@ -481,4 +501,4 @@ outfit_codebase_memory_mcp
 purse-scrub-path-stompers
 
 echo
-echo "✅ Agents outfitted: MCP servers, Claude plugins, spec-kit, skills-ref, GitKraken MCP, codebase-memory-mcp."
+echo "✅ Agents outfitted: MCP servers, Claude plugins, spec-kit, skills-ref, global skills, GitKraken MCP, codebase-memory-mcp."
