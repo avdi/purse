@@ -106,10 +106,11 @@ register_devin() {
 }
 
 register_auggie() {
-  local gh pw
-  gh=$(jq -cn --arg url "$gh_url" --arg auth "$gh_bearer_dollar" \
-        '{type:"http", url:$url, headers:{Authorization:$auth}}')
-  auggie mcp add-json --replace -- github "$gh"
+  # auggie does not expand ${VAR} in header values, so the github HTTP MCP
+  # cannot be registered with an env-var token reference — it would send the
+  # literal string and get a 400. Auggie has built-in GitHub context, so skip it.
+  auggie mcp remove github >/dev/null 2>&1 || true
+  local pw
   pw=$(jq -cn --arg cmd "$pw_cmd" --argjson args "$pw_args_json" \
         '{command:$cmd, args:$args}')
   auggie mcp add-json --replace -- playwright "$pw"
