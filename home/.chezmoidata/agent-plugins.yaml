@@ -30,7 +30,7 @@ agentPlugins:
       agents: [claude, codex, copilot]
     - name: context7-marketplace
       source: upstash/context7
-      agents: [claude]
+      agents: [claude, codex, copilot]
 
   # Plugins to install, in `name@marketplace` form, and which agents should
   # install each one.
@@ -40,10 +40,10 @@ agentPlugins:
       agents: [claude, codex, copilot]
     - name: context7
       marketplace: context7-marketplace
-      agents: [claude]
+      agents: [claude, codex, copilot]
     - name: ralph-loop
       marketplace: claude-plugins-official
-      agents: [claude]
+      agents: [claude, codex, copilot]
     - name: claude-code-setup
       marketplace: claude-plugins-official
       agents: [claude]
