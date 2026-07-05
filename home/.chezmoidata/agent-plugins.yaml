@@ -1,0 +1,52 @@
+# Declarative manifest of agent plugin marketplaces and plugins, shared across
+# every agent that natively supports the Claude plugin/marketplace format
+# (Claude Code, Codex CLI, GitHub Copilot CLI). Each marketplace and plugin
+# declares which of those agents it should be installed into, so one plugin
+# can be Claude-only while another (e.g. superpowers) fans out to all three.
+#
+# VS Code also supports this plugin format (Preview), but only via
+# global-user settings.json — no CLI verb — so it's intentionally left
+# unmanaged here, alongside Cursor/Devin/Antigravity which don't share the
+# format at all.
+#
+# The purse-outfit-agents script renders these values inline and installs
+# them when run manually. Each agent's own runtime plugin-state file is
+# intentionally NOT managed by chezmoi, since the CLI rewrites it on every
+# install (e.g. Claude's ~/.claude/plugins/installed_plugins.json).
+agentPlugins:
+  # Agents this manifest can target; the installer only acts on entries whose
+  # CLI is actually present on the machine.
+  agents:
+    - claude
+    - codex
+    - copilot
+
+  # Marketplaces to register, and which agents should register each one.
+  # Built-in marketplaces (e.g. claude-plugins-official) are only auto-seeded
+  # on an interactive first launch, so we register them explicitly here.
+  marketplaces:
+    - name: claude-plugins-official
+      source: anthropics/claude-plugins-official
+      agents: [claude, codex, copilot]
+    - name: context7-marketplace
+      source: upstash/context7
+      agents: [claude]
+
+  # Plugins to install, in `name@marketplace` form, and which agents should
+  # install each one.
+  plugins:
+    - name: superpowers
+      marketplace: claude-plugins-official
+      agents: [claude, codex, copilot]
+    - name: context7
+      marketplace: context7-marketplace
+      agents: [claude]
+    - name: ralph-loop
+      marketplace: claude-plugins-official
+      agents: [claude]
+    - name: claude-code-setup
+      marketplace: claude-plugins-official
+      agents: [claude]
+    - name: claude-md-management
+      marketplace: claude-plugins-official
+      agents: [claude]

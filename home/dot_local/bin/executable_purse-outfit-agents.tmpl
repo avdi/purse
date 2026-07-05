@@ -1,5 +1,5 @@
 #!/bin/bash
-# Outfit the installed AI agents: register MCP servers, install Claude plugins,
+# Outfit the installed AI agents: register MCP servers, install agent plugins,
 # register the GitKraken MCP server, and set up codebase-memory-mcp.
 #
 # chezmoi installs this to ~/.local/bin/purse-outfit-agents.
@@ -15,8 +15,8 @@
 # ${GITHUB_PERSONAL_ACCESS_TOKEN}); secret values are never read or stored here.
 #
 # Declarative manifests (rendered inline by chezmoi):
-#   MCP servers    : .chezmoidata/mcp-servers.yaml  (agents: {{ .mcpAgents | join ", " }})
-#   Claude plugins : .chezmoidata/claude-plugins.yaml
+#   MCP servers   : .chezmoidata/mcp-servers.yaml   (agents: {{ .mcpAgents | join ", " }})
+#   Agent plugins : .chezmoidata/agent-plugins.yaml (agents: {{ .agentPlugins.agents | join ", " }})
 # Re-running is safe (every step is idempotent).
 
 set -euo pipefail
@@ -267,23 +267,34 @@ outfit_mcp_servers() {
 }
 
 # =============================================================================
-# 2. Claude Code plugins — register marketplaces, then install plugins. Built-in
+# 2. Agent plugins — register marketplaces, then install plugins, into every
+#    agent that natively supports the Claude plugin/marketplace format
+#    (Claude Code, Codex CLI, GitHub Copilot CLI; see .chezmoidata/agent-plugins.yaml
+#    for why VS Code/Cursor/Devin/Antigravity are excluded). Built-in
 #    marketplaces are only auto-seeded on an interactive first launch, so we
-#    register them explicitly here.
+#    register them explicitly here. Codex uses `plugin add` where
+#    Claude/Copilot use `plugin install`; otherwise the CLIs are identical.
 # =============================================================================
-outfit_claude_plugins() {
-  if ! have claude; then
-    warn "claude CLI not found; skipping plugin installation"
-    return 0
+outfit_agent_plugins() {
+  echo "→ Agent plugins: registering marketplaces and installing plugins..."
+  {{ range $agent := .agentPlugins.agents }}
+  if have {{ $agent }}; then
+    {{ range $.agentPlugins.marketplaces }}
+    {{- if has $agent .agents }}
+    echo "→ {{ $agent }} plugin marketplace add {{ .source }}"
+    {{ $agent }} plugin marketplace add "{{ .source }}" || warn "{{ $agent }} marketplace add failed: {{ .source }}"
+    {{- end }}
+    {{- end }}
+    {{ range $.agentPlugins.plugins }}
+    {{- if has $agent .agents }}
+    echo "→ {{ $agent }} plugin {{ if eq $agent "codex" }}add{{ else }}install{{ end }} {{ .name }}@{{ .marketplace }}"
+    {{ $agent }} plugin {{ if eq $agent "codex" }}add{{ else }}install{{ end }} "{{ .name }}@{{ .marketplace }}" || warn "{{ $agent }} plugin install failed: {{ .name }}@{{ .marketplace }}"
+    {{- end }}
+    {{- end }}
+  else
+    warn "{{ $agent }} CLI not found; skipping plugin installation"
   fi
-  {{ range $name, $source := .claudePlugins.marketplaces }}
-  echo "→ claude plugin marketplace add {{ $source }}"
-  claude plugin marketplace add "{{ $source }}" || warn "marketplace add failed: {{ $source }}"
-  {{- end }}
-  {{ range .claudePlugins.plugins }}
-  echo "→ claude plugin install {{ . }}"
-  claude plugin install "{{ . }}" || warn "plugin install failed: {{ . }}"
-  {{- end }}
+  {{ end }}
 }
 
 # =============================================================================
@@ -484,11 +495,11 @@ outfit_gitkraken_mcp() {
 }
 
 # --- run ---------------------------------------------------------------------
-# MCP servers, Claude plugins, and GitKraken MCP are internally resilient
+# MCP servers, agent plugins, and GitKraken MCP are internally resilient
 # (per-item `|| warn`) and run first; codebase-memory-mcp (the heavy binary
 # download) runs last so a network failure there can't block the cheaper steps.
 outfit_mcp_servers
-outfit_claude_plugins
+outfit_agent_plugins
 outfit_claude_hooks
 outfit_spec_kit
 outfit_skills_ref
@@ -502,4 +513,4 @@ outfit_codebase_memory_mcp
 purse-scrub-path-stompers
 
 echo
-echo "✅ Agents outfitted: MCP servers, Claude plugins, spec-kit, skills-ref, global skills, GitKraken MCP, codebase-memory-mcp."
+echo "✅ Agents outfitted: MCP servers, agent plugins, spec-kit, skills-ref, global skills, GitKraken MCP, codebase-memory-mcp."

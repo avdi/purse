@@ -41,7 +41,7 @@ every AI agent present on the machine.
 - `home/dot_local/bin/executable_purse-outfit-agents.tmpl` → `purse-outfit-agents`
   — the installer. It's a **manually-invoked** step (not run on `chezmoi apply`),
   run after `purse-install-agents`, because alongside MCP registration it also
-  installs Claude plugins, registers the **GitKraken MCP** server (`gk mcp install
+  installs agent plugins, registers the **GitKraken MCP** server (`gk mcp install
   --all`), and downloads the `codebase-memory-mcp` binary — together too slow
   to run inline. It only touches agents whose CLI/config is actually detected, and
   is idempotent (safe to re-run). The end-of-apply reminder (`run_after_show-setup-reminders`)
@@ -67,6 +67,23 @@ Each agent expands them from the shell environment at runtime. To add a server,
 edit the manifest; do not hand-edit per-agent config files.
 
 `jq` is a hard dependency of the installer (declared in `packages.yaml`).
+
+## Agent plugins
+
+Claude Code, Codex CLI, and GitHub Copilot CLI share the same plugin/marketplace
+format (`.claude-plugin/plugin.json` manifests, near-identical `plugin marketplace
+add` / `plugin install`(`add` for Codex) CLI verbs), so plugins are installed
+into all three from a single declarative manifest and loop in
+`purse-outfit-agents`.
+
+- `home/.chezmoidata/agent-plugins.yaml` — the manifest: `agents` (the CLIs this
+  applies to), `marketplaces` (name → source, each tagged with which agents
+  should register it), and `plugins` (name → marketplace, each tagged with which
+  agents should install it). This lets one plugin (e.g. `superpowers`) fan out to
+  every supporting agent while another stays Claude-only.
+- VS Code also supports this plugin format (Preview), but only via global-user
+  `settings.json` — no CLI verb — so it's intentionally left unmanaged, alongside
+  Cursor/Devin/Antigravity which don't share the format at all.
 
 ## Secrets — Zoho Vault
 
