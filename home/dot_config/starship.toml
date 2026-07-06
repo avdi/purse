@@ -4,6 +4,9 @@
 # Installed to ~/.config/starship.toml; init hooks live in
 # ~/.config/shell/aliases.sh (Unix) and $PROFILE (Windows).
 #
+# Requires a Nerd Font. Set your terminal font to "Cascadia Code NF"
+# (installed from microsoft/cascadia-code releases by run_onchange_install-fonts).
+#
 # Layout is deliberately two-line: context on the top line, the command
 # entry point alone on the bottom line, with a blank line separating prompts.
 

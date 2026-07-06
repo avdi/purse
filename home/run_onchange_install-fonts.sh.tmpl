@@ -1,42 +1,39 @@
 {{- if ne .chezmoi.os "windows" -}}
 #!/bin/bash
-# chezmoi run_onchange: install Cascadia Code NF (Nerd Font)
+# chezmoi run_onchange: install Cascadia Code NF
 #
-# Downloads the font from the Nerd Fonts GitHub releases and installs it into
-# the user font directory (~/.local/share/fonts on Linux, ~/Library/Fonts on macOS).
-# Triggers fc-cache on Linux so the new font is immediately available.
+# Downloads directly from microsoft/cascadia-code GitHub releases, which
+# ships NF variants officially (no third-party repackaging).
+# Installs only the NF TTFs into the user font directory.
 #
 # Re-runs whenever this script changes (e.g. to bump the font version).
-# Font version: 3.4.0
+# Font version: 2407.24
 set -euo pipefail
 
-FONT_VERSION="3.4.0"
-FONT_NAME="CascadiaCode"
-FONT_ARCHIVE="${FONT_NAME}.tar.xz"
-DOWNLOAD_URL="https://github.com/ryanoasis/nerd-fonts/releases/download/v${FONT_VERSION}/${FONT_ARCHIVE}"
+FONT_VERSION="2407.24"
+FONT_ARCHIVE="CascadiaCode-${FONT_VERSION}.zip"
+DOWNLOAD_URL="https://github.com/microsoft/cascadia-code/releases/download/v${FONT_VERSION}/${FONT_ARCHIVE}"
 
 case "$(uname)" in
   Darwin) FONT_DIR="$HOME/Library/Fonts" ;;
   *)      FONT_DIR="$HOME/.local/share/fonts" ;;
 esac
 
-# Check if already installed by looking for any CascadiaCode Nerd Font file
-if find "$FONT_DIR" -name "CaskaydiaCoveNerdFont*" 2>/dev/null | grep -q .; then
+if find "$FONT_DIR" -name "CascadiaCodeNF-Regular.ttf" 2>/dev/null | grep -q .; then
   echo "→ Cascadia Code NF already installed in $FONT_DIR"
   exit 0
 fi
 
-echo "→ Installing Cascadia Code NF v${FONT_VERSION}..."
+echo "→ Installing Cascadia Code NF v${FONT_VERSION} from microsoft/cascadia-code..."
 mkdir -p "$FONT_DIR"
 
 TMP_DIR="$(mktemp -d)"
 trap 'rm -rf "$TMP_DIR"' EXIT
 
 curl -fsSL -o "$TMP_DIR/$FONT_ARCHIVE" "$DOWNLOAD_URL"
-tar -xJf "$TMP_DIR/$FONT_ARCHIVE" -C "$FONT_DIR" --wildcards '*.ttf' 2>/dev/null \
-  || tar -xJf "$TMP_DIR/$FONT_ARCHIVE" -C "$FONT_DIR"
+# Extract only the NF TTFs (ttf/static/CascadiaCodeNF-*.ttf) directly into FONT_DIR
+unzip -j -o "$TMP_DIR/$FONT_ARCHIVE" 'ttf/static/CascadiaCodeNF-*.ttf' -d "$FONT_DIR"
 
-# Refresh font cache on Linux
 if command -v fc-cache >/dev/null 2>&1; then
   fc-cache -f "$FONT_DIR"
 fi

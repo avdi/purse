@@ -1,34 +1,33 @@
 {{- if eq .chezmoi.os "windows" -}}
-# chezmoi run_onchange: install Cascadia Code NF (Nerd Font) — Windows
+# chezmoi run_onchange: install Cascadia Code NF — Windows
 #
-# Downloads CaskaydiaCove NF from the Nerd Fonts GitHub releases and installs
-# it per-user (no admin required) into %LOCALAPPDATA%\Microsoft\Windows\Fonts,
-# then registers each font in HKCU so Windows recognises it immediately.
+# Downloads directly from microsoft/cascadia-code GitHub releases, which
+# ships NF variants officially (no third-party repackaging).
+# Per-user install into %LOCALAPPDATA%\Microsoft\Windows\Fonts — no admin required.
+# Registers each font in HKCU so Windows recognises it immediately.
 #
 # Re-runs whenever this script changes (e.g. to bump the font version).
-# Font version: 3.4.0
+# Font version: 2407.24
 $ErrorActionPreference = 'Stop'
 
-$FontVersion  = '3.4.0'
-$FontName     = 'CascadiaCode'
-$ArchiveName  = "$FontName.tar.xz"
-$DownloadUrl  = "https://github.com/ryanoasis/nerd-fonts/releases/download/v$FontVersion/$ArchiveName"
-$FontDir      = "$env:LOCALAPPDATA\Microsoft\Windows\Fonts"
-$RegPath      = 'HKCU:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Fonts'
+$FontVersion = '2407.24'
+$ArchiveName = "CascadiaCode-$FontVersion.zip"
+$DownloadUrl = "https://github.com/microsoft/cascadia-code/releases/download/v$FontVersion/$ArchiveName"
+$FontDir     = "$env:LOCALAPPDATA\Microsoft\Windows\Fonts"
+$RegPath     = 'HKCU:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Fonts'
 
-# Already installed?
-if (Test-Path "$FontDir\CaskaydiaCoveNerdFont-Regular.ttf") {
+if (Test-Path "$FontDir\CascadiaCodeNF-Regular.ttf") {
     Write-Host "→ Cascadia Code NF already installed in $FontDir"
     exit 0
 }
 
-Write-Host "→ Installing Cascadia Code NF v$FontVersion..." -ForegroundColor Cyan
+Write-Host "→ Installing Cascadia Code NF v$FontVersion from microsoft/cascadia-code..." -ForegroundColor Cyan
 
 if (-not (Test-Path $FontDir)) {
     New-Item -ItemType Directory -Path $FontDir -Force | Out-Null
 }
 
-$TmpDir = Join-Path $env:TEMP "nerd-fonts-$FontVersion"
+$TmpDir = Join-Path $env:TEMP "cascadia-code-$FontVersion"
 New-Item -ItemType Directory -Path $TmpDir -Force | Out-Null
 
 try {
@@ -36,19 +35,14 @@ try {
     Write-Host "  Downloading $DownloadUrl..."
     Invoke-WebRequest -Uri $DownloadUrl -OutFile $ArchivePath -UseBasicParsing
 
-    # tar is built into Windows 10 1803+ and handles .tar.xz natively
-    Write-Host "  Extracting TTF files..."
-    & tar -xJf $ArchivePath -C $TmpDir --wildcards '*.ttf' 2>$null
-    if ($LASTEXITCODE -ne 0) {
-        & tar -xJf $ArchivePath -C $TmpDir
-    }
+    Write-Host "  Extracting NF TTF files..."
+    Expand-Archive -Path $ArchivePath -DestinationPath $TmpDir -Force
 
-    # Copy TTFs to font dir and register each one
-    $ttfs = Get-ChildItem -Path $TmpDir -Filter '*.ttf' -Recurse
+    # Install only the NF variants (ttf/static/CascadiaCodeNF-*.ttf)
+    $ttfs = Get-ChildItem -Path (Join-Path $TmpDir 'ttf\static') -Filter 'CascadiaCodeNF-*.ttf'
     foreach ($ttf in $ttfs) {
         $dest = Join-Path $FontDir $ttf.Name
         Copy-Item -Path $ttf.FullName -Destination $dest -Force
-        # Register in HKCU so GDI and DirectWrite pick it up without rebooting
         $regName = $ttf.BaseName + ' (TrueType)'
         Set-ItemProperty -Path $RegPath -Name $regName -Value $ttf.Name -Force
     }
