@@ -281,3 +281,13 @@ if command -v zoxide >/dev/null 2>&1; then
     eval "$(zoxide init bash)"
   fi
 fi
+
+# starship — cross-shell prompt (config: ~/.config/starship.toml).
+# Initialized last so it owns PROMPT_COMMAND / precmd after other hooks.
+if command -v starship >/dev/null 2>&1; then
+  if [ -n "${ZSH_VERSION:-}" ]; then
+    eval "$(starship init zsh)"
+  else
+    eval "$(starship init bash)"
+  fi
+fi

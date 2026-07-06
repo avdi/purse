@@ -1,0 +1,58 @@
+"$schema" = 'https://starship.rs/config-schema.json'
+
+# Cross-shell prompt (bash, zsh, PowerShell) — managed by chezmoi.
+# Installed to ~/.config/starship.toml; init hooks live in
+# ~/.config/shell/aliases.sh (Unix) and $PROFILE (Windows).
+#
+# Layout is deliberately two-line: context on the top line, the command
+# entry point alone on the bottom line, with a blank line separating prompts.
+
+add_newline = true
+
+format = """
+$directory\
+$git_branch\
+$git_status\
+$git_state\
+$cmd_duration\
+$line_break\
+$character"""
+
+[directory]
+style = 'bold cyan'
+truncation_length = 4
+truncate_to_repo = true
+read_only = ' ro'
+
+[git_branch]
+format = 'on [$branch]($style) '
+style = 'bold purple'
+
+[git_status]
+style = 'bold yellow'
+format = '([\[$all_status$ahead_behind\]]($style) )'
+conflicted = '~'
+ahead = '⇡${count}'
+behind = '⇣${count}'
+diverged = '⇕⇡${ahead_count}⇣${behind_count}'
+untracked = '?${count}'
+stashed = '*${count}'
+modified = '!${count}'
+staged = '+${count}'
+renamed = '»${count}'
+deleted = '✘${count}'
+
+[git_state]
+format = '\([$state( $progress_current/$progress_total)]($style)\) '
+style = 'bold red'
+
+[cmd_duration]
+min_time = 2000
+format = 'took [$duration]($style) '
+style = 'italic dimmed white'
+
+# The prompt character sits alone on the bottom line. Green when the last
+# command succeeded, red when it failed. Swap '\$' for '❯' to go glyph-only.
+[character]
+success_symbol = '[\$](bold green)'
+error_symbol = '[\$](bold red)'

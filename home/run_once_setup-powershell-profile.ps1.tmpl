@@ -40,4 +40,14 @@ if (Get-Command zoxide -ErrorAction SilentlyContinue) {
     Invoke-Expression (& { (zoxide init powershell | Out-String) })
 }
 '@
+
+# starship — cross-shell prompt (config: ~/.config/starship.toml)
+Add-ProfileBlock `
+    -Marker '# starship init' `
+    -Block @'
+# starship init
+if (Get-Command starship -ErrorAction SilentlyContinue) {
+    Invoke-Expression (&starship init powershell)
+}
+'@
 {{- end -}}
