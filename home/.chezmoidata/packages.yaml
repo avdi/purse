@@ -12,7 +12,7 @@ packages:
 
   # Homebrew packages — Linux, only those NOT covered by apt/NodeSource/GitHub-releases.
   # apt covers: ripgrep, direnv, jq, fzf
-  # NodeSource covers: node; npm covers: devcontainer; GitHub releases cover: vscli, zoxide, uv, starship
+  # NodeSource covers: node; npm covers: devcontainer; GitHub releases cover: vscli, zoxide, uv
   # source builds cover: chruby, ruby-install
   # git is handled separately by purse-install-extras: PPA on Ubuntu, built from
   # source on other apt+root systems (e.g. Debian), brew when there's no root.
@@ -36,7 +36,6 @@ packages:
     - worktrunk   # git worktree manager
     - zoxide      # frecency-based directory jumper
     - fzf         # fuzzy finder — used by zoxide's zi and standalone
-    - starship    # cross-shell prompt
 
   # npm global packages — core tools (always installed via run_onchange)
   npm:
@@ -65,5 +64,4 @@ packages:
     - id: max-sixty.worktrunk       # git worktree manager
     - id: ajeetdsouza.zoxide        # frecency-based directory jumper
     - id: junegunn.fzf              # fuzzy finder — used by zoxide's zi and standalone
-    - id: Starship.Starship         # cross-shell prompt
     - id: gitkraken.cli             # gk (GitKraken CLI) — its MCP server is wired up by purse-outfit-agents

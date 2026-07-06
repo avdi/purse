@@ -282,9 +282,31 @@ if command -v zoxide >/dev/null 2>&1; then
   fi
 fi
 
-# starship — cross-shell prompt (config: ~/.config/starship.toml).
+# Native two-line prompt — directory + git branch/dirty, no special fonts needed.
+# Works in bash and zsh. Starship overrides this when the opt-in is active.
+_purse_git_info() {
+  local branch
+  branch=$(git symbolic-ref --short HEAD 2>/dev/null) \
+    || branch=$(git rev-parse --short HEAD 2>/dev/null) \
+    || return
+  local dirty
+  dirty=$(git status --porcelain 2>/dev/null | head -1)
+  printf ' (%s%s)' "$branch" "${dirty:+*}"
+}
+
+if [ -n "${ZSH_VERSION:-}" ]; then
+  setopt PROMPT_SUBST
+  PROMPT='%F{cyan}%~%f$(_purse_git_info)
+%# '
+else
+  PS1='\[\e[36m\]\w\[\e[0m\]$(_purse_git_info)\n\$ '
+fi
+
+# starship opt-in — only active after running purse-launch-starship,
+# which installs the font + binary and creates the marker file.
 # Initialized last so it owns PROMPT_COMMAND / precmd after other hooks.
-if command -v starship >/dev/null 2>&1; then
+if [ -f "${XDG_CONFIG_HOME:-$HOME/.config}/shell/starship-enabled" ] \
+    && command -v starship >/dev/null 2>&1; then
   if [ -n "${ZSH_VERSION:-}" ]; then
     eval "$(starship init zsh)"
   else

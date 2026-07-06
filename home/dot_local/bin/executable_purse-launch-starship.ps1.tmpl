@@ -1,0 +1,60 @@
+{{- if eq .chezmoi.os "windows" -}}
+# purse-launch-starship.ps1: opt in to the starship prompt + Cascadia Code NF font.
+#
+# Safe to re-run (idempotent). After running, set the font to "Cascadia Code NF"
+# in Windows Terminal (or your terminal emulator of choice).
+#
+# What this does:
+#   1. Install Cascadia Code NF from microsoft/cascadia-code (official NF build)
+#   2. Install starship via winget
+#   (The PowerShell profile already has a guarded starship init block from
+#    run_once_setup-powershell-profile — it activates once starship is on PATH.)
+
+$ErrorActionPreference = 'Stop'
+
+$FontVersion = '2407.24'
+$ArchiveName = "CascadiaCode-$FontVersion.zip"
+$FontUrl     = "https://github.com/microsoft/cascadia-code/releases/download/v$FontVersion/$ArchiveName"
+$FontDir     = "$env:LOCALAPPDATA\Microsoft\Windows\Fonts"
+$RegPath     = 'HKCU:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Fonts'
+
+# ---- 1. Cascadia Code NF -----------------------------------------------------
+
+if (Test-Path "$FontDir\CascadiaCodeNF-Regular.ttf") {
+    Write-Host "-> Cascadia Code NF: already installed in $FontDir"
+} else {
+    Write-Host "-> Cascadia Code NF: downloading v$FontVersion from microsoft/cascadia-code..." -ForegroundColor Cyan
+    if (-not (Test-Path $FontDir)) { New-Item -ItemType Directory -Path $FontDir -Force | Out-Null }
+
+    $TmpDir = Join-Path $env:TEMP "cascadia-code-$FontVersion"
+    New-Item -ItemType Directory -Path $TmpDir -Force | Out-Null
+    try {
+        Invoke-WebRequest -Uri $FontUrl -OutFile "$TmpDir\$ArchiveName" -UseBasicParsing
+        Expand-Archive -Path "$TmpDir\$ArchiveName" -DestinationPath $TmpDir -Force
+
+        $ttfs = Get-ChildItem -Path "$TmpDir\ttf\static" -Filter 'CascadiaCodeNF-*.ttf'
+        foreach ($ttf in $ttfs) {
+            Copy-Item -Path $ttf.FullName -Destination "$FontDir\$($ttf.Name)" -Force
+            Set-ItemProperty -Path $RegPath -Name "$($ttf.BaseName) (TrueType)" -Value $ttf.Name -Force
+        }
+        Write-Host "✓ Cascadia Code NF installed ($($ttfs.Count) fonts)" -ForegroundColor Green
+    } finally {
+        Remove-Item -Recurse -Force $TmpDir -ErrorAction SilentlyContinue
+    }
+}
+
+# ---- 2. Starship -------------------------------------------------------------
+
+if (Get-Command starship -ErrorAction SilentlyContinue) {
+    Write-Host "-> starship: already installed ($(starship --version 2>$null))"
+} else {
+    Write-Host "-> starship: installing via winget..." -ForegroundColor Cyan
+    winget install --id Starship.Starship --exact --accept-package-agreements --accept-source-agreements --silent
+    # Refresh PATH so starship is available in this session
+    $env:PATH = [System.Environment]::GetEnvironmentVariable('PATH', 'Machine') + ';' +
+                [System.Environment]::GetEnvironmentVariable('PATH', 'User')
+}
+
+Write-Host ""
+Write-Host "✓ Starship ready. Set your terminal font to: Cascadia Code NF" -ForegroundColor Green
+{{- end -}}

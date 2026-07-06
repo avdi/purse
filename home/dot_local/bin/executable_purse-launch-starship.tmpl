@@ -1,0 +1,61 @@
+{{- if ne .chezmoi.os "windows" -}}
+#!/usr/bin/env bash
+# purse-launch-starship: opt in to the starship prompt + Cascadia Code NF font.
+#
+# Safe to re-run (idempotent). After running, open a new terminal session
+# and set the font to "Cascadia Code NF" in your terminal emulator.
+#
+# What this does:
+#   1. Install Cascadia Code NF from microsoft/cascadia-code (official NF build)
+#   2. Install starship (brew or official installer)
+#   3. Create ~/.config/shell/starship-enabled to activate it in the shell
+
+set -euo pipefail
+
+FONT_VERSION="2407.24"
+FONT_ARCHIVE="CascadiaCode-${FONT_VERSION}.zip"
+FONT_URL="https://github.com/microsoft/cascadia-code/releases/download/v${FONT_VERSION}/${FONT_ARCHIVE}"
+MARKER="${XDG_CONFIG_HOME:-$HOME/.config}/shell/starship-enabled"
+
+# ---- 1. Cascadia Code NF -----------------------------------------------------
+
+case "$(uname)" in
+  Darwin) font_dir="$HOME/Library/Fonts" ;;
+  *)      font_dir="$HOME/.local/share/fonts" ;;
+esac
+
+if find "$font_dir" -name "CascadiaCodeNF-Regular.ttf" 2>/dev/null | grep -q .; then
+  echo "→ Cascadia Code NF: already installed in $font_dir"
+else
+  echo "→ Cascadia Code NF: downloading v${FONT_VERSION} from microsoft/cascadia-code..."
+  mkdir -p "$font_dir"
+  tmp="$(mktemp -d)"
+  trap 'rm -rf "$tmp"' EXIT
+  curl -fsSL -o "$tmp/$FONT_ARCHIVE" "$FONT_URL"
+  unzip -j -o "$tmp/$FONT_ARCHIVE" 'ttf/static/CascadiaCodeNF-*.ttf' -d "$font_dir"
+  command -v fc-cache >/dev/null 2>&1 && fc-cache -f "$font_dir"
+  echo "✓ Cascadia Code NF installed"
+fi
+
+# ---- 2. Starship -------------------------------------------------------------
+
+if command -v starship >/dev/null 2>&1; then
+  echo "→ starship: already installed ($(starship --version 2>/dev/null | head -1))"
+else
+  echo "→ starship: installing..."
+  if command -v brew >/dev/null 2>&1; then
+    brew install starship
+  else
+    curl -fsSL https://starship.rs/install.sh | sh -s -- --yes --bin-dir "$HOME/.local/bin"
+  fi
+fi
+
+# ---- 3. Enable ---------------------------------------------------------------
+
+mkdir -p "$(dirname "$MARKER")"
+touch "$MARKER"
+
+echo ""
+echo "✓ Starship enabled."
+echo "  Open a new terminal session and set the font to: Cascadia Code NF"
+{{- end }}

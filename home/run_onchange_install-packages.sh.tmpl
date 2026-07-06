@@ -142,12 +142,6 @@ elif command -v apt-get >/dev/null 2>&1 && have_root; then
     curl -LsSf https://astral.sh/uv/install.sh | sh
   fi
 
-  # starship: cross-shell prompt (apt ships an old build — use the official installer)
-  if ! command -v starship >/dev/null 2>&1; then
-    echo "→ starship: installing via official installer..."
-    curl -fsSL https://starship.rs/install.sh | sh -s -- --yes --bin-dir "$HOME/.local/bin"
-  fi
-
   # chruby: install from source via make (not in apt)
   # See: https://github.com/postmodern/chruby#install
   if [ ! -f /usr/local/share/chruby/chruby.sh ]; then
