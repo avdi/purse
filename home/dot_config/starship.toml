@@ -22,10 +22,11 @@ $character"""
 style = 'bold cyan'
 truncation_length = 4
 truncate_to_repo = true
-read_only = ' ro'
+read_only = '  '
 
 [git_branch]
-format = 'on [$branch]($style) '
+symbol = ' '
+format = 'on [$symbol$branch]($style) '
 style = 'bold purple'
 
 [git_status]
@@ -51,8 +52,6 @@ min_time = 2000
 format = 'took [$duration]($style) '
 style = 'italic dimmed white'
 
-# The prompt character sits alone on the bottom line. Green when the last
-# command succeeded, red when it failed. Swap '\$' for '❯' to go glyph-only.
 [character]
-success_symbol = '[\$](bold green)'
-error_symbol = '[\$](bold red)'
+success_symbol = '[❯](bold green)'
+error_symbol = '[❯](bold red)'
