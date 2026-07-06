@@ -13,10 +13,14 @@
 add_newline = true
 
 format = """
+$container\
 $directory\
 $git_branch\
 $git_status\
 $git_state\
+$ruby\
+$env_var\
+$direnv\
 $cmd_duration\
 $line_break\
 $character"""
@@ -54,6 +58,37 @@ style = 'bold red'
 min_time = 2000
 format = 'took [$duration]($style) '
 style = 'italic dimmed white'
+
+# container — shows devcontainer name when inside one (reads DEVCONTAINER label)
+[container]
+format = '[$symbol \[$name\]]($style) '
+style = 'bold blue dimmed'
+
+# ruby — only visible when chruby has switched to a non-system Ruby
+[ruby]
+symbol = ' '
+format = '[$symbol$version]($style) '
+style = 'bold red'
+
+# env_var — show a marker when DEVCONTAINER_CONFIG is set, meaning the project
+# has a non-default devcontainer profile selected (dc up will use it)
+[env_var.DEVCONTAINER_CONFIG]
+symbol = '⬡'
+format = '[$symbol]($style) '
+style = 'bold cyan'
+
+# direnv — shows whether the current .envrc is loaded (green) or blocked (red).
+# Critical context: DEVCONTAINER_CONFIG comes from direnv, so if it's not loaded
+# dc up will ignore the project's profile selection.
+[direnv]
+disabled = false
+format = '[$symbol$loaded/$allowed]($style) '
+style = 'bold orange'
+loaded_msg = '✔'
+unloaded_msg = '✘'
+allowed_msg = 'ok'
+denied_msg = '!'
+not_allowed_msg = '?'
 
 [character]
 success_symbol = '[❯](bold green)'
