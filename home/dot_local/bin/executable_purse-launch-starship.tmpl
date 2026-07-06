@@ -43,11 +43,10 @@ if command -v starship >/dev/null 2>&1; then
   echo "→ starship: already installed ($(starship --version 2>/dev/null | head -1))"
 else
   echo "→ starship: installing..."
-  if command -v brew >/dev/null 2>&1; then
-    brew install starship
-  else
-    curl -fsSL https://starship.rs/install.sh | sh -s -- --yes --bin-dir "$HOME/.local/bin"
-  fi
+  case "$(uname)" in
+    Darwin) brew install starship ;;
+    *)      curl -fsSL https://starship.rs/install.sh | sh -s -- --yes --bin-dir "$HOME/.local/bin" ;;
+  esac
 fi
 
 # ---- 3. Enable ---------------------------------------------------------------
