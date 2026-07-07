@@ -94,8 +94,16 @@ Secret Service (gnome-keyring + D-Bus), which is unreliable under WSL2. The
 `~/.local/share/purse/shims/zv` shim (`home/dot_local/share/purse/shims/executable_zv.tmpl`)
 transparently routes `zv` through the Windows `zv.exe` on WSL2 — its session lives
 in the Windows Credential Manager instead. It falls through to the Linux `zv` off
-WSL2, when no Windows `zv.exe` is found, or when `PURSE_ZV_WINDOWS=0`. Devcontainers
-have no Windows interop, so this doesn't cover the in-container case.
+WSL2, when no Windows `zv.exe` is found, or when `PURSE_ZV_WINDOWS=0`.
+
+**Devcontainer secrets:** containers have no Windows interop and no keyring, so
+`zv` stays host-only there. Instead the `devcontainer`/`dc` shim
+(`home/dot_local/share/purse/shims/executable_devcontainer.tmpl`) forwards every
+var declared in `~/.config/shell/secrets.sh` (the `PURSE_TOKENS` vars written by
+`purse-setup-secrets`, already exported into the host shell) into the container
+via `--remote-env` — reading only the var names from the file, values from the
+live host env. Opt out with `PURSE_DEVCONTAINER_FORWARD_SECRETS=0`. So don't try
+to run `zv login`/`unlock` inside a container; forward from the host instead.
 
 **GPG signing:** `home/private_dot_gnupg/private_gpg-agent.conf.tmpl` pins
 `pinentry-program` to `pinentry-curses` for inline TTY passphrase prompts (no GUI

@@ -3,9 +3,12 @@
 # devcontainer shim — when the subcommand is `up`, inject the same dotfiles
 # flags the VS Code Dev Containers extension would pass, so the standalone
 # CLI installs my dotfiles into new containers automatically. Also:
-#   - forwards selected host env vars (GitHub/Bundler tokens by default)
-#     into the new container via --remote-env, lazy-fetching missing tokens
-#     via `gh auth token`;
+#   - forwards selected host env vars (GitHub/Bundler tokens by default, plus
+#     every secret from ~/.config/shell/secrets.sh) into the new container via
+#     --remote-env, lazy-fetching missing GitHub tokens via `gh auth token`.
+#     This is how container tools get vault secrets — zv stays host-only, since
+#     containers have no keyring; opt out with
+#     PURSE_DEVCONTAINER_FORWARD_SECRETS=0;
 #   - on WSL hosts, mounts the WSLg sockets and sets the DISPLAY/Wayland/
 #     PulseAudio env vars so GUI apps render on the host desktop;
 #   - injects the devcontainer-bridge (dbr) feature via --additional-features
@@ -31,6 +34,24 @@ dotfiles_target="${PURSE_DOTFILES_TARGET_PATH:-~/dotfiles}"
 # unset or empty on the host are skipped silently. Override the list via
 # PURSE_DEVCONTAINER_FORWARD_ENV (space-separated).
 forward_env_names="${PURSE_DEVCONTAINER_FORWARD_ENV:-GH_TOKEN GITHUB_TOKEN BUNDLE_GITHUB__COM}"
+
+# Also forward every secret from ~/.config/shell/secrets.sh (the PURSE_TOKENS
+# vars written by purse-setup-secrets and already exported into this shell by
+# env.sh). Containers have no keyring / no zv session, so forwarding the values
+# from the host is how in-container tools get them — zv stays host-only. We read
+# only the var *names* here; values come from the live host environment below.
+# Opt out with PURSE_DEVCONTAINER_FORWARD_SECRETS=0.
+secrets_file="${PURSE_DEVCONTAINER_SECRETS_FILE:-$HOME/.config/shell/secrets.sh}"
+if [ "${PURSE_DEVCONTAINER_FORWARD_SECRETS:-1}" != "0" ] && [ -f "$secrets_file" ]; then
+  while IFS= read -r secret_name; do
+    [ -n "$secret_name" ] || continue
+    case " $forward_env_names " in
+      *" $secret_name "*) ;;                              # already listed
+      *) forward_env_names="$forward_env_names $secret_name" ;;
+    esac
+  done < <(grep -oE '^[[:space:]]*export[[:space:]]+[A-Za-z_][A-Za-z0-9_]*' "$secrets_file" \
+             | awk '{print $NF}')
+fi
 
 # Default-on integrations. Set to 0 to opt out.
 forward_wslg="${PURSE_DEVCONTAINER_FORWARD_WSLG:-1}"

@@ -125,6 +125,7 @@ For every `up` invocation the shim adds:
 |---|---|---|
 | Inject `--dotfiles-{repository,install-command,target-path}` so this repo applies inside the container | on | pass any `--dotfiles-*` flag yourself |
 | Forward `GH_TOKEN`, `GITHUB_TOKEN`, `BUNDLE_GITHUB__COM` via `--remote-env`, lazy-fetching missing values from `gh auth token` | on | `PURSE_DEVCONTAINER_FORWARD_ENV=""` (or override the list) |
+| Forward every secret from `~/.config/shell/secrets.sh` (the `PURSE_TOKENS` vars, already in the host shell) via `--remote-env` — containers have no keyring/`zv`, so this is how in-container tools get vault secrets | on | `PURSE_DEVCONTAINER_FORWARD_SECRETS=0` (or `PURSE_DEVCONTAINER_SECRETS_FILE=` to point elsewhere) |
 | **WSLg X11/Wayland/PulseAudio forwarding** — mount `/tmp/.X11-unix` and `/mnt/wslg`, set `DISPLAY`, `WAYLAND_DISPLAY`, `XDG_RUNTIME_DIR`, `PULSE_SERVER` so GUI apps render on the host Windows desktop | on (when `/mnt/wslg` exists) | `PURSE_DEVCONTAINER_FORWARD_WSLG=0` |
 | **devcontainer-bridge (dbr)** — inject `--additional-features` for [`bradleybeddoes/devcontainer-bridge`](https://github.com/bradleybeddoes/devcontainer-bridge) so host-port forwarding and `xdg-open` → host browser work like in VS Code. Runs `dbr ensure` opportunistically if `dbr` is on the host's PATH. | on | `PURSE_DEVCONTAINER_FORWARD_DBR=0` |
 
