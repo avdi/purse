@@ -106,6 +106,12 @@ This requires `zv` to be authenticated before running `chezmoi apply`. For bulk 
 
 `zv` (Zoho Vault CLI) is installed automatically by a chezmoi pre-hook before every `apply` — `.install-zv.sh` on Linux, `.install-zv.ps1` on Windows. Both drop the binary into `~/.local/bin/` and exit immediately if `zv` is already on PATH. Authenticate once with `zv login`.
 
+**WSL2 keyring:** the Linux `zv` stores its vault session via libsecret's Secret Service (gnome-keyring + D-Bus), which is fragile under WSL2. On WSL2 the `~/.local/share/purse/shims/zv` shim therefore routes `zv` through the Windows `zv.exe`, whose session lives in the durable Windows Credential Manager. It falls through to the Linux `zv` off WSL2, when no Windows `zv.exe` is found, or when `PURSE_ZV_WINDOWS=0`. Authenticate the Windows side once with `zv login`.
+
+### GPG commit signing
+
+`~/.gnupg/gpg-agent.conf` (managed by chezmoi, Unix only) sets `pinentry-program` to `pinentry-curses` so passphrase prompts appear inline in the terminal rather than as a GUI popup — reliable on WSL2 where the GUI pinentry routes through WSLg. `GPG_TTY` is exported in `env.sh`. A `run_onchange` hook reloads `gpg-agent` when the resolved pinentry changes.
+
 ## Devcontainer integration
 
 `~/.local/share/purse/shims/devcontainer` wraps the `@devcontainers/cli` so that

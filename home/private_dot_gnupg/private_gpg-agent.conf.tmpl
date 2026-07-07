@@ -1,0 +1,17 @@
+{{- if ne .chezmoi.os "windows" -}}
+# ~/.gnupg/gpg-agent.conf — managed by chezmoi
+#   (home/private_dot_gnupg/private_gpg-agent.conf.tmpl)
+#
+# Force the terminal (curses) pinentry so passphrase prompts for git commit/tag
+# signing appear inline in the controlling terminal instead of a GUI popup.
+# On WSL2 the default GUI pinentry (pinentry-gnome3) routes through WSLg and is
+# easily missed or fails to appear at all; the curses prompt uses GPG_TTY
+# (exported in ~/.config/shell/env.sh) and stays where the command was run.
+{{ $pinentry := lookPath "pinentry-curses" -}}
+{{- if not $pinentry -}}{{- if stat "/usr/bin/pinentry-curses" -}}{{- $pinentry = "/usr/bin/pinentry-curses" -}}{{- end -}}{{- end -}}
+{{- if $pinentry }}
+pinentry-program {{ $pinentry }}
+{{- else }}
+# pinentry-curses not found at apply time; leaving gpg-agent's default pinentry.
+{{- end }}
+{{- end -}}

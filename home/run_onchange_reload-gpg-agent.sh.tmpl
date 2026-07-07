@@ -1,0 +1,14 @@
+{{- if ne .chezmoi.os "windows" -}}
+#!/bin/bash
+# chezmoi run_onchange: reload gpg-agent so a changed pinentry-program (see
+# ~/.gnupg/gpg-agent.conf) takes effect immediately, instead of waiting for the
+# running agent to be restarted. Re-runs whenever the resolved pinentry path
+# embedded below changes.
+#
+# pinentry: {{ with (lookPath "pinentry-curses") }}{{ . }}{{ else }}{{ if stat "/usr/bin/pinentry-curses" }}/usr/bin/pinentry-curses{{ else }}(default){{ end }}{{ end }}
+
+set -uo pipefail
+
+command -v gpgconf >/dev/null 2>&1 || exit 0
+gpgconf --reload gpg-agent >/dev/null 2>&1 || true
+{{- end -}}

@@ -89,6 +89,18 @@ into all three from a single declarative manifest and loop in
 
 Avdi uses [Zoho Vault](https://www.zoho.com/vault/) as his password/secret manager, **not** 1Password, Bitwarden, or the system keychain. When secrets need to be referenced in scripts or configs, expect them to come from Zoho Vault (typically via a CLI or manual retrieval), not from another secret store. Do not assume or generate integrations with other secret managers.
 
+**WSL2 keyring quirk:** the Linux `zv` binary persists its session via libsecret's
+Secret Service (gnome-keyring + D-Bus), which is unreliable under WSL2. The
+`~/.local/share/purse/shims/zv` shim (`home/dot_local/share/purse/shims/executable_zv.tmpl`)
+transparently routes `zv` through the Windows `zv.exe` on WSL2 — its session lives
+in the Windows Credential Manager instead. It falls through to the Linux `zv` off
+WSL2, when no Windows `zv.exe` is found, or when `PURSE_ZV_WINDOWS=0`. Devcontainers
+have no Windows interop, so this doesn't cover the in-container case.
+
+**GPG signing:** `home/private_dot_gnupg/private_gpg-agent.conf.tmpl` pins
+`pinentry-program` to `pinentry-curses` for inline TTY passphrase prompts (no GUI
+popup); `home/run_onchange_reload-gpg-agent.sh.tmpl` reloads the agent on change.
+
 ## PATH hygiene
 
 `env.sh` is the single owner of PATH construction. It prepends `~/.local/bin`

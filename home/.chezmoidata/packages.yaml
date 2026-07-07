@@ -6,6 +6,7 @@ packages:
     - jq          # JSON processor — required by purse-outfit-agents
     - unzip       # needed to unpack the gk (GitKraken CLI) release zip
     - fzf         # fuzzy finder — used by zoxide's zi and standalone
+    - pinentry-curses  # inline TTY passphrase prompt for gpg-agent (see ~/.gnupg/gpg-agent.conf)
   # gk (GitKraken CLI) isn't packaged for apt/brew-on-Linux (brew ships it as a
   # macOS-only cask), so on Unix it's installed from GitHub releases by
   # run_onchange_install-packages.sh. Windows uses winget (below).

@@ -1,0 +1,69 @@
+{{- if ne .chezmoi.os "windows" -}}
+#!/usr/bin/env bash
+# zv shim — on WSL2, route the Zoho Vault CLI through the *Windows* zv.exe so
+# its session lives in the Windows Credential Manager (persistent, and needing
+# no libsecret / gnome-keyring / D-Bus session). Everywhere else — and on WSL2
+# whenever a usable Windows zv.exe can't be found — it transparently falls
+# through to the real Linux zv on PATH.
+#
+# Why: the Linux zv persists its vault session via libsecret's Secret Service,
+# which is fragile under WSL2 (needs a live gnome-keyring + D-Bus session) and
+# absent in headless contexts. The Windows build keys off the OS credential
+# store instead. zv.exe emits plain LF and shares the same CLI/exit codes, so
+# callers (purse-setup-secrets, purse-zv-ensure-auth) work unchanged.
+#
+# Effective only when this directory is on PATH ahead of the real zv — see
+# ~/.config/shell/env.sh.
+#
+# Opt out (force the Linux zv) with PURSE_ZV_WINDOWS=0.
+# Override the Windows binary with PURSE_ZV_WINDOWS_EXE=/path/to/zv.exe.
+
+set -euo pipefail
+
+self_canonical="$(realpath "$0" 2>/dev/null || printf '%s' "$0")"
+
+# Locate the real Linux zv: the next `zv` on PATH that isn't this shim.
+real_zv=""
+while IFS= read -r candidate; do
+  [ -n "$candidate" ] || continue
+  resolved="$(realpath "$candidate" 2>/dev/null || printf '%s' "$candidate")"
+  [ "$resolved" = "$self_canonical" ] && continue
+  real_zv="$candidate"
+  break
+done < <(type -aP zv 2>/dev/null || true)
+
+fallthrough() {
+  if [ -z "$real_zv" ]; then
+    echo "zv shim: real Linux zv not found on PATH — run: chezmoi apply" >&2
+    exit 127
+  fi
+  exec "$real_zv" "$@"
+}
+
+# Opted out → Linux zv.
+[ "${PURSE_ZV_WINDOWS:-1}" = "0" ] && fallthrough "$@"
+
+# Not WSL → Linux zv. (Belt-and-suspenders: the Windows-exe lookup below would
+# also come up empty off WSL, but gate explicitly so the shim is a no-op there.)
+if [ -z "${WSL_DISTRO_NAME:-}" ] && ! grep -qiE 'microsoft|wsl' /proc/version 2>/dev/null; then
+  fallthrough "$@"
+fi
+
+# Locate the Windows zv.exe: explicit override, then the interop-inherited
+# PATH, then derive from the Windows user profile (shelling out to cmd.exe only
+# as a last resort).
+win_zv="${PURSE_ZV_WINDOWS_EXE:-}"
+[ -z "$win_zv" ] && win_zv="$(command -v zv.exe 2>/dev/null || true)"
+if [ -z "$win_zv" ] && command -v cmd.exe >/dev/null 2>&1; then
+  userprofile="$(cmd.exe /c 'echo %USERPROFILE%' 2>/dev/null | tr -d '\r')"
+  if [ -n "$userprofile" ]; then
+    candidate="$(wslpath "$userprofile" 2>/dev/null || true)/.local/bin/zv.exe"
+    [ -x "$candidate" ] && win_zv="$candidate"
+  fi
+fi
+
+# No usable Windows zv.exe → Linux zv.
+{ [ -n "$win_zv" ] && [ -x "$win_zv" ]; } || fallthrough "$@"
+
+exec "$win_zv" "$@"
+{{- end }}
