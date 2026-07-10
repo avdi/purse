@@ -10,3 +10,6 @@ globalSkills:
   - source: "https://github.com/vercel-labs/skills"
     skill: "find-skills"
     description: "Helps agents discover and install skills from the ecosystem"
+  - source: "microsoft/playwright-cli"
+    skill: "playwright-cli"
+    description: "Playwright browser automation reference (run/debug tests, mocking, sessions, tracing, etc.)"
