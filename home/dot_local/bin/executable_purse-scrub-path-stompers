@@ -23,7 +23,7 @@ scrub_file() {
   local before after
   before=$(grep -c "$ROGUE_PATH_PATTERN" "$file" 2>/dev/null || true)
   [ "$before" -gt 0 ] || { echo "  $file — clean"; return 0; }
-  sed -i "/$ROGUE_PATH_PATTERN/d" "$file"
+  sed -i "\|$ROGUE_PATH_PATTERN|d" "$file"
   after=$(grep -c "$ROGUE_PATH_PATTERN" "$file" 2>/dev/null || true)
   echo "  $file — removed $((before - after)) line(s)"
 }

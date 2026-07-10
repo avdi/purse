@@ -322,7 +322,7 @@ outfit_claude_hooks() {
   }')
   tmp=$(mktemp)
   jq --argjson entry "$entry" '
-    .model = "auto" |
+    .permissionMode = "auto" |
     .hooks.PreToolUse = (
       ((.hooks.PreToolUse // []) | map(select(.matcher != "Grep|Glob")))
       + [$entry]
