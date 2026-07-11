@@ -31,6 +31,9 @@ agentPlugins:
     - name: context7-marketplace
       source: upstash/context7
       agents: [claude, codex, copilot]
+    - name: worktrunk
+      source: max-sixty/worktrunk
+      agents: [claude, codex]
 
   # Plugins to install, in `name@marketplace` form, and which agents should
   # install each one.
@@ -49,4 +52,7 @@ agentPlugins:
       agents: [claude]
     - name: claude-md-management
       marketplace: claude-plugins-official
+      agents: [claude]
+    - name: worktrunk
+      marketplace: worktrunk
       agents: [claude]
