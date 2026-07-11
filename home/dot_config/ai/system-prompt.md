@@ -28,6 +28,10 @@ The following MCP servers are registered and should be used proactively instead 
 - **`github`** — GitHub API: issues, PRs, code search, repo metadata. Prefer over shelling out to `gh`.
 - **`playwright`** — browser automation: fetch pages, interact with web UIs, verify rendered output.
 
+## Worktrees
+
+- ALWAYS use the `EnterWorktree` tool to switch into or create a git worktree. Never use `wt` or `git worktree` shell commands for this purpose.
+
 ## Workflow
 
 - Start tasks by determining how you (or I) will verify the outcome.
