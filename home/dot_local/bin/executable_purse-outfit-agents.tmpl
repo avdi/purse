@@ -298,7 +298,34 @@ outfit_agent_plugins() {
 }
 
 # =============================================================================
-# 3. Claude Code hooks — register the cbm-code-discovery-gate hook into
+# 3. Worktrunk plugin workaround — worktrunk issue #3417: Claude Code hardcodes
+#    hooks/hooks.json as the plugin hook discovery path and ignores the "hooks"
+#    field in plugin.json. Since commit 2677f05, worktrunk renamed the file to
+#    claude-hooks.json, breaking hook discovery silently. Workaround: symlink
+#    hooks.json → claude-hooks.json in every worktrunk plugin cache directory.
+# =============================================================================
+outfit_worktrunk_workaround() {
+  local cache_base="$HOME/.claude/plugins/cache/worktrunk/worktrunk"
+  if [ ! -d "$cache_base" ]; then
+    return 0
+  fi
+  local fixed=0
+  for hooks_dir in "$cache_base"/*/hooks; do
+    [ -d "$hooks_dir" ] || continue
+    if [ -f "$hooks_dir/claude-hooks.json" ] && [ ! -e "$hooks_dir/hooks.json" ]; then
+      ln -sf claude-hooks.json "$hooks_dir/hooks.json"
+      fixed=$((fixed + 1))
+    fi
+  done
+  if [ "$fixed" -gt 0 ]; then
+    echo "→ worktrunk workaround (#3417): symlinked hooks.json → claude-hooks.json in $fixed cache dir(s)"
+  else
+    echo "→ worktrunk workaround (#3417): already applied or not needed"
+  fi
+}
+
+# =============================================================================
+# 4. Claude Code hooks — register the cbm-code-discovery-gate hook into
 #    ~/.claude/settings.json. It intercepts Grep/Glob PreToolUse events and
 #    injects graph context from codebase-memory-mcp via hook-augment (in-process,
 #    300 ms timeout, every failure path exits 0 — physically cannot block a call).
@@ -331,7 +358,7 @@ outfit_claude_hooks() {
 }
 
 # =============================================================================
-# 4. codebase-memory-mcp — download the static binary. MCP registration is
+# 5. codebase-memory-mcp — download the static binary. MCP registration is
 #    handled by outfit_mcp_servers above (declarative manifest), not by the
 #    binary's own `install -y` which has unwanted side-effects (PATH stomping,
 #    opinionated CLAUDE.md injection, hooks). Bump CBM_VERSION to force a
@@ -501,6 +528,7 @@ outfit_gitkraken_mcp() {
 # download) runs last so a network failure there can't block the cheaper steps.
 outfit_mcp_servers
 outfit_agent_plugins
+outfit_worktrunk_workaround
 outfit_claude_hooks
 outfit_spec_kit
 outfit_skills_ref
