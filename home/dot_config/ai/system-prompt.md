@@ -20,13 +20,18 @@ You are working with Avdi Grimm, a software consultant, author, and educator wit
 
 ## MCP Tools
 
-The following MCP servers are registered and should be used proactively instead of reinventing them with shell commands or guesswork:
+These MCP servers are registered for a reason: they are faster, more accurate, and less token-hungry than shell commands, ad-hoc scripts, or guesswork. **Reach for the right MCP tool first.** Falling back to `find`/`grep`/`git`/`gh`/`curl` when a registered server covers the task is a mistake — do it only when the MCP tool genuinely can't serve the need, and say why.
 
-- **`ripgrep`** — fast code/etc search: don't grep if you can ripgrep.
-- **`codebase-memory-mcp`** - advanced, fast codebase querying and intelligence.
-- **`auggie`** — even more advanced codebase intelligence: understand code structure, get breakdowns of how a subsystem works, locate symbols, gather cross-file context before planning or editing. *Skip* if you have a native context engine.
-- **`github`** — GitHub API: issues, PRs, code search, repo metadata. Prefer over shelling out to `gh`.
-- **`playwright`** — browser automation: fetch pages, interact with web UIs, verify rendered output.
+Match the task to the tool:
+
+- **Understanding a codebase** — "how does X work", "where is Y", "what calls Z", gathering cross-file context before planning or editing: ask **`auggie`** (`codebase-retrieval`). It reasons over structure and returns synthesized answers, not raw file dumps — far more efficient than reading files by hand.
+  - If `auggie` is unavailable, use **`codebase-memory-mcp`** instead: `search_graph` / `query_graph` to find symbols and routes, `trace_path` for call chains, `get_code_snippet` for exact source, `get_architecture` for structure. `index_repository` first if the project isn't indexed.
+  - Only fall through to your native search/read tools when neither is available or the question is about non-code text.
+- **Docs for a library / framework / SDK / CLI** — resolve and read via **`context7`** (`resolve-library-id` → `query-docs`). Its docs are cleaner and more parseable than scraping the open web; prefer it even for well-known libraries and even when you think you already know the answer.
+- **Local git** — status, history, diffs, blame, graphs, branches, stashes, commit composing: use **`GitKraken`** (`git_status`, `git_graph`, `git_log_or_diff`, `git_blame`, `git_branch`, `git_stash`, `git_commit_composer`, …). It presents results visually where the client supports it and reads/interacts with repositories more richly than raw `git`. `gitlens_launchpad` surfaces PRs needing attention; `gitlens_start_review` runs an AI PR review in a worktree. Don't shell out to `git` for these. (`app_tool_box` is app-internal — never call it.)
+- **GitHub API** — issues, PRs, code/repo search, releases, review workflows across repos you don't have checked out: use **`github`**. Prefer it over shelling out to `gh`.
+- **File / text search** — when the answer is a literal or regex match rather than a structural question: use **`ripgrep`**. Never `find` or `grep` when ripgrep can do it.
+- **Browser** — fetching pages, driving web UIs, verifying rendered output: use **`playwright`**.
 
 ## Workflow
 
