@@ -330,13 +330,18 @@ outfit_worktrunk_workaround() {
 #    injects graph context from codebase-memory-mcp via hook-augment (in-process,
 #    300 ms timeout, every failure path exits 0 — physically cannot block a call).
 #    Idempotent: removes any existing Grep|Glob entry before re-adding.
+#
+#    Also scrubs the codebase-memory-mcp installer's SessionStart "code
+#    discovery protocol" reminder (cbm-session-reminder), which we don't use —
+#    guidance lives in the shared system prompt instead. The installer is never
+#    run here, but this makes any machine where it was self-heal on re-apply.
 # =============================================================================
 outfit_claude_hooks() {
   if ! have claude || ! have jq; then
     warn "claude or jq not found; skipping Claude hook registration"
     return 0
   fi
-  echo "→ Claude hooks: registering cbm-code-discovery-gate..."
+  echo "→ Claude hooks: registering cbm-code-discovery-gate, scrubbing cbm-session-reminder..."
 
   local cfg="$HOME/.claude/settings.json"
   mkdir -p "$(dirname "$cfg")"
@@ -353,8 +358,17 @@ outfit_claude_hooks() {
     .hooks.PreToolUse = (
       ((.hooks.PreToolUse // []) | map(select(.matcher != "Grep|Glob")))
       + [$entry]
-    )
+    ) |
+    .hooks.SessionStart = (
+      (.hooks.SessionStart // [])
+      | map(select(
+          [.hooks[]?.command // "" | contains("cbm-session-reminder")] | any | not
+        ))
+    ) |
+    if (.hooks.SessionStart | length) == 0 then del(.hooks.SessionStart) else . end
   ' "$cfg" > "$tmp" && mv "$tmp" "$cfg"
+
+  rm -f "$HOME/.claude/hooks/cbm-session-reminder"
 }
 
 # =============================================================================
