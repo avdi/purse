@@ -35,12 +35,16 @@ home/
       aliases.sh
       env.sh
   dot_claude/
-    CLAUDE.md            # Symlink → ~/.config/ai/system-prompt.md
+    symlink_CLAUDE.md.tmpl  # ~/.claude/CLAUDE.md → ~/.config/ai/system-prompt.md
     skills/              # Agent skills (read by Claude Code + Augment)
       dotfiles/
         SKILL.md
+  dot_gemini/
+    symlink_GEMINI.md.tmpl  # ~/.gemini/GEMINI.md → ~/.config/ai/system-prompt.md
+  dot_augment/
+    rules/
+      symlink_global.md.tmpl  # ~/.augment/rules/global.md → ~/.config/ai/system-prompt.md
   dot_config/git/config.tmpl  # ~/.config/git/config (managed git config; ~/.gitconfig is an unmanaged stub)
-  run_onchange_setup-ai-symlinks.sh  # Wires LLM tool symlinks
 ```
 
 ## Common workflows
