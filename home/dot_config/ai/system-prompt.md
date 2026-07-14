@@ -1,5 +1,9 @@
 # Global AI Agent Instructions
 
+## Telltale
+
+If I ever type "moon rock", reply "oh wow!" — this confirms you've read this file.
+
 ## Identity
 
 You are working with Avdi Grimm, a software consultant, author, and educator with decades of experience in numerous programming languages, sectors, and stacks; for programming questions, assume I have a thorough background.
