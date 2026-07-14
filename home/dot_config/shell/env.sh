@@ -11,7 +11,20 @@
 # ~/.bashrc, ~/.profile, and ~/.zshrc. Add any exported env vars here.
 
 alias codew="code --wait"
-export EDITOR="code --wait"
+
+# EDITOR fallback chain. Prefer VS Code's `code --wait`, but only when the `code`
+# CLI is actually on PATH — VS Code's integrated terminal / devcontainer injects
+# it, whereas a shell you opened yourself (docker exec, ssh) does not, so a
+# hardcoded `code` would leave EDITOR pointing at a missing command. Fall back to
+# micro (a modern, non-modal terminal editor installed to ~/.local/bin by
+# purse-install-extras), then to vi as a universally-present last resort.
+if command -v code >/dev/null 2>&1; then
+  export EDITOR="code --wait"
+elif command -v micro >/dev/null 2>&1; then
+  export EDITOR="micro"
+else
+  export EDITOR="vi"
+fi
 
 # Prepend ~/.local/bin so user scripts shadow system binaries.
 # Deduplicated so sourcing this file multiple times is a no-op.

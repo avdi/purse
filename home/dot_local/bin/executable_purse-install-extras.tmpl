@@ -28,6 +28,21 @@ fi
 echo "→ dbr ensure (start/update host daemon)..."
 dbr ensure --host 127.0.0.1
 
+# ---- micro (modern terminal editor; EDITOR fallback) ------------------------
+# A single static Go binary — the non-`code` EDITOR fallback wired up in
+# env.sh (code --wait → micro → vi). Installed to ~/.local/bin, which env.sh
+# puts first on PATH. getmic.ro (the project's official one-line installer)
+# auto-detects OS/arch and drops the prebuilt binary into the cwd; no build
+# step, no root required.
+
+if command -v micro >/dev/null 2>&1; then
+  echo "→ micro already installed ($(micro -version 2>/dev/null | head -1 || echo version unknown))"
+else
+  echo "→ Installing micro editor to ~/.local/bin..."
+  mkdir -p "$HOME/.local/bin"
+  ( cd "$HOME/.local/bin" && curl -fsSL https://getmic.ro | bash )
+fi
+
 # ---- git 2.48+ (for worktree.useRelativePaths) ------------------------------
 # worktree.useRelativePaths sets extensions.relativeworktrees on the repo,
 # which older git refuses to parse — so a worktree created by a modern host git
