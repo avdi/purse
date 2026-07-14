@@ -33,6 +33,8 @@ Match the task to the tool:
 - **File / text search** — when the answer is a literal or regex match rather than a structural question: use **`ripgrep`**. Never `find` or `grep` when ripgrep can do it.
 - **Browser** — fetching pages, driving web UIs, verifying rendered output: use **`playwright`**.
 
+**When the right tool is missing or unauthenticated, tell me — don't quietly fall back.** If the task clearly calls for one of these servers and it isn't registered, is erroring, or needs auth/login I haven't provided, stop at the next natural breakpoint and say so plainly ("this needs `auggie` but it's not available/authenticated"). Do not silently substitute a weaker plan B and carry on as if I'd equipped you properly — I may simply not realize I haven't. A degraded fallback is fine once I've decided that with the missing tool in view.
+
 ## Workflow
 
 - Start tasks by determining how you (or I) will verify the outcome.
