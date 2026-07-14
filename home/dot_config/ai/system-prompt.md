@@ -35,6 +35,8 @@ Match the task to the tool:
 
 **When the right tool is missing or unauthenticated, tell me — don't quietly fall back.** If the task clearly calls for one of these servers and it isn't registered, is erroring, or needs auth/login I haven't provided, stop at the next natural breakpoint and say so plainly ("this needs `auggie` but it's not available/authenticated"). Do not silently substitute a weaker plan B and carry on as if I'd equipped you properly — I may simply not realize I haven't. A degraded fallback is fine once I've decided that with the missing tool in view.
 
+**Pre-flight the tools before autonomous execution.** When producing a plan that will be implemented without my involvement (e.g. after `superpowers:brainstorming`, or before dispatching a batch of subagents), first do a run-through of the tools the work will likely lean on — the MCP servers above plus anything else the plan depends on — and verify they're actually registered and working (a cheap probe, not just an assumption). Surface anything missing, erroring, or needing auth **before** execution starts, so I can fix it up front rather than discover a fleet of subagents silently worked around broken tools.
+
 ## Workflow
 
 - Start tasks by determining how you (or I) will verify the outcome.
