@@ -15,8 +15,17 @@ Commit after each logical change; push promptly. Rebase on the remote if a push 
   - `executable_*` files are installed with the executable bit set.
   - `run_once_*` scripts are executed by chezmoi once per machine.
   - `run_onchange_*` scripts are re-executed whenever their content changes.
+  - `run_before_*` / `run_after_*` scripts run before/after **every** `chezmoi apply`.
 - `docs/` — reference documentation (not installed by chezmoi).
 - `install.sh` — bootstraps chezmoi on a new machine.
+
+**Gotcha — `run_` scripts always appear in `chezmoi diff`/`apply`.** chezmoi renders
+every `run_` script as a "new file" diff on each apply, because it can't know whether
+executing it will change anything. A `run_after_*` (or other ungated `run_*`) hook
+showing up in `chezmoi diff` is **expected output, not undeployed drift** — only
+`run_once_*` and `run_onchange_*` are content-gated. Don't try to "fix" it by
+renaming the script or forcing an apply; it never gets written as a literal file
+in `$HOME`.
 
 ## Target environments
 
