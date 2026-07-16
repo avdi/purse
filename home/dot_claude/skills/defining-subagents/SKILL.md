@@ -74,6 +74,15 @@ below):
 | `tools: "*"` (or omitting `tools:`) | Broad inherit (gets `ToolSearch`, `Agent`, `Edit`, …), but MCP only via the broken inheritance path → hits #30280. Not reliable for MCP, and over-broad. |
 | `mcpServers: ["*"]` | ❌ Scope-dependent and unreliable — observed granting project-scope (`.mcp.json`) servers but not user-scope (`~/.claude.json`) ones. **Don't use `"*"`; name the servers.** |
 
+**Least-privilege caveat — `mcpServers` grants the server's WHOLE toolset.**
+Declaring `mcpServers: [github]` gives the subagent *every* `mcp__github__*`
+tool (read *and* write — `merge_pull_request`, `delete_file`, `push_files`, …),
+even if `tools:` lists only one of them: a named `mcpServers` ref is not
+narrowed by `tools:`. So only add a server whose entire surface is acceptable
+for that agent. `ripgrep` (5 read-only search tools) is safe to hand out
+widely; `github` is not — for a narrow need (e.g. posting one PR comment),
+prefer `Bash` + `gh` over granting the whole server.
+
 Practical: since `Grep`/`Glob` may not exist as tools in a given build (a
 subagent falls back to `Bash`), wiring `mcpServers: [ripgrep]` +
 `mcp__ripgrep__*` into search-heavy agents gives them real structured search.
