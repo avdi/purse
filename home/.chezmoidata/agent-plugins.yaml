@@ -34,6 +34,11 @@ agentPlugins:
     - name: worktrunk
       source: max-sixty/worktrunk
       agents: [claude, codex]
+    # caveman only ships a Claude plugin; Codex/Copilot use incompatible
+    # mechanisms (npx skills add / bespoke installer), so it stays claude-only.
+    - name: caveman
+      source: JuliusBrussee/caveman
+      agents: [claude]
 
   # Plugins to install, in `name@marketplace` form, and which agents should
   # install each one.
@@ -55,4 +60,7 @@ agentPlugins:
       agents: [claude]
     - name: worktrunk
       marketplace: worktrunk
+      agents: [claude]
+    - name: caveman
+      marketplace: caveman
       agents: [claude]
