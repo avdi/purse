@@ -39,6 +39,11 @@ agentPlugins:
     - name: caveman
       source: JuliusBrussee/caveman
       agents: [claude]
+    # context-mode's docs only quote the Claude /plugin flow; Codex/Copilot
+    # plugin support is unverified, so it stays claude-only.
+    - name: context-mode
+      source: mksglu/context-mode
+      agents: [claude]
 
   # Plugins to install, in `name@marketplace` form, and which agents should
   # install each one.
@@ -63,4 +68,7 @@ agentPlugins:
       agents: [claude]
     - name: caveman
       marketplace: caveman
+      agents: [claude]
+    - name: context-mode
+      marketplace: context-mode
       agents: [claude]
