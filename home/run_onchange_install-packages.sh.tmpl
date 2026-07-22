@@ -208,15 +208,22 @@ if ! command -v gk >/dev/null 2>&1; then
     if [ -n "$_gk_os" ] && [ -n "$_gk_arch" ]; then
       echo "→ gk: installing GitKraken CLI from GitHub releases..."
       _gk_ver="$(curl -fsSL https://api.github.com/repos/gitkraken/gk-cli/releases/latest | grep '"tag_name"' | cut -d'"' -f4 | tr -d 'v')"
-      _gk_tmp="$(mktemp -d)"
-      if curl -fsSL -o "$_gk_tmp/gk.zip" \
-          "https://github.com/gitkraken/gk-cli/releases/download/v${_gk_ver}/gk_${_gk_ver}_${_gk_os}_${_gk_arch}.zip"; then
-        unzip -q -o "$_gk_tmp/gk.zip" gk -d "$HOME/.local/bin"
-        chmod +x "$HOME/.local/bin/gk"
+      if [ -z "$_gk_ver" ]; then
+        # An empty version means the release lookup failed (commonly a GitHub
+        # API rate limit). Don't build a malformed URL — warn and move on; the
+        # command-v guard retries on the next apply that changes this script.
+        echo "⚠️  gk: could not determine latest version (GitHub API rate limit?) — skipping" >&2
       else
-        echo "⚠️  gk: download failed (gk_${_gk_ver}_${_gk_os}_${_gk_arch}.zip)" >&2
+        _gk_tmp="$(mktemp -d)"
+        if curl -fsSL -o "$_gk_tmp/gk.zip" \
+            "https://github.com/gitkraken/gk-cli/releases/download/v${_gk_ver}/gk_${_gk_ver}_${_gk_os}_${_gk_arch}.zip"; then
+          unzip -q -o "$_gk_tmp/gk.zip" gk -d "$HOME/.local/bin"
+          chmod +x "$HOME/.local/bin/gk"
+        else
+          echo "⚠️  gk: download failed (gk_${_gk_ver}_${_gk_os}_${_gk_arch}.zip)" >&2
+        fi
+        rm -rf "$_gk_tmp"
       fi
-      rm -rf "$_gk_tmp"
     else
       echo "⚠️  gk: unsupported platform $(uname -s)/$(uname -m) — skipping" >&2
     fi

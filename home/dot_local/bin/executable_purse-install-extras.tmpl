@@ -112,8 +112,9 @@ fi
 # Three strategies, depending on platform:
 #
 #   macOS           → full brew list (brew is the only package manager)
-#   Linux, apt+root → brew_linux_only (yq, worktrunk); apt/NodeSource/
-#                     GitHub-releases already cover the rest, and git was
+#   Linux, apt+root → brew_linux_only (yq); apt/NodeSource/GitHub-releases
+#                     already cover the rest (worktrunk and gk ship as prebuilt
+#                     binaries via their run_onchange scripts), and git was
 #                     handled above (PPA or from source)
 #   Linux, no root  → full brew list (apt can't be used at all)
 #

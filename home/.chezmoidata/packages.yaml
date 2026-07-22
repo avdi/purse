@@ -10,16 +10,20 @@ packages:
   # gk (GitKraken CLI) isn't packaged for apt/brew-on-Linux (brew ships it as a
   # macOS-only cask), so on Unix it's installed from GitHub releases by
   # run_onchange_install-packages.sh. Windows uses winget (below).
+  # worktrunk (wt) likewise has no apt/brew-on-Linux package and brew would
+  # source-build its whole Rust toolchain in a home-dir prefix, so on all Unix
+  # (Linux and macOS) it's installed as a prebuilt binary from GitHub releases
+  # by run_onchange_install-worktrunk.sh. Windows uses winget (below).
 
   # Homebrew packages — Linux, only those NOT covered by apt/NodeSource/GitHub-releases.
   # apt covers: ripgrep, direnv, jq, fzf
   # NodeSource covers: node; npm covers: devcontainer; GitHub releases cover: vscli, zoxide, uv
   # source builds cover: chruby, ruby-install
+  # prebuilt binaries cover: gk, worktrunk (their own run_onchange scripts)
   # git is handled separately by purse-install-extras: PPA on Ubuntu, built from
   # source on other apt+root systems (e.g. Debian), brew when there's no root.
   brew_linux_only:
     - yq          # YAML processor (mikefarah) — not in apt or any other Linux installer
-    - worktrunk   # git worktree manager — not in apt or any other Linux installer
 
   # Homebrew packages (macOS, or Linux without root)
   brew:
@@ -34,7 +38,6 @@ packages:
     - chruby      # lightweight Ruby version switcher (shell function)
     - ruby-install  # installs Ruby versions for use with chruby
     - uv          # fast Python package manager and tool runner
-    - worktrunk   # git worktree manager
     - zoxide      # frecency-based directory jumper
     - fzf         # fuzzy finder — used by zoxide's zi and standalone
 
