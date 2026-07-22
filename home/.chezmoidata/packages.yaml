@@ -15,15 +15,16 @@ packages:
   # (Linux and macOS) it's installed as a prebuilt binary from GitHub releases
   # by run_onchange_install-worktrunk.sh. Windows uses winget (below).
 
-  # Homebrew packages — Linux, only those NOT covered by apt/NodeSource/GitHub-releases.
+  # On Linux with apt+root the whole toolset is covered without Homebrew:
   # apt covers: ripgrep, direnv, jq, fzf
-  # NodeSource covers: node; npm covers: devcontainer; GitHub releases cover: vscli, zoxide, uv
+  # NodeSource covers: node; npm covers: devcontainer; GitHub releases cover: vscli, zoxide, uv, yq
   # source builds cover: chruby, ruby-install
   # prebuilt binaries cover: gk, worktrunk (their own run_onchange scripts)
   # git is handled separately by purse-install-extras: PPA on Ubuntu, built from
   # source on other apt+root systems (e.g. Debian), brew when there's no root.
-  brew_linux_only:
-    - yq          # YAML processor (mikefarah) — not in apt or any other Linux installer
+  # yq (mikefarah) ships as a single static release binary — brew would
+  # source-build it in a home-dir prefix — so it's installed from GitHub
+  # releases by run_onchange_install-packages.sh, like zoxide/vscli.
 
   # Homebrew packages (macOS, or Linux without root)
   brew:

@@ -136,6 +136,27 @@ elif command -v apt-get >/dev/null 2>&1 && have_root; then
     fi
   fi
 
+  # yq (mikefarah): single static YAML processor binary. apt ships kislyuk/yq
+  # (a different jq-wrapper) and brew would source-build it in a home-dir prefix,
+  # so install the prebuilt release into ~/.local/bin (which precedes /usr/bin).
+  if [ ! -f "$HOME/.local/bin/yq" ]; then
+    case "$(uname -m)" in
+      x86_64|amd64)  _yq_arch="amd64" ;;
+      aarch64|arm64) _yq_arch="arm64" ;;
+      armv7*)        _yq_arch="arm" ;;
+      *)             _yq_arch="" ;;
+    esac
+    if [ -n "$_yq_arch" ]; then
+      echo "→ yq: installing from GitHub releases..."
+      _yq_ver="$(curl -fsSL https://api.github.com/repos/mikefarah/yq/releases/latest | grep '"tag_name"' | cut -d'"' -f4)"
+      curl -fsSL -o "$HOME/.local/bin/yq" \
+        "https://github.com/mikefarah/yq/releases/download/${_yq_ver}/yq_linux_${_yq_arch}"
+      chmod +x "$HOME/.local/bin/yq"
+    else
+      echo "⚠️  yq: unsupported arch $(uname -m) — skipping" >&2
+    fi
+  fi
+
   # uv: fast Python package manager and tool runner (not in apt — use the official installer)
   if ! command -v uv >/dev/null 2>&1; then
     echo "→ uv: installing via official installer..."

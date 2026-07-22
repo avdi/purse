@@ -109,20 +109,21 @@ else
 fi
 
 # ---- Homebrew toolset -------------------------------------------------------
-# Three strategies, depending on platform:
+# Homebrew is only used where it's the sole option:
 #
 #   macOS           → full brew list (brew is the only package manager)
-#   Linux, apt+root → brew_linux_only (yq); apt/NodeSource/GitHub-releases
-#                     already cover the rest (worktrunk and gk ship as prebuilt
-#                     binaries via their run_onchange scripts), and git was
-#                     handled above (PPA or from source)
 #   Linux, no root  → full brew list (apt can't be used at all)
+#   Linux, apt+root → skipped entirely. apt/NodeSource/GitHub-releases cover the
+#                     whole toolset (yq ships as a prebuilt release binary via
+#                     run_onchange_install-packages.sh, worktrunk and gk via
+#                     their own run_onchange scripts), and git was handled above
+#                     (PPA or from source).
 #
 # A home-dir brew prefix (~/.homebrew) can't use pre-built bottles, so
-# everything builds from source — keep the Linux+root list minimal.
+# everything builds from source — hence we only fall back to it when apt is
+# unavailable, never to install a single formula.
 #
 # brew packages (macOS / Linux no-root): {{ .packages.brew | join ", " }}
-# brew packages (Linux, apt available):  {{ .packages.brew_linux_only | join ", " }}
 
 find_brew() {
   if command -v brew >/dev/null 2>&1; then command -v brew; return; fi
@@ -133,37 +134,28 @@ find_brew() {
   return 1
 }
 
-brew_bin="$(find_brew || true)"
-
-if [ -z "$brew_bin" ]; then
-  echo "→ Homebrew not found; installing to ~/.homebrew (no root required)..."
-  echo "   Heads up: a home-dir prefix can't use bottles, so formulae build"
-  echo "   from source — this can take a long while."
-  mkdir -p "$HOME/.homebrew"
-  curl -fsSL https://github.com/Homebrew/brew/tarball/master \
-    | tar xz --strip-components 1 -C "$HOME/.homebrew"
-  brew_bin="$HOME/.homebrew/bin/brew"
-  eval "$("$brew_bin" shellenv)"
-  brew update --force --quiet
-else
-  echo "→ Using existing Homebrew: $brew_bin"
-  eval "$("$brew_bin" shellenv)"
-fi
-
-if [ "$(uname)" = "Darwin" ]; then
-  echo "→ brew (macOS): {{ .packages.brew | join ", " }}"
+if [ "$(uname)" = "Darwin" ] \
+    || ! { command -v apt-get >/dev/null 2>&1 \
+           && { [ "$(id -u)" -eq 0 ] || command -v sudo >/dev/null 2>&1; }; }; then
+  brew_bin="$(find_brew || true)"
+  if [ -z "$brew_bin" ]; then
+    echo "→ Homebrew not found; installing to ~/.homebrew (no root required)..."
+    echo "   Heads up: a home-dir prefix can't use bottles, so formulae build"
+    echo "   from source — this can take a long while."
+    mkdir -p "$HOME/.homebrew"
+    curl -fsSL https://github.com/Homebrew/brew/tarball/master \
+      | tar xz --strip-components 1 -C "$HOME/.homebrew"
+    brew_bin="$HOME/.homebrew/bin/brew"
+    eval "$("$brew_bin" shellenv)"
+    brew update --force --quiet
+  else
+    echo "→ Using existing Homebrew: $brew_bin"
+    eval "$("$brew_bin" shellenv)"
+  fi
+  echo "→ brew: {{ .packages.brew | join ", " }}"
   brew install {{ .packages.brew | join " " }}
-elif command -v apt-get >/dev/null 2>&1 \
-    && { [ "$(id -u)" -eq 0 ] || command -v sudo >/dev/null 2>&1; }; then
-  # Linux with apt+root: only install what apt/NodeSource/GitHub-releases don't
-  # cover. git is already handled above (PPA or built from source).
-  _brew_pkgs=( {{ .packages.brew_linux_only | join " " }} )
-  echo "→ brew (Linux, apt available): ${_brew_pkgs[*]}"
-  brew install "${_brew_pkgs[@]}"
 else
-  # Linux without root: brew covers everything since apt is unavailable.
-  echo "→ brew (Linux, no apt/root): {{ .packages.brew | join ", " }}"
-  brew install {{ .packages.brew | join " " }}
+  echo "→ brew: skipped (Linux with apt — toolset covered by apt/GitHub releases)"
 fi
 
 cat <<'EOF'
