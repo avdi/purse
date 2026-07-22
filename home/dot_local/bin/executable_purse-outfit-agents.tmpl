@@ -269,11 +269,11 @@ outfit_mcp_servers() {
 # =============================================================================
 # 2. Agent plugins — register marketplaces, then install plugins, into every
 #    agent that natively supports the Claude plugin/marketplace format
-#    (Claude Code, Codex CLI, GitHub Copilot CLI; see .chezmoidata/agent-plugins.yaml
-#    for why VS Code/Cursor/Devin/Antigravity are excluded). Built-in
-#    marketplaces are only auto-seeded on an interactive first launch, so we
-#    register them explicitly here. Codex uses `plugin add` where
-#    Claude/Copilot use `plugin install`; otherwise the CLIs are identical.
+#    (Claude Code, Codex CLI, GitHub Copilot CLI, Auggie; see
+#    .chezmoidata/agent-plugins.yaml for why VS Code/Cursor/Devin/Antigravity
+#    are excluded). Built-in marketplaces are only auto-seeded on an interactive
+#    first launch, so we register them explicitly here. Codex uses `plugin add`
+#    where Claude/Copilot/Auggie use `plugin install`; otherwise identical.
 # =============================================================================
 outfit_agent_plugins() {
   echo "→ Agent plugins: registering marketplaces and installing plugins..."

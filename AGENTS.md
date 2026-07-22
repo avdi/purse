@@ -79,11 +79,11 @@ edit the manifest; do not hand-edit per-agent config files.
 
 ## Agent plugins
 
-Claude Code, Codex CLI, and GitHub Copilot CLI share the same plugin/marketplace
-format (`.claude-plugin/plugin.json` manifests, near-identical `plugin marketplace
-add` / `plugin install`(`add` for Codex) CLI verbs), so plugins are installed
-into all three from a single declarative manifest and loop in
-`purse-outfit-agents`.
+Claude Code, Codex CLI, GitHub Copilot CLI, and Auggie share the same
+plugin/marketplace format (`.claude-plugin/plugin.json` manifests — Auggie also
+reads `.augment-plugin` — with near-identical `plugin marketplace add` / `plugin
+install`(`add` for Codex) CLI verbs), so plugins are installed into all of them
+from a single declarative manifest and loop in `purse-outfit-agents`.
 
 - `home/.chezmoidata/agent-plugins.yaml` — the manifest: `agents` (the CLIs this
   applies to), `marketplaces` (name → source, each tagged with which agents
