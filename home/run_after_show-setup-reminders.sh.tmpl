@@ -24,6 +24,15 @@ note_agents=""
 note_outfit=""
 have codebase-memory-mcp || note_outfit="  ← codebase-memory-mcp not installed"
 
+# Cheap auth probes only (skip auggie's slow `token print`): flag the common
+# breakages — gh not logged in, github MCP token missing.
+note_auth=""
+_auth_need=""
+have gh && ! gh auth token >/dev/null 2>&1 && _auth_need="gh"
+[ -r "$HOME/.config/shell/secrets.sh" ] && . "$HOME/.config/shell/secrets.sh"
+[ -z "${GITHUB_PERSONAL_ACCESS_TOKEN:-}" ] && _auth_need="${_auth_need:+${_auth_need}, }github token"
+[ -n "$_auth_need" ] && note_auth="  ← ${_auth_need} not set"
+
 note_extras=""
 have dbr || note_extras="dbr not installed"
 _git_v="$(git --version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+' | head -1)"
@@ -39,6 +48,7 @@ cat <<EOF
   • purse-install-extras   Homebrew + full toolset (no root needed) + devcontainer-bridge (dbr)${note_extras}
   • purse-install-agents   AI agent CLIs (claude, codex, cursor, devin, auggie, agy, opencode)${note_agents}
   • purse-outfit-agents    MCP servers + agent plugins + GitKraken MCP + codebase-memory-mcp${note_outfit}
+  • purse-auth-tools       Verify/remediate logins: gh, gk, auggie, MCP tokens${note_auth}
 
 EOF
 

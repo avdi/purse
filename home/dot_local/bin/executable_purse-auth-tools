@@ -1,0 +1,198 @@
+#!/usr/bin/env bash
+# purse-auth-tools — verify (and optionally remediate) the logged-in
+# state of the developer tools that I, or an agent's MCP layer, routinely trip
+# over: gh, gk, auggie, and the token-backed MCP servers (github, context7).
+#
+# Usage:
+#   purse-auth-tools [--check] [tool ...]
+#
+#   (no args)     Check every known tool; interactively remediate any that fail.
+#   tool ...      Restrict to the named tools (e.g. `gh auggie`).
+#   --check       Non-interactive: report status and exit non-zero if any
+#                 required tool is unauthenticated. Suitable for pre-flight.
+#
+# Two kinds of tools:
+#   login-type  gh, gk, auggie — an interactive CLI login (`<tool> auth login`).
+#               auggie is special: it's exposed as an MCP tool to *other* agents,
+#               so its session backs everyone's codebase-retrieval.
+#   token-type  github / context7 — no login, just an env var sourced from
+#               Zoho Vault via purse-setup-secrets. We only check presence
+#               (never print values) and point at the remediation command.
+#
+# Deliberately does NOT try to authenticate every installed agent CLI at once —
+# that's a per-agent, interactive concern. Only auggie is covered here, because
+# of its MCP role.
+
+set -uo pipefail
+
+CHECK_ONLY=0
+REQUESTED=()
+
+log()  { echo "==> $*"; }
+warn() { echo "⚠️  $*" >&2; }
+ok()   { echo "  ✅ $*"; }
+bad()  { echo "  ❌ $*"; }
+skip() { echo "  •  $*"; }
+
+# All known tools, in display order.
+ALL_TOOLS=(gh gk auggie github context7)
+
+usage() {
+  sed -n '2,26p' "$0" | sed 's/^# \{0,1\}//'
+}
+
+# ── argument parsing ─────────────────────────────────────────────────────────
+for arg in "$@"; do
+  case "$arg" in
+    --check) CHECK_ONLY=1 ;;
+    -h|--help) usage; exit 0 ;;
+    -*) warn "unknown flag: $arg"; usage; exit 2 ;;
+    *) REQUESTED+=("$arg") ;;
+  esac
+done
+
+# Selected tools = requested subset (validated) or all.
+SELECTED=()
+if [ "${#REQUESTED[@]}" -gt 0 ]; then
+  for want in "${REQUESTED[@]}"; do
+    _found=0
+    for known in "${ALL_TOOLS[@]}"; do
+      [ "$want" = "$known" ] && { SELECTED+=("$want"); _found=1; break; }
+    done
+    [ "$_found" -eq 0 ] && { warn "unknown tool: $want (known: ${ALL_TOOLS[*]})"; exit 2; }
+  done
+else
+  SELECTED=("${ALL_TOOLS[@]}")
+fi
+
+have() { command -v "$1" >/dev/null 2>&1; }
+
+# Load secrets so token-type checks see the same env agents get at runtime.
+_secrets="$HOME/.config/shell/secrets.sh"
+# shellcheck disable=SC1090
+[ -r "$_secrets" ] && . "$_secrets"
+
+# ── status probes (echo status word; return 0 authed / 1 unauthed / 2 n/a) ────
+# Status words: authed | unauthed | absent | optional-unset
+
+status_gh() {
+  have gh || { echo absent; return 2; }
+  if gh auth token >/dev/null 2>&1; then echo authed; return 0; fi
+  echo unauthed; return 1
+}
+
+status_gk() {
+  have gk || { echo absent; return 2; }
+  if gk whoami --output json 2>/dev/null | grep -q '"authenticated": *true'; then
+    echo authed; return 0
+  fi
+  echo unauthed; return 1
+}
+
+# auggie: `token print` succeeds only with a live OAuth session. It can be slow,
+# so cap it. A present-but-expired session prints nothing and fails.
+status_auggie() {
+  have auggie || { echo absent; return 2; }
+  if timeout 30 auggie token print >/dev/null 2>&1; then echo authed; return 0; fi
+  echo unauthed; return 1
+}
+
+# github MCP: needs GITHUB_PERSONAL_ACCESS_TOKEN in the env (required).
+status_github() {
+  [ -n "${GITHUB_PERSONAL_ACCESS_TOKEN:-}" ] && { echo authed; return 0; }
+  echo unauthed; return 1
+}
+
+# context7 MCP: CONTEXT7_API_KEY is OPTIONAL — keyless works but is rate-limited.
+status_context7() {
+  [ -n "${CONTEXT7_API_KEY:-}" ] && { echo authed; return 0; }
+  echo optional-unset; return 1
+}
+
+# ── remediation ──────────────────────────────────────────────────────────────
+remediate_gh()     { log "gh auth login"; gh auth login; }
+remediate_gk()     { log "gk auth login"; gk auth login; }
+remediate_auggie() { log "auggie login (backs the auggie MCP for all agents)"; auggie login; }
+remediate_token()  {
+  local var="$1"
+  echo "     $var is sourced from Zoho Vault. To set it:"
+  echo "       1. Add a '$var' field to the PURSE_TOKENS note in Zoho Vault"
+  echo "       2. Run: purse-setup-secrets"
+  echo "       3. Open a new shell (or: source ~/.config/shell/secrets.sh)"
+}
+
+# ── per-tool descriptions (for the status line) ──────────────────────────────
+label_gh()       { echo "gh        GitHub CLI (git push/pull, gh commands)"; }
+label_gk()       { echo "gk        GitKraken CLI (git tooling + GitKraken MCP)"; }
+label_auggie()   { echo "auggie    Augment CLI — MCP tool exposed to other agents"; }
+label_github()   { echo "github    GITHUB_PERSONAL_ACCESS_TOKEN (github MCP)"; }
+label_context7() { echo "context7  CONTEXT7_API_KEY (context7 MCP, optional)"; }
+
+# ── drive one tool: print status; in interactive mode, offer to remediate. ────
+# Sets the global `failures` counter for required tools left unauthenticated.
+failures=0
+
+handle_tool() {
+  local tool="$1" st
+  st="$("status_${tool}")"
+
+  echo
+  echo "  ┌ $("label_${tool}")"
+
+  case "$st" in
+    authed)        ok "authenticated"; return 0 ;;
+    absent)        skip "not installed — skipping"; return 0 ;;
+    optional-unset)
+      skip "no key set (optional; running rate-limited/keyless)"
+      [ "$CHECK_ONLY" -eq 1 ] && return 0
+      remediate_token CONTEXT7_API_KEY
+      return 0
+      ;;
+    unauthed)      bad "not authenticated" ;;
+  esac
+
+  # Reaching here means a required tool is unauthenticated.
+  failures=$((failures + 1))
+
+  if [ "$CHECK_ONLY" -eq 1 ]; then
+    return 0
+  fi
+
+  case "$tool" in
+    gh)       remediate_gh ;;
+    gk)       remediate_gk ;;
+    auggie)   remediate_auggie ;;
+    github)   remediate_token GITHUB_PERSONAL_ACCESS_TOKEN ;;
+  esac
+
+  # Re-probe after remediation so the summary reflects reality.
+  if [ "$("status_${tool}")" = authed ]; then
+    ok "now authenticated"
+    failures=$((failures - 1))
+  else
+    bad "still not authenticated"
+  fi
+}
+
+# ── run ──────────────────────────────────────────────────────────────────────
+if [ "$CHECK_ONLY" -eq 1 ]; then
+  log "Checking tool authentication (non-interactive)..."
+else
+  log "Verifying tool authentication..."
+fi
+
+# Non-interactive remediation is nonsensical for login flows; warn early.
+if [ "$CHECK_ONLY" -eq 0 ] && [ ! -t 0 ]; then
+  warn "no TTY — interactive logins will fail; consider --check"
+fi
+
+for tool in "${SELECTED[@]}"; do
+  handle_tool "$tool"
+done
+
+echo
+if [ "$failures" -gt 0 ]; then
+  bad "$failures tool(s) still need authentication"
+  exit 1
+fi
+ok "all selected tools authenticated"
