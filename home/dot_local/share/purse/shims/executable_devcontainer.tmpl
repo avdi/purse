@@ -75,9 +75,34 @@ if [ -z "$real_devcontainer" ]; then
   exit 127
 fi
 
-# Pass through anything that isn't `up` untouched.
-if [ "${1:-}" != "up" ]; then
+# Build --remote-env args from forwarded host vars. If a var is unset/empty,
+# we attempt to lazy-initialize it using `gh auth token` (if it looks like
+# a GitHub token) before skipping.
+remote_env_args=()
+for name in $forward_env_names; do
+  value="${!name:-}"
+
+  # Lazy-fetch GitHub token if needed
+  if [ -z "$value" ] && [[ "$name" =~ ^(GH|GITHUB)_TOKEN$|^BUNDLE_GITHUB__COM$ ]]; then
+    if command -v gh >/dev/null 2>&1; then
+      value="$(gh auth token 2>/dev/null || true)"
+    fi
+  fi
+
+  [ -n "$value" ] && remote_env_args+=(--remote-env "$name=$value")
+done
+
+# Pass through anything that isn't `up` or `exec` untouched.
+if [ "${1:-}" != "up" ] && [ "${1:-}" != "exec" ]; then
   exec "$real_devcontainer" "$@"
+fi
+
+# For `exec`, inject the same --remote-env vars (no dotfiles/WSLg/dbr needed).
+if [ "${1:-}" = "exec" ]; then
+  shift  # consume `exec`
+  exec "$real_devcontainer" exec \
+    "${remote_env_args[@]+"${remote_env_args[@]}"}" \
+    "$@"
 fi
 
 # Detect whether the caller already supplied any --dotfiles-* or --config
@@ -95,23 +120,6 @@ for arg in "$@"; do
       user_config=1
       ;;
   esac
-done
-
-# Build --remote-env args from forwarded host vars. If a var is unset/empty,
-# we attempt to lazy-initialize it using `gh auth token` (if it looks like
-# a GitHub token) before skipping.
-remote_env_args=()
-for name in $forward_env_names; do
-  value="${!name:-}"
-
-  # Lazy-fetch GitHub token if needed
-  if [ -z "$value" ] && [[ "$name" =~ ^(GH|GITHUB)_TOKEN$|^BUNDLE_GITHUB__COM$ ]]; then
-    if command -v gh >/dev/null 2>&1; then
-      value="$(gh auth token 2>/dev/null || true)"
-    fi
-  fi
-
-  [ -n "$value" ] && remote_env_args+=(--remote-env "$name=$value")
 done
 
 # Auto-inject --config from DEVCONTAINER_CONFIG when the caller didn't
