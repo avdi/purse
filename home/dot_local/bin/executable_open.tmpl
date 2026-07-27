@@ -1,0 +1,24 @@
+{{- if ne .chezmoi.os "windows" -}}
+#!/usr/bin/env bash
+# open compatibility wrapper for Linux/WSL shells.
+# Some CLIs (including Zoho Vault) hardcode `open` (macOS) to launch URLs.
+# This wrapper forwards to $BROWSER when configured, otherwise xdg-open.
+
+set -euo pipefail
+
+if [[ $# -lt 1 ]]; then
+  echo "Usage: open <url-or-path>" >&2
+  exit 1
+fi
+
+if [[ -n "${BROWSER:-}" ]] && [[ "${BROWSER}" != "open" ]]; then
+  exec "$BROWSER" "$1"
+fi
+
+if command -v xdg-open >/dev/null 2>&1; then
+  exec xdg-open "$1"
+fi
+
+echo "open: no browser launcher found. Set BROWSER or install xdg-utils." >&2
+exit 127
+{{- end }}
