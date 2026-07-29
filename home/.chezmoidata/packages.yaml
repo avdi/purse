@@ -54,6 +54,7 @@ packages:
     - "devin-cli"                  # devin
     - "@augmentcode/auggie"        # auggie
     - "opencode-ai"                # opencode
+    - "@github/copilot"            # copilot
 
   # Windows Package Manager (winget) packages
   # (Agents like claude, codex, etc. are installed via purse-install-agents)
