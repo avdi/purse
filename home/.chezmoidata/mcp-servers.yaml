@@ -22,6 +22,7 @@ mcpServers:
     command: auggie
     args: ["--mcp", "--mcp-auto-workspace"]
     requiresEnv: []
+    excludeAgents: [copilot]
   ripgrep:
     description: "ripgrep code search via MCP"
     transport: stdio

@@ -29,6 +29,7 @@ These MCP servers are registered for a reason: they are faster, more accurate, a
 Match the task to the tool:
 
 - **Understanding a codebase** — "how does X work", "where is Y", "what calls Z", gathering cross-file context before planning or editing: ask **`auggie`** (`codebase-retrieval`). It reasons over structure and returns synthesized answers, not raw file dumps — far more efficient than reading files by hand. **This is exactly the job you'd otherwise hand to an `Explore` (or general-purpose search) subagent — reach for `auggie` instead.** A fan-out subagent burns a whole context window re-reading files to rediscover what `auggie` already has indexed; only fall back to `Explore` when `auggie` (and its `codebase-memory-mcp` fallback) genuinely can't answer.
+  - **Copilot CLI exception:** `auggie` MCP is intentionally not registered because the two do not interoperate reliably. Start with `codebase-memory-mcp` instead.
   - If `auggie` is unavailable, use **`codebase-memory-mcp`** instead: `search_graph` / `query_graph` to find symbols and routes, `trace_path` for call chains, `get_code_snippet` for exact source, `get_architecture` for structure. `index_repository` first if the project isn't indexed.
   - Only fall through to your native search/read tools when neither is available or the question is about non-code text.
 - **Docs for a library / framework / SDK / CLI** — resolve and read via **`context7`** (`resolve-library-id` → `query-docs`). Its docs are cleaner and more parseable than scraping the open web; prefer it even for well-known libraries and even when you think you already know the answer.
@@ -55,6 +56,7 @@ This file is managed by chezmoi, sourcing config from Avdi's dotfiles repo https
 
 It is symlinked into each AI agent's expected location:
 - `~/.claude/CLAUDE.md` (Claude Code)
+- `~/.copilot/copilot-instructions.md` (GitHub Copilot CLI)
 - `~/.gemini/GEMINI.md` (Gemini CLI)
 - `~/.augment/rules/global.md` (Augment)
 

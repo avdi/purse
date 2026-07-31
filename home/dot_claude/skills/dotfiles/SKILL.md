@@ -39,6 +39,8 @@ home/
     skills/              # Agent skills (read by Claude Code + Augment)
       dotfiles/
         SKILL.md
+  dot_copilot/
+    symlink_copilot-instructions.md.tmpl  # ~/.copilot/copilot-instructions.md → shared prompt
   dot_gemini/
     symlink_GEMINI.md.tmpl  # ~/.gemini/GEMINI.md → ~/.config/ai/system-prompt.md
   dot_augment/
@@ -64,8 +66,9 @@ chezmoi add ~/.config/foo
 ### Edit the shared LLM system prompt
 
 Edit `home/dot_config/ai/system-prompt.md` — that file is the source of truth.
-`~/.claude/CLAUDE.md`, `~/.gemini/GEMINI.md`, and `~/.augment/rules/global.md`
-are all symlinks to `~/.config/ai/system-prompt.md`.
+`~/.claude/CLAUDE.md`, `~/.copilot/copilot-instructions.md`,
+`~/.gemini/GEMINI.md`, and `~/.augment/rules/global.md` are all symlinks to
+`~/.config/ai/system-prompt.md`.
 
 After editing, run `chezmoi re-add ~/.config/ai/system-prompt.md` if you edited
 the deployed copy directly.

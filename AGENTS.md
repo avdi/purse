@@ -41,12 +41,12 @@ Scripts that are platform-specific should guard themselves or be named/templated
 
 ## MCP servers
 
-A short list of "always-want-these" MCP servers is registered declaratively into
-every AI agent present on the machine.
+A short list of MCP servers is registered declaratively into each compatible AI
+agent present on the machine.
 
 - `home/.chezmoidata/mcp-servers.yaml` — the manifest: the servers (`mcpServers`)
-  and the agents to configure (`mcpAgents`). Currently ships **github** (remote
-  HTTP), **playwright**, **auggie**, and **ripgrep** (local stdio).
+  and the agents to configure (`mcpAgents`). Servers may declare `excludeAgents`
+  for known incompatibilities; **auggie** is excluded from Copilot CLI.
 - `home/dot_local/bin/executable_purse-outfit-agents.tmpl` → `purse-outfit-agents`
   — the installer. It's a **manually-invoked** step (not run on `chezmoi apply`),
   run after `purse-install-agents`, because alongside MCP registration it also

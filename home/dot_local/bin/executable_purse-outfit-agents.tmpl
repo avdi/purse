@@ -73,8 +73,8 @@ register_copilot() {
     --header "Authorization: $gh_bearer_dollar"
   copilot mcp remove playwright >/dev/null 2>&1 || true
   copilot mcp add playwright -- "$pw_cmd" "${pw_args[@]}"
+  # Auggie MCP is incompatible with Copilot; remove stale registrations.
   copilot mcp remove auggie >/dev/null 2>&1 || true
-  copilot mcp add auggie -- "$ag_cmd" "${ag_args[@]}"
   copilot mcp remove ripgrep >/dev/null 2>&1 || true
   copilot mcp add ripgrep -- "$rg_cmd" "${rg_args[@]}"
   copilot mcp remove codebase-memory-mcp >/dev/null 2>&1 || true
