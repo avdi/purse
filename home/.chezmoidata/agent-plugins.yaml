@@ -1,8 +1,8 @@
 # Declarative manifest of agent plugin marketplaces and plugins, shared across
 # every agent that natively supports the Claude plugin/marketplace format
-# (Claude Code, Codex CLI, GitHub Copilot CLI, Auggie). Each marketplace and
-# plugin declares which of those agents it should be installed into, so one
-# plugin can be Claude-only while another (e.g. superpowers) fans out to all.
+# (Claude Code, Codex CLI, GitHub Copilot CLI, Auggie), plus skills.sh fallback
+# packages for agents that cannot consume a particular native plugin. Each
+# marketplace and plugin declares which native agents it should target.
 # Auggie uses the same `plugin marketplace add` / `plugin install` verbs and
 # recognizes both .claude-plugin and .augment-plugin manifests.
 #
@@ -47,6 +47,11 @@ agentPlugins:
     - name: context-mode
       source: mksglu/context-mode
       agents: [claude]
+    # mattpocock-skills deliberately ships only a Claude plugin; its Codex
+    # plugin is deferred because Codex cannot express the curated skill paths.
+    - name: mattpocock
+      source: mattpocock/skills
+      agents: [claude]
 
   # Plugins to install, in `name@marketplace` form, and which agents should
   # install each one.
@@ -75,3 +80,27 @@ agentPlugins:
     - name: context-mode
       marketplace: context-mode
       agents: [claude]
+    - name: mattpocock-skills
+      marketplace: mattpocock
+      agents: [claude]
+
+  # Universal Agent Skills packages for agents not covered by a package's
+  # native plugin. `command` detects an installed agent; `target` is the
+  # corresponding skills.sh agent identifier.
+  skillPackages:
+    - source: mattpocock/skills
+      agents:
+        - command: codex
+          target: codex
+        - command: agy
+          target: antigravity-cli
+        - command: auggie
+          target: augment
+        - command: copilot
+          target: github-copilot
+        - command: cursor-agent
+          target: cursor
+        - command: opencode
+          target: opencode
+        - command: devin
+          target: devin

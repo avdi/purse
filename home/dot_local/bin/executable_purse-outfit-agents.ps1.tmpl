@@ -1,14 +1,12 @@
 {{- if eq .chezmoi.os "windows" -}}
-# Outfit the installed AI agents (Windows): register the GitKraken MCP server
-# and download the codebase-memory-mcp binary.
+# Outfit the installed AI agents (Windows): install native plugins and Agent
+# Skills packages, register GitKraken MCP, and download codebase-memory-mcp.
 #
 # chezmoi installs this to ~/.local/bin/purse-outfit-agents.ps1.
 #
-# Run manually, after purse-install-agents.ps1. On Windows the agent-outfitting
-# steps are the GitKraken MCP server (`gk mcp install --all`) and downloading
-# the codebase-memory-mcp binary. Full declarative MCP-server shortlist
-# registration (as done in the Unix purse-outfit-agents) is not yet wired up
-# on Windows.
+# Run manually, after purse-install-agents.ps1. Full declarative MCP-server
+# shortlist registration (as done in the Unix purse-outfit-agents) is not yet
+# wired up on Windows.
 #
 # codebase-memory-mcp is registered as an MCP server by the declarative manifest
 # (mcp-servers.yaml), not by its own `install -y` which has unwanted side-effects
@@ -25,6 +23,64 @@ $CbmVersion = '0.8.1'
 $InstallDir = "$env:LOCALAPPDATA\Programs\codebase-memory-mcp"
 $BinName    = 'codebase-memory-mcp.exe'
 $Dest       = Join-Path $InstallDir $BinName
+
+function Test-Command($Name) {
+    return [bool](Get-Command $Name -ErrorAction SilentlyContinue)
+}
+
+function Invoke-CheckedCommand($Command, [string[]]$Arguments) {
+    & $Command @Arguments
+    if ($LASTEXITCODE -ne 0) {
+        throw "$Command exited with status $LASTEXITCODE"
+    }
+}
+
+Write-Host "-> Agent plugins: registering marketplaces and installing plugins..." -ForegroundColor Cyan
+{{ range $agent := .agentPlugins.agents }}
+if (Test-Command '{{ $agent }}') {
+    {{ range $.agentPlugins.marketplaces }}
+    {{- if has $agent .agents }}
+    try {
+        Invoke-CheckedCommand '{{ $agent }}' @('plugin', 'marketplace', 'add', '{{ .source }}')
+    } catch {
+        Write-Warning "{{ $agent }} marketplace add failed: {{ .source }}: $_"
+    }
+    {{- end }}
+    {{- end }}
+    {{ range $.agentPlugins.plugins }}
+    {{- if has $agent .agents }}
+    try {
+        Invoke-CheckedCommand '{{ $agent }}' @('plugin', '{{ if eq $agent "codex" }}add{{ else }}install{{ end }}', '{{ .name }}@{{ .marketplace }}')
+    } catch {
+        Write-Warning "{{ $agent }} plugin install failed: {{ .name }}@{{ .marketplace }}: $_"
+    }
+    {{- end }}
+    {{- end }}
+}
+{{ end }}
+
+if (Test-Command 'npx') {
+    {{ range .agentPlugins.skillPackages }}
+    $SkillTargets = @()
+    $SkillArguments = @()
+    {{ range .agents }}
+    if (Test-Command '{{ .command }}') {
+        $SkillTargets += '{{ .target }}'
+        $SkillArguments += @('--agent', '{{ .target }}')
+    }
+    {{ end }}
+    if ($SkillTargets.Count -gt 0) {
+        Write-Host "-> skills.sh: installing {{ .source }} for $($SkillTargets -join ', ')"
+        try {
+            Invoke-CheckedCommand 'npx' (@('--yes', 'skills@latest', 'add', '{{ .source }}', '--global', '--skill', '*') + $SkillArguments + @('--yes'))
+        } catch {
+            Write-Warning "skills.sh install failed: {{ .source }}: $_"
+        }
+    }
+    {{ end }}
+} else {
+    Write-Warning "npx not found; skipping skills.sh package installation."
+}
 
 function Get-InstalledVersion {
     if (-not (Test-Path $Dest)) { return 'none' }
@@ -110,5 +166,5 @@ if (Get-Command gk -ErrorAction SilentlyContinue) {
 }
 
 Write-Host ""
-Write-Host "Agents outfitted: GitKraken MCP, codebase-memory-mcp binary installed." -ForegroundColor Green
+Write-Host "Agents outfitted: plugins, skills, GitKraken MCP, codebase-memory-mcp." -ForegroundColor Green
 {{- end -}}

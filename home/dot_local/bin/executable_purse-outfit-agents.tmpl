@@ -1,6 +1,7 @@
 #!/bin/bash
-# Outfit the installed AI agents: register MCP servers, install agent plugins,
-# register the GitKraken MCP server, and set up codebase-memory-mcp.
+# Outfit the installed AI agents: register MCP servers, install native plugins
+# and Agent Skills packages, register GitKraken MCP, and set up
+# codebase-memory-mcp.
 #
 # chezmoi installs this to ~/.local/bin/purse-outfit-agents.
 #
@@ -267,13 +268,15 @@ outfit_mcp_servers() {
 }
 
 # =============================================================================
-# 2. Agent plugins — register marketplaces, then install plugins, into every
-#    agent that natively supports the Claude plugin/marketplace format
+# 2. Agent extensions — register marketplaces and install native plugins into
+#    every agent that natively supports the Claude plugin/marketplace format
 #    (Claude Code, Codex CLI, GitHub Copilot CLI, Auggie; see
 #    .chezmoidata/agent-plugins.yaml for why VS Code/Cursor/Devin/Antigravity
 #    are excluded). Built-in marketplaces are only auto-seeded on an interactive
 #    first launch, so we register them explicitly here. Codex uses `plugin add`
 #    where Claude/Copilot/Auggie use `plugin install`; otherwise identical.
+#    Packages without a compatible native plugin are installed globally through
+#    skills.sh for each detected fallback agent.
 # =============================================================================
 outfit_agent_plugins() {
   echo "→ Agent plugins: registering marketplaces and installing plugins..."
@@ -293,6 +296,27 @@ outfit_agent_plugins() {
     {{- end }}
   else
     warn "{{ $agent }} CLI not found; skipping plugin installation"
+  fi
+  {{ end }}
+
+  if ! have npx; then
+    warn "npx not found; skipping skills.sh package installation"
+    return 0
+  fi
+
+  {{ range .agentPlugins.skillPackages }}
+  local skill_targets=()
+  local skill_args=()
+  {{ range .agents }}
+  if have {{ .command }}; then
+    skill_targets+=("{{ .target }}")
+    skill_args+=(--agent "{{ .target }}")
+  fi
+  {{ end }}
+  if [ "${#skill_targets[@]}" -gt 0 ]; then
+    echo "→ skills.sh: installing {{ .source }} for ${skill_targets[*]}"
+    npx --yes skills@latest add "{{ .source }}" --global --skill '*' "${skill_args[@]}" --yes \
+      || warn "skills.sh install failed: {{ .source }}"
   fi
   {{ end }}
 }
