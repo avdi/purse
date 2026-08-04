@@ -182,6 +182,16 @@ work() {
   fi
 
   # Run wt switch inside the container, then hand off to a login shell there.
+  #
+  # -x bash -- --login: -x takes a single program name, with args after --
+  # appended and shell-escaped. `-x 'bash --login'` works today but is a
+  # soon-deprecated shorthand for a full command line.
+  #
+  # No --no-cd: it turns off wt's own chdir before exec'ing -x, not just the
+  # (here-irrelevant) shell-wrapper cd file — dropping it left `bash --login`
+  # running from the base repo instead of the worktree. The "shell
+  # integration not installed" warning it was meant to silence is cosmetic;
+  # -x already lands us in the right directory without the wrapper.
   local wt_sub=()
   case "$target" in
     pr:*)
@@ -198,7 +208,7 @@ work() {
       fi
       ;;
   esac
-  dcsh -- wt "${wt_sub[@]}" -x 'bash --login'
+  dcsh -- wt "${wt_sub[@]}" -x bash -- --login
 }
 
 _work_project_for_issue() {
