@@ -163,24 +163,11 @@ elif command -v apt-get >/dev/null 2>&1 && have_root; then
     curl -LsSf https://astral.sh/uv/install.sh | sh
   fi
 
-  # chruby: install from source via make (not in apt)
-  # See: https://github.com/postmodern/chruby#install
-  if [ ! -f /usr/local/share/chruby/chruby.sh ]; then
-    echo "→ chruby: installing from source..."
-    _chruby_ver="$(curl -fsSL https://api.github.com/repos/postmodern/chruby/releases/latest | grep '"tag_name"' | cut -d'"' -f4 | tr -d 'v')"
-    curl -fsSL "https://github.com/postmodern/chruby/archive/v${_chruby_ver}.tar.gz" | tar -xz -C /tmp
-    as_root make -C "/tmp/chruby-${_chruby_ver}" install
-    rm -rf "/tmp/chruby-${_chruby_ver}"
-  fi
-
-  # ruby-install: install from source via make (not in apt)
-  # See: https://github.com/postmodern/ruby-install#install
-  if ! command -v ruby-install >/dev/null 2>&1; then
-    echo "→ ruby-install: installing from source..."
-    _ri_ver="$(curl -fsSL https://api.github.com/repos/postmodern/ruby-install/releases/latest | grep '"tag_name"' | cut -d'"' -f4 | tr -d 'v')"
-    curl -fsSL "https://github.com/postmodern/ruby-install/archive/v${_ri_ver}.tar.gz" | tar -xz -C /tmp
-    as_root make -C "/tmp/ruby-install-${_ri_ver}" install
-    rm -rf "/tmp/ruby-install-${_ri_ver}"
+  # mise: polyglot runtime manager (Ruby, Node, etc.) — not in apt, use the
+  # official installer. Shell activation is wired up in aliases.sh.
+  if ! command -v mise >/dev/null 2>&1 && [ ! -x "$HOME/.local/bin/mise" ]; then
+    echo "→ mise: installing via official installer..."
+    curl -fsSL https://mise.run | sh
   fi
 
 else

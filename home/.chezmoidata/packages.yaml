@@ -18,7 +18,7 @@ packages:
   # On Linux with apt+root the whole toolset is covered without Homebrew:
   # apt covers: ripgrep, direnv, jq, fzf
   # NodeSource covers: node; npm covers: devcontainer; GitHub releases cover: vscli, zoxide, uv, yq
-  # source builds cover: chruby, ruby-install
+  # mise.run covers: mise (Ruby/Node/etc. runtime manager, replaces chruby/ruby-install)
   # prebuilt binaries cover: gk, worktrunk (their own run_onchange scripts)
   # git is handled separately by purse-install-extras: PPA on Ubuntu, built from
   # source on other apt+root systems (e.g. Debian), brew when there's no root.
@@ -36,8 +36,7 @@ packages:
     - node        # Node.js LTS — needed for npm packages below
     - devcontainer # devcontainer CLI (@devcontainers/cli)
     - vscli       # VS Code devcontainer launcher
-    - chruby      # lightweight Ruby version switcher (shell function)
-    - ruby-install  # installs Ruby versions for use with chruby
+    - mise        # polyglot runtime manager (Ruby, Node, etc.)
     - uv          # fast Python package manager and tool runner
     - zoxide      # frecency-based directory jumper
     - fzf         # fuzzy finder — used by zoxide's zi and standalone
@@ -67,6 +66,7 @@ packages:
     - id: Anthropic.ClaudeCode      # claude (native binary, not npm)
     - id: OpenJS.NodeJS.LTS         # Node.js LTS — needed for npm packages below
     - id: astral-sh.uv              # fast Python package manager and tool runner
+    - id: jdx.mise                  # polyglot runtime manager (Ruby, Node, etc.)
     - id: max-sixty.worktrunk       # git worktree manager
     - id: ajeetdsouza.zoxide        # frecency-based directory jumper
     - id: junegunn.fzf              # fuzzy finder — used by zoxide's zi and standalone

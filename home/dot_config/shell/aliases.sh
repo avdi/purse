@@ -80,40 +80,16 @@ if command -v direnv >/dev/null 2>&1; then
   fi
 fi
 
-# chruby shell hook — enables 'chruby X.Y.Z' to switch Ruby versions.
-# auto.sh additionally reads .ruby-version files and switches automatically.
-# Probe known brew prefix locations (linuxbrew / Apple Silicon / Intel) and
-# the default prefix used by manual 'make install'.
-# See: https://github.com/postmodern/chruby
-for _chruby_sh in \
-  /home/linuxbrew/.linuxbrew/opt/chruby/share/chruby/chruby.sh \
-  /opt/homebrew/opt/chruby/share/chruby/chruby.sh \
-  /usr/local/opt/chruby/share/chruby/chruby.sh \
-  /usr/local/share/chruby/chruby.sh; do
-  if [ -f "$_chruby_sh" ]; then
-    # shellcheck source=/dev/null
-    . "$_chruby_sh"
-    # Only enable .ruby-version auto-switching when chruby actually has rubies
-    # to switch between. chruby discovers them from ~/.rubies and /opt/rubies
-    # (chruby.sh); where Ruby is provided by the system/image (devcontainers,
-    # Codespaces) those are empty, so auto.sh would just spew "unknown Ruby"
-    # for every .ruby-version it reads. Skipping it keeps the system Ruby and
-    # stays quiet, while chruby remains available for manual use.
-    for _rubies_dir in "$HOME/.rubies" /opt/rubies; do
-      if [ -d "$_rubies_dir" ] && [ -n "$(ls -A "$_rubies_dir" 2>/dev/null)" ]; then
-        # shellcheck source=/dev/null
-        . "${_chruby_sh%chruby.sh}auto.sh" 2>/dev/null || true
-        # auto.sh does `unset RUBY_AUTO_VERSION`; re-initialise to "" so that
-        # subsequent references inside chruby_auto don't trigger set -u.
-        RUBY_AUTO_VERSION="${RUBY_AUTO_VERSION-}"
-        break
-      fi
-    done
-    unset _rubies_dir
-    break
+# mise — polyglot runtime manager (Ruby, Node, etc.); activates per-directory
+# tool versions from mise.toml/.tool-versions and switches automatically.
+# See: https://mise.jdx.dev
+if command -v mise >/dev/null 2>&1; then
+  if [ -n "${ZSH_VERSION:-}" ]; then
+    eval "$(mise activate zsh)"
+  else
+    eval "$(mise activate bash)"
   fi
-done
-unset _chruby_sh
+fi
 
 # fzf — fuzzy finder; key bindings: Ctrl+R (history), Ctrl+T (file), Alt+C (cd)
 # Modern fzf (0.46+, brew) uses 'fzf --bash/--zsh'.
