@@ -99,22 +99,45 @@ best-effort classification). Judgment calls stay manual:
   CONFLICTING`), independent of review state. See **Resolving conflicts**
   below. Always worth fixing — a PR with a real conflict can't merge no
   matter how ready its review is.
-- **`ci_failing`** — check *why* before flagging generically. Pull the
-  failure log (`circleci-mcp-server:get_build_failure_logs`, project slug
-  `gh/410Labs/<repo>`, branch = the PR's head ref). Patterns seen so far:
+- **`ci_failing`** — this comes from GraphQL `statusCheckRollup`, which
+  correctly aggregates **both** CircleCI commit-statuses (`ci/circleci:
+  <job>`) **and** GitHub Actions check-runs (`rubocop`, `brakeman`,
+  `eslint`, `haml-lint`, `erb_lint`, `stylelint`, `dependencies-audit`,
+  `typescript-coverage`) into one combined state. **Trust it.** Do not
+  "double-check" a red `ci_failing` against `gh api
+  repos/<owner>/<repo>/commits/<sha>/status` (the legacy Statuses REST
+  endpoint) — that endpoint only sees CircleCI's commit-status contexts and
+  is blind to GitHub Actions check-runs entirely, so a real `rubocop`/lint
+  failure reads as "success" there. Re-verifying this way once produced a
+  false all-clear that put a lint-failing PR on the please-review list. If
+  you need a human-readable second look, use `gh pr checks <number> --repo
+  <owner>/<repo>` — it lists every context from both systems.
+  - **A failing lint/static-analysis check-run (rubocop, brakeman, eslint,
+    etc.) is real, not flaky** — these are deterministic, not subject to
+    Selenium/external-service timing. Pull the specific offense via `gh api
+    repos/<owner>/<repo>/check-runs/<job-id>/annotations` (job ID from `gh
+    pr checks`'s URL, or `gh run view <run-id> --job <job-id>
+    --log-failed`) — the plain job log often omits the file/line, the
+    annotations endpoint always has it.
+  Failure-log patterns seen so far, once you're looking at a real
+  `ci_failing`:
   - **Known flaky Selenium** — `slow_initial_load_spec.rb`, `Tab list
     missing`, spurious `settings.json` 500s.
   - **Flaky external-service specs** — e.g. an IMAP-daemon spec against a
     real test IMAP server (`client_connection_spec.rb`, `greeting` nil) that
     has nothing to do with the PR's diff. Same shape as the Selenium case:
     unrelated to the changed files, a real external dependency in the loop.
-  - **Same real failure across multiple unrelated PRs, tied to being behind
-    `main`** — e.g. a `finish_line`/rake-boot crash (`app_config.rb`,
-    `mailstrom_hostname.match?` nil) that disappeared after merging `main`
-    into one PR but was still present in another PR that hadn't been synced.
-    Before assuming this is environmental noise, try `herd_prs_apply.rb
-    sync-branch` — if the failure was really just staleness, syncing fixes
-    it outright and there's nothing further to flag.
+  - **Same failure across multiple unrelated PRs, `finish_line`/rake-boot
+    crash** (`app_config.rb`, `mailstrom_hostname.match?` nil) — looked at
+    first like plain staleness (merging `main` into one PR made it vanish),
+    but it later **recurred on that same already-merged commit on a plain
+    re-run**. So it isn't purely "behind main" — more likely an intermittent
+    Vault/secrets-lookup flake in CI (same shape as the Selenium/IMAP
+    flakiness: unrelated to the diff, an external dependency in the loop).
+    Still worth trying `herd_prs_apply.rb sync-branch` first if the PR is
+    genuinely behind (cheap, sometimes sufficient), but don't be surprised
+    if it comes back — a plain re-run is the real fix, same as the other
+    flaky patterns.
   - **Real, PR-specific failure** — the failing spec directly exercises
     logic the PR itself added/changed (e.g. `prune_app_accesses_job_spec.rb`
     failing on the exact job the PR implements). Don't attempt a code fix
