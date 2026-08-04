@@ -73,6 +73,27 @@ unset _brew
 # silently and signed commits/tags error out with "Inappropriate ioctl".
 export GPG_TTY=$(tty)
 
+# Start (or attach to) a single shared ssh-agent, when the ssh-agent binary is
+# present. The agent's env vars are cached in a file so every new shell finds
+# the same running agent instead of spawning one per terminal. `ssh-add -l`
+# exits 2 specifically when it can't reach an agent (0 = has keys, 1 = agent
+# up but empty) — that's the signal a fresh agent is needed.
+if command -v ssh-agent >/dev/null 2>&1; then
+  _ssh_agent_env="$HOME/.ssh/agent-environment"
+  if [ -z "${SSH_AUTH_SOCK:-}" ] && [ -f "$_ssh_agent_env" ]; then
+    # shellcheck disable=SC1090
+    . "$_ssh_agent_env" >/dev/null
+  fi
+  ssh-add -l >/dev/null 2>&1
+  if [ $? -eq 2 ]; then
+    mkdir -p "$HOME/.ssh"
+    (umask 077 && ssh-agent -s >"$_ssh_agent_env")
+    # shellcheck disable=SC1090
+    . "$_ssh_agent_env" >/dev/null
+  fi
+  unset _ssh_agent_env
+fi
+
 # Secrets pulled from Zoho Vault by setup-secrets (not chezmoi-managed, never committed)
 # shellcheck disable=SC1091
 [ -f "${HOME}/.config/shell/secrets.sh" ] && . "${HOME}/.config/shell/secrets.sh"
