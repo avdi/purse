@@ -22,6 +22,10 @@
 #   dcsh -s zsh              # zsh instead
 #   dcsh -- rails console    # run a specific command
 #   dcsh -w ../other         # target a neighbouring workspace
+#
+# If no container is running for this worktree, falls back to the container
+# for the main worktree (one devcontainer, many worktrees inside), then runs
+# `wt switch <branch>` to land back in this worktree.
 
 set -euo pipefail
 
@@ -100,14 +104,44 @@ detect_container() {
   local folder="$1" id
   id=$(docker ps -q \
     --filter "label=devcontainer.local_folder=$folder" 2>/dev/null | head -1)
-  if [[ -n "$id" ]]; then echo "$id"; return; fi
+  if [[ -n "$id" ]]; then echo "$id"; return 0; fi
   for id in $(docker ps -q --filter "label=devcontainer.config_file" 2>/dev/null); do
-    [[ "$(config_label "$id")" == "$folder/"* ]] && { echo "$id"; return; }
+    if [[ "$(config_label "$id")" == "$folder/"* ]]; then
+      echo "$id"
+      return 0
+    fi
   done
+  return 1
 }
 
 container_id=""
-[[ -n "$workspace" ]] && container_id="$(detect_container "$workspace")"
+[[ -n "$workspace" ]] && { container_id="$(detect_container "$workspace")" || true; }
+
+# No container for this worktree — fall back to the container for the main
+# worktree (single devcontainer, many worktrees inside it via relative
+# `git worktree` paths), then `wt switch` back to this worktree's branch
+# once we have a shell.
+switch_branch=""
+if [[ -z "$container_id" ]]; then
+  common_git_dir="$(git -C "$workspace" rev-parse --path-format=absolute --git-common-dir 2>/dev/null || true)"
+  if [[ -n "$common_git_dir" ]]; then
+    main_workspace="$(dirname "$common_git_dir")"
+    if [[ "$main_workspace" != "$workspace" ]]; then
+      main_container_id="$(detect_container "$main_workspace")" || true
+      if [[ -n "$main_container_id" ]]; then
+        switch_branch="$(git -C "$workspace" rev-parse --abbrev-ref HEAD 2>/dev/null || true)"
+        if [[ -n "$switch_branch" ]]; then
+          printf 'dcsh: no container for %s — using main worktree %s, then `wt switch %s`\n' \
+            "$workspace" "$main_workspace" "$switch_branch" >&2
+          container_id="$main_container_id"
+          workspace="$main_workspace"
+        fi
+      fi
+    fi
+  fi
+fi
+
+[[ -n "$container_id" ]] || die "no running devcontainer found for workspace: $workspace"
 
 # An explicit --config wins; otherwise derive it from the running container so
 # sidecar/non-default configs are picked up automatically.
@@ -133,7 +167,16 @@ fi
 [[ -n "$remote_user" ]] && exec_args+=(--remote-env "LOGNAME=$remote_user")
 
 # ── build the command to run inside the container ────────────────────────────
-if [[ ${#extra_cmd[@]} -gt 0 ]]; then
+if [[ -n "$switch_branch" ]]; then
+  # Attempt the worktree switch first; if it fails (e.g. branch has no
+  # worktree inside the container yet), fall through to a shell/command in
+  # the main worktree rather than dying.
+  if [[ ${#extra_cmd[@]} -gt 0 ]]; then
+    cmd=(bash --login -c 'wt switch "$1" || true; shift; exec "$@"' _ "$switch_branch" "${extra_cmd[@]}")
+  else
+    cmd=(bash --login -c 'wt switch "$1" || true; exec "$2" --login' _ "$switch_branch" "$shell_cmd")
+  fi
+elif [[ ${#extra_cmd[@]} -gt 0 ]]; then
   cmd=("${extra_cmd[@]}")
 else
   cmd=("$shell_cmd" --login)
