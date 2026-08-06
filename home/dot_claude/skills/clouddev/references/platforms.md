@@ -21,6 +21,12 @@ Tier decides how much the contract costs you. Establish it first.
 Tier 0 costs nothing — your devcontainer runs unmodified. Tier 4 should be
 documented as unsupported rather than worked around.
 
+**Tier is adaptation cost, not fitness.** See *Fitness* in `SKILL.md` for the
+mission-board and one-box-N-worktrees axes, which sort these very differently.
+Codespaces in particular is tier 0/1 and still a poor factory host: no agent
+concept exists in the product, and it is branch-scoped with per-branch
+prebuilds, so N concurrent missions means N VMs each cold-starting your stack.
+
 **Non-targets** (agents execute on *your* compute, so there is nothing to
 adapt): Zed (ACP agents run as subprocesses of the client), JetBrains Junie
 (*"executes entirely on your GitHub runners"*), Devin CLI `devin -p`, Goose,

@@ -58,6 +58,11 @@ a compose file, transcribed.
 
 Tier decides how much any of this costs. Do this before writing a line.
 
+**Tier measures adaptation cost, not fitness.** A platform can be trivially
+adaptable and still be the wrong place to run agents — see *Fitness* below.
+Codespaces is the worked example: devcontainer-native, so nearly free to adapt,
+and a poor factory host for reasons that have nothing to do with environments.
+
 | Tier | Meaning | Cost |
 |---|---|---|
 | **0** | Bring your own machine | **nothing** — your devcontainer runs unmodified |
@@ -80,6 +85,67 @@ them. When designing an adapter, read Ona's schema first — it is the closest
 thing to a reference implementation.
 
 See `references/platforms.md` for the full matrix.
+
+## Fitness — three axes the tier doesn't measure
+
+Adaptation cost is one question. Whether you'd actually run work there is three
+more, and they're independent.
+
+### 1. What does the vendor think an agent session *is*?
+
+| Philosophy | Belief | Tells |
+|---|---|---|
+| **PR-drafting function** | stateless, one task in → one PR out | no interactive shell, no ingress, cold box per task |
+| **Developer at a workstation** | the environment is a dev box that contains an agent | terminal, ports/preview URLs, services as a first-class concept, real persistence |
+| **Sandbox API** | infrastructure you build an orchestrator on | SDKs instead of config files, no lifecycle hooks at all |
+
+Three questions classify a new entrant in minutes — **is there a shell, is there
+ingress, are services a declared concept?** Each "no" narrows what the vendor
+expects you to be doing.
+
+Worth knowing which direction the market moves: the agent-native vendors drift
+*down* toward stateless PR bots, because that is cheap to operate. The cloud
+dev-environment vendors (Ona, Coder, Codespaces) drift *up* toward agents. For
+stateful projects the second group solved your problem before agents existed.
+
+### 2. Is there a mission board?
+
+Can you see N runs at once, their status and output, and intervene? Ona, Amp,
+Devin, Factory, Copilot, and Claude Code cloud have one. Codespaces has a list
+of VMs and no agent concept whatsoever.
+
+A platform with no board is not a factory host no matter how good its
+environment story is.
+
+### 3. One box, N working copies — or one environment per branch?
+
+If the local model is one machine with many git worktrees (per-worktree ports,
+per-worktree DB slots, several sessions at once), most hosted platforms discard
+it:
+
+| Preserves it | One env per branch/task |
+|---|---|
+| Factory (persistent computer, working directory set per session), Coder, Devin Outposts, any tier-0 box | Ona, Amp, Cursor, Copilot, Devin managed, Codespaces |
+
+Env-per-task is a legitimate trade — isolation and a board in exchange for the
+one-box model — but price it: N missions means N cold starts of the whole stack.
+Codespaces is the worst case, being branch-scoped *and* prebuild-per-branch.
+
+### The orchestrator-required trap
+
+Some platforms have no board and expect you to build one (Daytona, E2B, Modal,
+Runloop, Antigravity's managed agents). That is a real option, but it is a much
+larger project than this contract, and it only pays when the board *is* the
+product.
+
+If you do build it, the substrate must be cheap, fast, unopinionated, and
+SDK-controllable. **A cloud-IDE product is the wrong substrate** — you'd pay its
+overhead and fight its opinions for a primitive available raw. Codespaces sits
+in the worst spot available: too opinionated to be good infrastructure, no agent
+product to be a platform.
+
+**For most adopters: buy the board, don't build it.** This contract is what
+keeps that decision reversible.
 
 ## The two phases
 
