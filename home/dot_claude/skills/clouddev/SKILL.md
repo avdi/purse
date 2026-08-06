@@ -240,10 +240,11 @@ Contract:
   stdout. Composable, no parsing ceremony.
 - Default direction is **inbound**: "I saw this in output from the dev
   environment, give me the path I can open." `--reverse` goes the other way.
-- A path that doesn't sit under either root passes through **unchanged** —
-  `/usr/lib/ruby/...` is a real container path with no host equivalent, and
-  silently mangling it is worse than returning it.
-- Relative paths pass through unchanged.
+- Only absolute paths prefixed by a declared root, at a path-component
+  boundary, are translated. Everything else — relative paths, absolute paths
+  outside the roots — passes through **unchanged**. See *What gets rewritten*
+  below; `path` and `exec` obey the same rule because they share one
+  implementation.
 - **Under the direct topology it is the identity function** — same shape as
   `exec` being `exec "$@"` there. Every project ships it; it just does nothing
   when there's nothing to do. That's what makes it safe for an agent to call
@@ -267,6 +268,30 @@ by default. Scoped:
 | **stdin** | **never rewrite** | stdin is data — a SQL dump or a tarball must arrive byte-exact |
 
 That last row is the line worth holding: **argv is a command, stdin is data.**
+
+**What gets rewritten — the whole rule:**
+
+> An absolute path whose prefix is exactly one of the two declared roots, at a
+> path-component boundary. Nothing else, ever.
+
+Everything that follows from that:
+
+- **Relative paths are never touched.** They're already correct on both sides,
+  because `exec` forwards the caller's cwd. Rewriting them would be guessing.
+- **Absolute paths outside the roots pass through unchanged.**
+  `/usr/lib/ruby/3.3.0/set.rb` is a real path in the container with no
+  counterpart outside it; returning it honestly beats inventing a host path
+  that doesn't exist.
+- **The boundary must be a path component.** With a root of `/arglebarf`,
+  rewrite `/arglebarf` and `/arglebarf/app/x.rb`; leave `/arglebarfle/x.rb`
+  alone. A naive substring match gets this wrong and the damage is silent.
+- **No inference.** No basename matching, no "this looks like a file in the
+  repo," no filesystem probing to see which candidate exists. A declared
+  prefix or nothing.
+
+That conservatism is precisely what earns the default. The rewrite can only
+ever act on strings whose meaning is already known, so leaving it on costs
+nothing in the cases it doesn't understand.
 
 Escape hatches, both needed in practice:
 
