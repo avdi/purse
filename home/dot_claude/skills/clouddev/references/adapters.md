@@ -1,137 +1,344 @@
 # Adapter templates
 
-Adapters are **generated from `clouddev.yml`, not written**. Each one is a few
-lines that call the manifest's scripts. Anything conditional belongs in `setup`
-or `exec`, where it can be exercised locally.
+Adapters are **generated from `clouddev.yml`, not written**. Each is a few lines
+calling the manifest's scripts. Anything conditional belongs in `prepare` or
+`exec`, where it can be exercised locally.
 
 Adapter files are the one artifact class whose location is **forced** — each
-platform dictates its own path. That's why the manifest exists: it's the single
-anchor every scattered adapter points back at.
+platform dictates its own path, and several have no repo file at all. That's why
+the manifest exists: the single anchor every scattered adapter points back at.
 
 Regenerate all adapters whenever the manifest changes.
 
+All schemas below checked **2026-08-06**. Re-verify before relying on one.
+
 ---
 
-## Claude Code cloud — container topology
+## Claude Code cloud — tier 2, container topology
 
-No file in the repo; the setup script is configured in the environment UI at
+No repo file; the setup script is configured in the environment UI at
 `claude.ai`. Body:
 
 ```bash
 #!/usr/bin/env bash
 set -euo pipefail
-script/clouddev/setup
+script/clouddev/prepare
 ```
 
-Pull and build inside `setup` so images land in the filesystem snapshot.
-Because the snapshot preserves disk but **not running processes**, bring
-services up per session with a `SessionStart` hook in the repo:
+Because the snapshot preserves disk but **not running processes**, `boot` goes
+in a repo `SessionStart` hook:
 
 ```json
 {
   "hooks": {
     "SessionStart": [
-      { "hooks": [{ "type": "command", "command": "script/clouddev/services-up" }] }
+      { "hooks": [{ "type": "command", "command": "script/clouddev/boot" }] }
     ]
   }
 }
 ```
 
-Set the environment's network access to `Trusted` at minimum (Docker Hub is in
-the defaults); add a `Custom` allowlist entry for a private registry host.
-
-Registry credentials go in the environment's variables — visible to anyone who
-can use the environment, so use a read-only pull token.
+Network access `Trusted` at minimum (Docker Hub is in the defaults); add a
+`Custom` allowlist entry for a private registry host. Registry credentials go in
+the environment's variables — visible to anyone who can use the environment, so
+use a read-only pull token.
 
 ---
 
-## Cursor cloud agents — direct topology
+## Cursor cloud agents — tier 1, direct topology
 
 `.cursor/environment.json`:
 
 ```json
 {
-  "build": { "dockerfile": ".devcontainer/Dockerfile" },
-  "install": "script/clouddev/setup",
-  "start": "script/clouddev/services-up",
-  "terminals": []
+  "build": { "dockerfile": "Dockerfile", "context": ".." },
+  "install": "script/clouddev/prepare",
+  "start": "script/clouddev/boot",
+  "ports": [{ "name": "app", "port": 3000 }]
 }
 ```
 
-Compose services may need `network_mode: host`, and `docker build` may need
-`--network=host`. Verify secrets actually reach the agent terminal before
-depending on registry credentials here.
+`dockerfile` and `context` are relative to `.cursor`; `.`, `./`, and `..` are
+special-cased to mean the repo root. Config is read from the environment's
+**default branch** — a feature-branch change needs a commit and push first.
+
+Your image **must contain `git` and `sudo`** (undocumented, staff-confirmed —
+Cursor runs `git clone` inside your container), and must **not** `COPY` the
+project in.
+
+Nested Docker needs daemon config baked into the image, not just installation:
+
+```dockerfile
+RUN mkdir -p /etc/docker && \
+    echo '{"storage-driver":"fuse-overlayfs"}' > /etc/docker/daemon.json && \
+    update-alternatives --set iptables  /usr/sbin/iptables-legacy && \
+    update-alternatives --set ip6tables /usr/sbin/ip6tables-legacy
+```
+
+`sudo service docker start` belongs at the top of `boot`. Vault needs
+`disable_mlock` — there is no `--privileged` knob.
+
+Secrets: build-time credentials must be **team**- or **environment**-scoped
+(user secrets are unavailable during Builds), consumed via
+`RUN --mount=type=secret,id=…`. Note the open bug where environment-scoped
+secrets aren't injected at runtime; personal scope is the current workaround.
 
 ---
 
-## Copilot coding agent — direct topology
+## Amp (orbs) — tier 2, direct topology
 
-`.github/workflows/copilot-setup-steps.yml`. Must be a **single** job named
-exactly `copilot-setup-steps`:
+`.agents/setup` (must be executable, `chmod +x`):
+
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+script/clouddev/prepare
+```
+
+`.agents/resume` — **10-second budget**, so this must return immediately:
+
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+script/clouddev/boot &          # health-gates in the background
+```
+
+Docker is not preinstalled; install it in `prepare` (Amp documents the apt
+recipe including `docker-compose-plugin`), then start the daemon as a supervised
+service rather than from a hook:
+
+```bash
+amp orb service start docker-daemon --command 'sudo dockerd'
+```
+
+Declarative services in `.amp/services.yaml` are supervised and survive
+pause/resume — prefer them to backgrounding processes yourself:
 
 ```yaml
-name: Copilot setup steps
-on: workflow_dispatch
+services:
+  web:
+    command: script/clouddev/exec bin/dev
+    portal:
+      title: App
+```
+
+Portals are the ingress model. **Cross-origin between two portal hosts is
+unsupported** — proxy the API through the frontend dev server.
+
+Branch on `AMP_ORB=1`. Logs at `/home/user/.cache/amp/logs/{setup,resume}.log`.
+
+---
+
+## Copilot cloud agent — tier 2, direct topology
+
+`.github/workflows/copilot-setup-steps.yml`, on the **default branch**. Single
+job named exactly `copilot-setup-steps`. Only `steps`, `permissions`, `runs-on`,
+`services`, `snapshot`, `timeout-minutes` (max **59**) are honored — everything
+else is silently ignored, and **`container:` breaks the agent job outright**.
+
+```yaml
+name: "Copilot Setup Steps"
+on:
+  workflow_dispatch:
+  push:
+    paths: [.github/workflows/copilot-setup-steps.yml]
 
 jobs:
   copilot-setup-steps:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    services:
+      postgresql:
+        image: postgres:14.2
+        env: { POSTGRES_PASSWORD: postgres }
+        ports: ["5432:5432"]
+      redis:
+        image: redis:8.2
+        ports: ["6379:6379"]
     steps:
       - uses: actions/checkout@v4
-      - name: Provision clouddev environment
-        run: script/clouddev/setup
-      - name: Start backing services
-        run: script/clouddev/services-up
-      - name: Verify
-        run: script/clouddev/verify
+      - run: script/clouddev/prepare
+      - run: script/clouddev/boot
+      - run: script/clouddev/verify
 ```
 
-It does **not** read `devcontainer.json`. Docker is available on the runner, so
-either install the toolchain in these steps or pull the dev image and use the
-container topology.
+**Use `services:`, not `docker compose`** — `services:` is what GitHub commits
+to; Docker is nowhere in their docs. It can't express `depends_on`, build
+contexts, named volumes, or multi-network topology, so Vault dev-mode and
+CouchDB bootstrap each need a follow-up step.
+
+Everything is per-session (cold runner per task), so `prepare` and `boot` both
+run here — the sequence invariant is doing the work.
+
+Secrets go in the **Agents** scope, not Actions. All network work must finish in
+these steps; the agent phase is firewalled. A non-zero exit **skips the
+remaining steps and starts the agent anyway**, which is why `verify` runs last
+and `AGENTS.md` tells the agent to re-run it.
+
+Beware: the agent's working directory is `/workspace` with `HOME=/root`, while
+these steps run in the Actions workspace. The relationship is undocumented.
 
 ---
 
-## Augment Cosmos — direct topology
+## Augment Cosmos — tier 1, direct topology
 
-Configured in the Cosmos UI, not the repo:
+Declarative bundle via `auggie cloud environment init|validate|diff|apply` —
+GitOps-friendly and idempotent, the best adapter target here:
 
-- **Base image**: the manifest's `image`. Verify a **private** image can be
-  pulled — the docs describe public registry images.
-- **`/hooks/on_refresh.sh`**: append `script/clouddev/setup`.
+```yaml
+apiVersion: poseidon.augmentcode.com/v1alpha1
+kind: EnvironmentBundle
+metadata:
+  name: myproject
+spec:
+  environment:
+    displayName: myproject
+    baseImage: ghcr.io/acme/myproject-dev:main
+    refreshEnabled: true
+    repos:
+      - { owner: acme, name: myproject }
+    environmentVariables: []
+```
 
-Egress-only network. Environment variables are visible to every user and agent
-that starts a session in the environment — read-only pull tokens only.
+The bundle has **no field** for hook scripts or the registry credential. Those
+are separate CLI calls:
+
+```bash
+auggie cloud registry-credential set ghcr --type generic \
+  --username "$USER" --secret-stdin
+auggie cloud environment rebuild "$ENV_ID" \
+  --provision-script script/clouddev/prepare \
+  --vm-startup-script script/clouddev/boot
+```
+
+Private registry pull **is** supported this way, though documented nowhere on
+the docs site. The credential-to-image binding is server-side and opaque —
+verify empirically.
+
+`/hooks/on_refresh.sh` → `script/clouddev/refresh` (12h when enabled).
+
+**`rebuild` is destructive** — it starts from the base image and discards
+snapshot state. Use `environment update --script` for incremental changes, and
+keep all provisioning in the committed `provision_script` so a rebuild loses
+nothing.
+
+**Test `docker info` first.** If nested Docker is unavailable, `prepare` must
+install services as native packages (a Ruby 3.4 base image is on offer) and
+`boot` starts them with `&` plus explicit health checks — there is no guaranteed
+init system.
+
+Egress-only. Environment names are unique **org-wide**.
 
 ---
 
-## Devin — direct topology
+## Devin — tier 3 (managed), tier 0 (Outposts)
 
-Configured per machine snapshot:
+`.devin/blueprint.yaml` — **not read automatically**; requires a sync API call,
+so ship the CI step too:
 
-- Run `script/clouddev/setup` once while building the snapshot, so installed
-  state is baked in.
-- Set the snapshot's **startup command** to `script/clouddev/services-up`.
+```yaml
+initialize:
+  - name: Provision clouddev environment
+    run: script/clouddev/prepare
+  - name: Install boot as a service
+    run: script/clouddev/install-boot-service
+maintenance: |
+  script/clouddev/refresh
+knowledge:
+  - name: environment
+    contents: |
+      Backing services start from a systemd unit at boot. If they are not
+      running, execute `script/clouddev/boot`. Verify with
+      `script/clouddev/verify`.
+```
+
+There is **no per-session hook**, so `boot` must self-install. The unit
+`prepare` writes is the actual adapter:
+
+```ini
+[Unit]
+Description=clouddev backing services
+After=network-online.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+WorkingDirectory=/home/ubuntu/repos/myproject
+ExecStart=/home/ubuntu/repos/myproject/script/clouddev/boot
+
+[Install]
+WantedBy=multi-user.target
+```
+
+Repos clone to `~/repos/<short-name>`. Differential builds **skip
+`initialize`**, so `maintenance` must stand alone and cannot rely on `$ENVRC`
+values from a parent build. Files written by build steps are baked into the
+snapshot — generate credentials in `boot`.
+
+**Outposts** is tier 0 and needs no adapter beyond `devin worker start
+--outpost=<name>` on a machine with `git` and outbound HTTPS.
 
 ---
 
-## Factory droids — direct topology
+## Factory — tier 3 (managed), tier 0 (BYOM / `droid exec`)
 
-Prefer **bring-your-own-machine**: it's your box and your image, so the
-adapter is just running `setup` once and `services-up` on boot.
+No declarative environment surface. Managed computers are configured
+imperatively over SSH or by the agent.
 
-Droid Computers are persistent — installed packages, files, and running
-services survive between sessions — so `services-up` may only need to run once
-rather than per session. Keep it idempotent regardless.
+`.factory/hooks.json` is committable, but `SessionStart` has a 60s default
+timeout and is meant for context injection:
+
+```json
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "type": "bash",
+        "command": "\"$FACTORY_PROJECT_DIR\"/script/clouddev/boot &",
+        "timeout": 60
+      }
+    ]
+  }
+}
+```
+
+Hooks run from Droid's cwd, which may differ from the repo root — the
+`$FACTORY_PROJECT_DIR` prefix is mandatory.
+
+**Managed computers persist running processes** across idle-pause via memory
+snapshot, so `boot` may only ever need to run once. Keep it idempotent anyway.
+**Docker availability is undocumented — probe before writing this adapter.**
+
+**BYOM / `droid exec`** are tier 0: your machine, your image, real Docker,
+outbound-only through `relay.factory.ai`. No adapter needed. For `droid exec` in
+CI, bring services up as ordinary CI steps and pass `--auto high` or
+`--skip-permissions-unsafe` in a disposable runner.
 
 ---
 
-## Codespaces / Gitpod / Coder / Daytona — direct topology
+## Jules — tier 3
+
+No repo config file and no API for it. A human pastes this into the "Initial
+Setup" box once:
+
+```bash
+bash script/clouddev/prepare
+```
+
+**Not `boot`** — long-running processes in the setup script are explicitly
+unsupported and are a documented cause of task failure. Services have to be
+started by the agent, so `AGENTS.md` carries the real instruction. No Ruby is
+preinstalled; 20GB disk.
+
+---
+
+## Codespaces / Gitpod / Coder / Daytona — tier 1
 
 No adapter. These read `devcontainer.json` natively.
 
-The only requirement is that splitting compose doesn't break them: have the
-devcontainer's compose file `include` the services file and add `app`.
+The only requirement is that splitting compose doesn't break them:
 
 ```yaml
 # .devcontainer/docker-compose.yml
@@ -146,8 +353,14 @@ services:
 
 ---
 
-## Codex cloud — no adapter
+## Codex cloud / Kiro Web / Amazon Q — tier 4, no adapter
 
-Unsupported: no nested Docker, so no compose, so no backing services without a
-native-install provisioning path that would rot. Record the reason in the
-project rather than leaving its absence looking like an oversight.
+Unsupported, for reasons worth recording in the project so their absence doesn't
+read as an oversight:
+
+- **Codex** — no nested Docker (`dockerd` doesn't work), fixed image. Backing
+  services would need a native-install path that never runs locally and rots.
+- **Kiro Web** — no documented lifecycle hook, no base-image control, sandbox
+  torn down per task with no snapshotting.
+- **Amazon Q Developer** — sunsetting (signups closed 2026-05-15); its
+  `devfile.yaml` surface has been de-documented.

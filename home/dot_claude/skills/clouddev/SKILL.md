@@ -2,14 +2,16 @@
 name: clouddev
 description: >
   Make a devcontainer-based project runnable by cloud agent platforms (Claude
-  Code cloud, Cursor cloud agents, Devin, Augment Cosmos, Factory droids,
-  Copilot coding agent, Codespaces) — the clouddev.yml manifest, the entrypoint
-  script contract, publishing a dev image to a registry, and splitting
-  docker-compose so backing services (Postgres, Redis, CouchDB, Vault) come up
-  without the app container. Use when porting a project to a cloud agent
-  platform, when a cloud agent can't run tests or boot the app because backing
-  services are missing, when adding a platform adapter, or when deciding
-  whether a platform is worth supporting at all.
+  Code cloud, Cursor cloud agents, Amp orbs, Copilot cloud agent, Augment
+  Cosmos, Devin, Factory droids, Jules, Codespaces) — the platform tier model,
+  the prepare/boot phase split every snapshotting platform imposes, the
+  clouddev.yml manifest and its entrypoint scripts, path mapping between the
+  agent's box and the dev environment, publishing a dev image to a registry,
+  and splitting docker-compose so backing services (Postgres, Redis, CouchDB,
+  Vault) come up without the app container. Use when porting a project to a
+  cloud agent platform, when a cloud agent can't run tests or boot the app
+  because backing services are missing, when adding a platform adapter, or when
+  deciding whether a platform is worth supporting at all.
 ---
 
 ## The problem
@@ -32,21 +34,110 @@ So split the two concerns the devcontainer conflates:
 
 | Concern | Artifact | Consumed by |
 |---|---|---|
-| **Toolchain** | a dev image in a registry | the platform (or your setup script pulls it) |
-| **Backing services** | a services-only compose file | **your** setup script, from inside the box |
+| **Toolchain** | a dev image in a registry | the platform (or your prepare script pulls it) |
+| **Backing services** | a services-only compose file | **your** boot script, from inside the box |
 
 The platform never sees your compose file. You run it yourself, from the box
 the platform gave you:
 
 ```
 platform provides:  a box with Docker + a checkout
-your setup script:  docker compose -f <services compose> up -d
+your boot script:   docker compose -f <services compose> up -d
 ```
 
 That is the whole trick. Everything below is bookkeeping around it.
 
 Consequence for the local devcontainer: the `app` service becomes **optional**,
 not deleted. Local behavior is unchanged; cloud simply doesn't start it.
+
+The split pays a second time on Copilot, whose runner refuses `container:` but
+honors an Actions **`services:`** block — which is exactly the services half of
+a compose file, transcribed.
+
+## Establish the tier first
+
+Tier decides how much any of this costs. Do this before writing a line.
+
+| Tier | Meaning | Cost |
+|---|---|---|
+| **0** | Bring your own machine | **nothing** — your devcontainer runs unmodified |
+| **1** | Platform accepts your image | image-first; direct topology |
+| **2** | Their image, real hooks for both phases | container topology; both phases attach |
+| **3** | Their image, no usable per-session hook | `boot` must self-install or be agent-invoked |
+| **4** | No contract to target | document as unsupported; do not work around it |
+
+Tier 0 exists on more platforms than you'd expect — Devin Outposts, Factory
+BYOM, `droid exec` in your own CI. When a project's stack is heavy, reaching for
+tier 0 beats fighting a tier 3 platform. See `references/platforms.md`.
+
+## The two phases
+
+Platforms disagree about almost everything except this: provisioning splits
+into work whose **output is disk** and work that leaves **processes running**.
+They snapshot the first and discard the second. Cursor states it plainly:
+
+> *"Builds preserve disk state only. Running processes, exported shell
+> variables, and in-memory caches don't continue into an agent run."*
+
+| Phase | Output | Runs | Contains |
+|---|---|---|---|
+| **`prepare`** | disk | once per snapshot | deps, image pulls, builds, cache warming |
+| **`boot`** | processes | every session | daemon start, `compose up`, dev servers |
+
+**The invariant that makes this portable:**
+
+> `prepare` then `boot`, in sequence, must always be a valid full provisioning.
+
+Platforms split them (Cursor `install`/`start`, Amp `setup`/`resume`, Cosmos
+`provision_script`/`on_startup.sh`). Copilot has **only** a per-session hook and
+calls both. Devin has **only** build-time hooks and calls `prepare`, leaving
+`boot` to install itself. So neither script may assume the other ran in a
+different process, and `prepare` must be safe to run immediately before `boot`.
+
+### How `boot` attaches
+
+Four modes. A project's adapter picks one per platform.
+
+| Mode | Platforms | Mechanism |
+|---|---|---|
+| platform invokes per session | Cursor `start`, Amp `.agents/resume`, Claude Code `SessionStart`, Cosmos `on_startup.sh`, Copilot setup steps | direct call |
+| **self-install** | Devin | `prepare` installs a systemd unit that fires on VM boot |
+| **agent-invoked** | Jules, Factory managed | `AGENTS.md` tells the agent to run it — instruction, not guarantee |
+| **persistent** | Factory managed Droid Computers | memory snapshot; runs **once, ever** |
+
+Self-install is a real requirement on `boot`, not a footnote: it has to work as
+a service unit, not only as a script something calls.
+
+### `boot` has a time budget
+
+| Platform | Budget |
+|---|---|
+| Amp `.agents/resume` | **10 seconds**, then the agent starts anyway |
+| Factory `SessionStart` | 60s default |
+| Copilot | 59 min total, shared with the actual work |
+
+So `boot` returns fast and health-gates in the background, writing progress to a
+log `verify` can poll. A `boot` that blocks on four healthchecks races the
+agent's first turn.
+
+### Everything network-touching goes in `prepare`
+
+Three platforms restrict the network **during the agent run but not during
+provisioning**. Copilot is explicit:
+
+> *"The firewall only applies to processes started by the agent via its Bash
+> tool. It does not apply to … processes started in configured Copilot setup
+> steps."*
+
+Codex air-gaps the agent phase by default; Claude Code cloud applies access
+levels to the session. A lazily-pulled image or a mid-task `bundle install`
+fails — and on Copilot it fails by quietly appending a warning to the PR body.
+
+### `prepare` output is world-readable
+
+Files written during `prepare` are baked into a snapshot that other sessions —
+and on Cosmos, other **users** — boot from. Devin and Cosmos both warn about it.
+Generate dev-only credentials in `boot`; never write a token in `prepare`.
 
 ## The contract
 
@@ -68,13 +159,14 @@ image_tag_files:                       # content hash inputs for the tag
 capabilities: [test, serve, browser, jobs]
 
 scripts:
-  setup:         script/clouddev/setup
-  services_up:   script/clouddev/services-up
-  services_down: script/clouddev/services-down
-  exec:          script/clouddev/exec
-  shell:         script/clouddev/shell
-  path:          script/clouddev/path
-  verify:        script/clouddev/verify
+  prepare:  script/clouddev/prepare      # once per snapshot; output is disk
+  boot:     script/clouddev/boot         # every session; output is processes
+  refresh:  script/clouddev/refresh      # periodic; cheap and idempotent
+  halt:     script/clouddev/halt
+  exec:     script/clouddev/exec
+  shell:    script/clouddev/shell
+  path:     script/clouddev/path
+  verify:   script/clouddev/verify
 
 services:
   compose: docker/compose.services.yml
@@ -84,7 +176,7 @@ paths:                                   # omit entirely when they're identical
   host:      /workspace
   container: /workspaces/myproject
 
-ports:
+ports:                                   # adapters map these to platform ingress
   app:  3000
   vite: 3036
 ```
@@ -111,17 +203,29 @@ rather than failing halfway through a QA pass.
 
 | Script | Must | Must not |
 |---|---|---|
-| `setup` | be idempotent and safe to re-run; leave the environment ready for `verify` | assume it can reach the network later — cold-start installs belong here |
-| `services-up` | start backing services, **wait for health**, be idempotent | start the app |
-| `services-down` | stop services, leave data volumes alone unless asked | |
+| `prepare` | be idempotent; do **all** network work (image pulls, dependency installs, cache warming); leave only disk behind | start any process — it will be discarded; write a credential to disk |
+| `boot` | start backing services; **return fast** (10s budget on Amp), health-gating in the background to a log; be idempotent; work when installed as a **systemd unit**, not only when called | block on healthchecks; assume the network is reachable |
+| `refresh` | be cheap and idempotent — `git fetch`, dependency top-up | do anything that belongs in `prepare` |
+| `halt` | stop services, leave data volumes alone unless asked | |
 | `exec` | run its argv in the dev environment; preserve the exit code; pass stdin through byte-exact; allocate a TTY only when `[ -t 0 ]`; rewrite paths by default (see below), with `--raw` to opt out | decide the TTY from the argument count; rewrite stdin; swallow a non-zero status behind a pipe |
 | `shell` | start a login shell in the dev environment, **forwarding its argv** to that shell (`-c '…'`, a script path); **built on `exec`**, never on its own topology logic | duplicate what `exec` knows; force interactivity when stdin is a pipe |
 | `path` | translate a path seen in dev-environment output into one the caller can open; take paths as argv or rewrite a stream on stdin; pass unmapped and relative paths through untouched; exit 0 always; be the **identity function** when the paths are identical | guess, canonicalize, or touch anything outside the declared roots |
-| `verify` | exit non-zero when the environment is broken; test one thing per declared capability | mutate the repo or leave state behind |
+| `verify` | exit non-zero when the environment is broken; **fail loudly**; test one thing per declared capability | mutate the repo or leave state behind |
 
-`setup` runs once per environment on most platforms — they snapshot the
-filesystem afterward — so it can afford to be slow. `services-up` runs per
-session, because a snapshot preserves disk, never running processes.
+`verify`'s loudness is not a style preference. On Copilot a non-zero exit in
+setup **skips the remaining steps and starts the agent anyway** — a silently
+half-built environment that fails later in ways that look like code bugs.
+`AGENTS.md` must tell the agent to run `verify` before trusting the box.
+
+### `refresh` is a real third phase
+
+Five platforms independently rebuild a warm snapshot on a timer: Cosmos 12h
+(opt-in), Devin ~24h, Cursor's staleness threshold 24h, Amp's snapshot reuse
+24h, Claude Code cloud ~7 days. `refresh` is what runs then — cheap, idempotent,
+keeps the snapshot current without redoing `prepare`.
+
+Where a platform has no refresh hook, it is simply never called. Nothing else
+changes.
 
 ## `exec` is the seam
 
@@ -368,6 +472,58 @@ is what `services.env` in the manifest is for: one overlay file selected by
 `shell`. Many projects already have a `docker-compose.override.expose-ports.yml`
 or similar — reuse it rather than inventing a parallel one.
 
+## Ingress — reaching the running app
+
+`ports:` in the manifest says which ports matter. It does not make them
+reachable, and every platform solves that differently:
+
+| Platform | Mechanism |
+|---|---|
+| Amp | **portals** — authenticated `*.onamp.dev` URLs; hairpin inside the orb so `$PUBLIC_URL` works |
+| Cursor | `ports` array in `environment.json`, "similar to devcontainers port forwarding" |
+| Factory | `droid computer port-forward <name> <mappings>` |
+| Cosmos | **egress-only.** `auggie cloud tunnel open --port 3000` exists but is undocumented |
+| Copilot, Devin, Jules | nothing documented |
+
+Two constraints worth designing around before you need them:
+
+- **Amp: cross-origin between two portal hosts is unsupported** — preflights
+  don't carry portal auth. A frontend-plus-API stack must be reached through one
+  proxying dev server, not two URLs.
+- **Cosmos is ingress-free by contract.** A browser-QA story there rests on an
+  undocumented CLI command.
+
+So: declare `browser` as a capability only per-platform, and never assume a URL
+exists. On a platform with no ingress, browser QA runs *inside* the box against
+`localhost` and reports via screenshots, not via a link you open.
+
+## `AGENTS.md` is the fallback adapter
+
+Read by Devin, Jules, Amp, Factory, Copilot, and Cosmos. On tier 3 and tier 4
+it is the **only** lever — no hook will run your scripts, so the agent has to.
+
+Every adopting project documents its entrypoints there:
+
+```markdown
+## Environment
+
+This project uses the clouddev contract (`clouddev.yml`).
+
+- `script/clouddev/boot` — start backing services. **Run this first** if
+  Postgres/Redis/CouchDB/Vault aren't up.
+- `script/clouddev/verify` — prove the environment works. Run it before
+  trusting a green test run.
+- `script/clouddev/exec <cmd>` — run a command in the dev environment.
+- `script/clouddev/path <p>` — translate a path from tool output into one you
+  can open.
+```
+
+It's instruction, not execution, so it degrades to "the agent probably runs
+it." That is still strictly better than nothing and costs one paragraph.
+
+Amp offers a cleaner variant: `.agents/setup` writes orb-only guidance into
+`~/.config/amp/AGENTS.md`, keeping platform specifics out of the committed file.
+
 ## Publishing the dev image
 
 The Dockerfile is already the single source of truth for the toolchain. Publish
@@ -402,27 +558,50 @@ Codespaces prebuilds to snapshot.
 
 ## Adopting a project
 
+0. **Establish the tier** of each platform you care about, from
+   `references/platforms.md`. If everything you need is tier 0, stop — point it
+   at your machine and you're done.
 1. **Split the compose file.** Extract backing services into
    `docker/compose.services.yml` with no `app` service. The devcontainer's
    compose file `include`s it and adds `app`. Verify local dev is unchanged
    before going further.
 2. **Publish the dev image.** Add the CI build/push job and confirm a pull
    works from a clean machine.
-3. **Write the seven scripts** under `script/clouddev/`. Start with `exec` in
+3. **Write the eight scripts** under `script/clouddev/`. Start with `exec` in
    direct form and `path` as the identity function; add the container forms
    only once a platform forces them.
 4. **Write `clouddev.yml`.** Declare capabilities conservatively — claim
-   `browser` only after `verify` proves it.
-5. **Make `verify` real.** One check per capability. This is the artifact that
-   tells you a platform works, so it must fail loudly when it doesn't.
-6. **Generate adapters** for the platforms you actually use. See
+   `browser` only after `verify` proves it, on that platform.
+5. **Make `verify` real.** One check per capability, failing loudly. This is
+   the artifact that tells you a platform works.
+6. **Document the entrypoints in `AGENTS.md`.** On tier 3 and 4 this is the
+   whole adapter.
+7. **Generate adapters** for the platforms you actually use. See
    `references/adapters.md`. Adapters contain no logic — they call the
    manifest's scripts.
-7. **Run `verify` on each platform** before trusting it with real work.
+8. **Run `verify` on each platform** before trusting it with real work.
 
 For a **new client project with no devcontainer**, build the devcontainer
 first. This contract is a projection of a working devcontainer, not a
 replacement for one.
+
+### Probe an unknown platform before designing for it
+
+Several platforms leave the decisive facts undocumented. These four commands
+answer them in one session and cost nothing:
+
+```bash
+docker info && docker compose version   # is nested Docker real?
+id && sudo -n true                      # can prepare install packages?
+pwd && git rev-parse --show-toplevel    # where did the checkout land?
+env | grep -c YOUR_SECRET_NAME          # are secrets visible in this phase?
+```
+
+Currently unanswered by documentation and worth probing: nested Docker on
+**Cosmos** and **Factory managed** (Factory's answer decides whether its
+memory-snapshot persistence is usable at all), Docker on **Devin** and
+**Jules**, and prepare-phase secret visibility on **Cosmos**, **Jules**, and
+**Amp**.
 
 ## Anti-patterns
 
@@ -434,12 +613,20 @@ replacement for one.
   portable and discards the devcontainer features ecosystem. Use Nix inside the
   Dockerfile if you want its guarantees — never as the contract.
 - **Logic in adapter files.** They're generated. Anything conditional belongs
-  in `setup` or `shell`, where it's testable locally.
+  in `prepare` or `exec`, where it's testable locally.
 - **Claiming capabilities `verify` doesn't check.** An unverified `browser`
   capability wastes a whole cloud session discovering it's false.
 - **Baking dev secrets into the published image.** Dev secrets belong in the
   repo (if they're genuinely dev-only fakes) or in platform secret storage.
   An image in a registry outlives the decision to put them there.
+- **Starting a process in `prepare`.** It will be snapshotted away on six of
+  the platforms here, and the failure looks like "the database is down" rather
+  than "you used the wrong phase."
+- **A `boot` that blocks until healthy.** Amp gives it 10 seconds. Return, then
+  health-gate in the background where `verify` can poll it.
+- **Fighting a tier 3 platform when tier 0 is available.** Devin Outposts and
+  Factory BYOM exist. A heavy stack on a managed box with no session hook is a
+  losing position you chose.
 
 ## Platform facts decay
 
