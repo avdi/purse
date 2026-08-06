@@ -1,51 +1,24 @@
 #!/usr/bin/env bash
-# Claude Code status line: working directory, git branch, model, plugin badges.
+# Claude Code status line, rendered by Starship's claude-code profile.
 #
-# Wired up in ~/.claude/settings.json as statusLine.command. Runs on every
-# render, so it stays bash + a single jq call rather than Ruby.
+# Wired up in ~/.claude/settings.json; the profile and its modules are
+# configured in ~/.config/starship.toml. See https://starship.rs/advanced-config/
+#
+# Starship's `directory` and `git_*` modules read the process working
+# directory, which is not guaranteed to be the session's. Pass the workspace
+# path from the payload explicitly so the rendered path always matches the
+# session rather than wherever the status line happened to be invoked.
 
 set -uo pipefail
 
 payload=$(cat)
+workspace=$(printf '%s' "$payload" | jq -r '.workspace.current_dir // .cwd // ""' 2>/dev/null)
 
-read -r cwd model < <(
+# --path drives the git modules, --logical-path drives `directory`; both are
+# needed or the rendered path and branch can disagree.
+if [ -n "${workspace:-}" ] && [ -d "$workspace" ]; then
   printf '%s' "$payload" |
-    jq -r '[(.workspace.current_dir // .cwd // ""), (.model.display_name // "")] | @tsv' 2>/dev/null
-)
-
-DIM=$'\033[2m'
-CYAN=$'\033[38;5;110m'
-RESET=$'\033[0m'
-
-segments=()
-
-if [ -n "${cwd:-}" ]; then
-  segments+=("${DIM}${cwd/#$HOME/\~}${RESET}")
+    exec starship statusline claude-code --path "$workspace" --logical-path "$workspace"
+else
+  printf '%s' "$payload" | exec starship statusline claude-code
 fi
-
-if [ -n "${cwd:-}" ]; then
-  branch=$(git -C "$cwd" symbolic-ref --quiet --short HEAD 2>/dev/null) ||
-    branch=$(git -C "$cwd" rev-parse --short HEAD 2>/dev/null)
-  [ -n "${branch:-}" ] && segments+=("${CYAN}${branch}${RESET}")
-fi
-
-if [ -n "${model:-}" ]; then
-  segments+=("${DIM}${model}${RESET}")
-fi
-
-# Plugin badges append themselves; each exits silently when inactive.
-caveman_badge=$(
-  ls -td "$HOME"/.claude/plugins/cache/caveman/caveman/*/src/hooks/caveman-statusline.sh 2>/dev/null |
-    head -1
-)
-if [ -n "$caveman_badge" ]; then
-  badge=$(bash "$caveman_badge" 2>/dev/null)
-  [ -n "$badge" ] && segments+=("$badge")
-fi
-
-separator='  '
-line=""
-for segment in ${segments[@]+"${segments[@]}"}; do
-  line+="${line:+$separator}$segment"
-done
-printf '%s' "$line"

@@ -1,3 +1,37 @@
 "$schema" = 'https://starship.rs/config-schema.json'
 
-# Keep the defaults for now
+# Shell prompt: keep the defaults for now.
+
+# ---------------------------------------------------------------------------
+# Claude Code statusline
+#
+# Rendered by `starship statusline claude-code`, wired up in
+# ~/.claude/settings.json. See https://starship.rs/advanced-config/
+# ---------------------------------------------------------------------------
+
+[profiles]
+claude-code = "$directory$git_branch$git_status$claude_model$claude_context$claude_cost${custom.caveman}"
+
+[claude_model]
+format = "[$symbol$model]($style) "
+symbol = ""
+style = "bold blue"
+
+[claude_context]
+format = "[$gauge $percentage]($style) "
+gauge_width = 8
+
+[claude_cost]
+format = '[$symbol\$$cost]($style) '
+symbol = ""
+
+# Badge for the caveman plugin's active mode. The plugin writes its mode to a
+# flag file; anything outside the known set renders nothing rather than echoing
+# unvetted bytes into the terminal.
+[custom.caveman]
+description = "Active caveman plugin mode"
+when = 'grep -qxE "lite|full|ultra|wenyan-lite|wenyan|wenyan-full|wenyan-ultra|commit|review|compress" "$HOME/.claude/.caveman-active" 2>/dev/null'
+command = 'tr "[:lower:]" "[:upper:]" < "$HOME/.claude/.caveman-active"'
+format = "[\\[CAVEMAN:$output\\]]($style)"
+style = "bold 172"
+shell = ["bash", "--noprofile", "--norc"]
