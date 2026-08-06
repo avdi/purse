@@ -12,19 +12,30 @@ Tier decides how much the contract costs you. Establish it first.
 
 | Tier | Meaning | Platforms |
 |---|---|---|
-| **0** | Bring your own machine — your box, your image | Devin Outposts, Factory BYOM, `droid exec` in your CI |
-| **1** | Platform accepts your image | Cursor, Codespaces/Gitpod/Coder/Daytona, Augment Cosmos |
-| **2** | Their image, real hooks for both phases | Claude Code cloud, Amp, Copilot cloud agent |
-| **3** | Their image, no usable per-session hook | Devin (managed), Jules, Factory managed |
-| **4** | No contract to target | Codex cloud, Kiro Web, Amazon Q in GitHub |
+| **0** | Bring your own machine — your box, your image | Devin Outposts, Factory BYOM, **Coder**, **Codespaces via `gh codespace ssh`**, self-hosted GitLab runner, self-hosted OpenHands, and any headless agent CLI in your own CI (`claude -p`, `droid exec`, `devin -p`, Junie headless) |
+| **1** | Platform accepts your image | **Ona**, Cursor, Gitpod-lineage/Coder devcontainer paths, Augment Cosmos, GitLab external agents |
+| **2** | Their image, real hooks for both phases | Claude Code cloud, Amp orbs, Copilot cloud agent, GitLab native flows |
+| **3** | Their image, no usable per-session hook | Devin (managed), Jules, Factory managed, Codegen |
+| **4** | No contract to target | Codex cloud, Kiro Web, Amazon Q in GitHub, Antigravity, Replit, OpenHands Cloud, Daytona |
 
 Tier 0 costs nothing — your devcontainer runs unmodified. Tier 4 should be
 documented as unsupported rather than worked around.
+
+**Non-targets** (agents execute on *your* compute, so there is nothing to
+adapt): Zed (ACP agents run as subprocesses of the client), JetBrains Junie
+(*"executes entirely on your GitHub runners"*), Devin CLI `devin -p`, Goose,
+Aider, Cline, OpenCode. These are tier 0 by construction.
 
 ## Summary
 
 | Platform | Tier | Base image | Nested Docker | Prepare hook | Boot hook | Checkout path |
 |---|---|---|---|---|---|---|
+| **Ona** (ex-Gitpod) | 1 | **yours, devcontainer + compose** | yes, documented idiom | `prebuild` trigger | `postDevcontainerStart` / `postEnvironmentStart` | `/workspaces/<repo>` |
+| Codespaces | 0/1 | **yours**, devcontainer-native | yes, DinD documented | `onCreate` + `updateContent` | `postCreate` / `postStart` | `/workspaces` |
+| Coder | 0 | **yours** (Terraform) | yes, four documented methods | `startup_script` | `startup_script` | yours |
+| GitLab Duo (external agent) | 1 | **yours** (`image:`) | undocumented | `commands:` | `commands:` | not documented |
+| GitLab Duo (native flow) | 2 | **yours** (`image:`) | undocumented | `setup_script` | `setup_script` | not documented |
+| OpenHands (self-hosted) | 0/1 | your base, rebuilt as agent-server | **no** — not provisioned | `.openhands/setup.sh` | same script | `/workspace/project[/<conv>]/<repo>` |
 | Claude Code cloud | 2 | fixed | **yes**, preinstalled | setup script | `SessionStart` hook | not documented |
 | Cursor cloud agents | 1 | **yours** (Dockerfile) | yes, needs config | `install` | `start` + `terminals` | not documented |
 | Amp (orbs) | 2 | fixed Debian 12 | yes, you install it | `.agents/setup` | `.agents/resume` (**10s**) | `/home/user/workspace/repo` (observed) |
@@ -33,8 +44,12 @@ documented as unsupported rather than worked around.
 | Devin (managed) | 3 | fixed Ubuntu 22.04 | undocumented | `initialize`/`maintenance` | **none** | `~/repos/<name>` |
 | Factory (managed) | 3 | fixed | **undocumented** | none | `SessionStart` (60s) | you set it |
 | Jules | 3 | fixed Ubuntu 24.04 | binaries present, daemon unverified | one text box | **none** | `/app` (community) |
-| Codespaces et al. | 1 | **yours**, devcontainer-native | yes | lifecycle commands | lifecycle commands | yours |
+| Codegen | 3 | fixed (uv/bookworm) | undocumented | Setup Commands (UI) | **none** | not documented |
 | Codex cloud | 4 | fixed `universal` | **no** | setup script | none | — |
+| Daytona | 4 | any image | yes, DinD images | **none** | **none** | configurable |
+| Replit | 4 | Nix, no image | **no** | `packager.afterInstall` | Workflows | not documented |
+| OpenHands Cloud | 4 | no self-serve BYO | undocumented | `.openhands/setup.sh` | same script | `/workspace/project/…` |
+| Antigravity (Gemini API) | 4 | fixed Ubuntu | **no** | **none** | **none** | `target` per source |
 
 ## Cross-platform patterns
 
@@ -42,8 +57,8 @@ These held across enough platforms to be treated as rules, not quirks.
 
 ### Snapshots preserve disk, never processes
 
-Claude Code cloud, Cursor, Amp, Devin, Cosmos, and Jules all snapshot the
-filesystem after provisioning and boot fresh from it. Cursor states it
+Claude Code cloud, Cursor, Amp, Devin, Cosmos, Jules, Codespaces, Ona, and
+Codegen all snapshot the filesystem after provisioning and boot fresh from it. Cursor states it
 outright: *"Builds preserve disk state only. Running processes, exported shell
 variables, and in-memory caches don't continue into an agent run."*
 
@@ -63,9 +78,28 @@ provisioning:
 - **Codex** — internet during setup, air-gapped agent phase by default.
 - **Claude Code cloud** — access levels apply to the session; Docker Hub is in
   the Trusted defaults.
+- **GitLab** — *"`setup_script` commands run before SRT is applied and execute
+  outside it."* Unrestricted in setup, Anthropic SRT sandbox during the run.
 
-Anything lazily fetched at agent time fails. Pull images, install gems, and
-warm caches during prepare.
+Four platforms, four independent derivations. Anything lazily fetched at agent
+time fails. Pull images, install gems, and warm caches during prepare.
+
+### Provisioning config is often default-branch-only
+
+GitLab: *"read-only from the project's default branch. Files committed to other
+branches are ignored, even when a flow runs from those branches."* Copilot
+requires `copilot-setup-steps.yml` on the default branch. Cursor builds from the
+environment's default branch.
+
+You cannot iterate on provisioning in a branch on any of the three. Keep the
+platform-side adapter a one-line call, and do the iteration locally.
+
+### Prebuilds get org/project secrets, never user secrets
+
+Stated as a design invariant by both **Ona** (*"prebuilds run without user
+context"*) and **Cursor** (user secrets unavailable during Builds); Devin
+scrubs "build only" secrets before snapshotting. Undocumented on Cosmos, Jules,
+and Amp. Anything `prepare` needs must be org- or project-scoped.
 
 ### Boot hooks have time budgets
 
@@ -116,6 +150,230 @@ tier 3 and 4 it is the *only* lever. It's instruction rather than execution, so
 it degrades to "the agent probably runs it" — still better than nothing.
 
 ## Per-platform notes
+
+### Ona (formerly Gitpod) — tier 1 — **the reference implementation**
+<https://ona.com/docs/ona/configuration/devcontainer/overview.md> ·
+<https://ona.com/docs/ona/reference/automations-yaml-schema.md>
+
+The only surveyed platform that is genuinely devcontainer-native *for agents*.
+Full spec support **including `dockerComposeFile`, single- or multi-container**,
+plus `.ona/automations.yaml` for the layer the devcontainer spec has no hook
+for. `.gitpod.yml` is gone from the docs entirely — not deprecated, absent.
+
+Triggers, which are the phase model with names on them:
+
+| Trigger | Fires |
+|---|---|
+| `prebuild` | prebuild only; **no user secrets** |
+| `postDevcontainerStart` | user env only, never prebuild |
+| `postEnvironmentStart` | every start or resume |
+| `postMachineStart` | after VM boot, before dev container ready (`runsOn: machine`) |
+| `beforeSnapshot` | after prebuild tasks, before snapshot (tasks only) |
+| `manual` | on demand |
+
+Documented idiom: put the same task on **both** `prebuild` and
+`postDevcontainerStart` so it bakes into the snapshot *and* re-runs on rebuild.
+
+Services carry `commands.start` (**must block** — `docker run -d` marks the
+service Stopped), `commands.ready` (polled to exit 0; gates Starting→Running
+*and* gates prebuild snapshotting), `commands.stop`. `dependsOn` chains tasks.
+`prebuildRequiresSuccess: true` makes a failing task fail the prebuild.
+
+**The constraint that will bite a compose-based project:**
+
+> *"**Required:** Set `network_mode: host` on all services. Without this,
+> services attempt to bridge networks, which can lock you out of your dev
+> container with no way to recover except deleting the environment."*
+
+Service-name DNS collapses to a flat localhost port namespace — exactly what the
+manifest's `services.env` overlay is for, except mandatory here. Getting it
+wrong is **irrecoverable**, not a soft failure.
+
+Other sharp edges:
+- **Build-time secrets don't work with compose-based dev containers** ("not yet
+  supported"). Choose between compose and BuildKit secret mounts.
+- **Untracked git changes made during prebuild are cleared on env start** — Ona
+  re-fetches from the remote. Generated artifacts must be gitignored or written
+  outside the workspace folder.
+- Prebuilds **expire after 7 days**, daily schedule only, one active per
+  environment class. Prebuild timeout 1h default (5m–2h), snapshot 4h, overall
+  6h.
+- Prebuild gets **org + project secrets, never user secrets** — same invariant
+  as Cursor.
+- Auto-stop 30 min default; **"an agent is running" counts as activity** but
+  background processes and port traffic do not — use
+  `ona environment keep-alive --pid` for long jobs.
+- Registry secrets take hostname + username + password; ECR/GAR have native IAM
+  paths; Ona auto-runs `docker login` inside the environment when a docker CLI
+  is present.
+- CLI is a first-class external-agent surface: `ona environment
+  create|exec|ssh|stop|delete`, `-o json`, exit-code propagation. `exec` runs
+  inside the dev container via API, not SSH.
+- Self-hosted runners in your own AWS/GCP VPC (Enterprise) move this to tier 0.
+
+### Codespaces — tier 0/1 — great runtime, **no agent product**
+
+Grepping all 214 Codespaces doc files for `agent` returns exactly one hit, about
+`ssh-agent`. There is no agent session product, no agent API, no "run an agent
+in this codespace" surface. Copilot in a codespace is the ordinary editor
+extension, and **Copilot's cloud agent cannot even read Codespaces secrets** —
+it runs on Actions runners.
+
+So Codespaces is a first-rate devcontainer host with zero agent help: `gh
+codespace ssh` in and run your own agent. That is tier 0 and needs no adapter.
+
+Prebuild boundary is the canonical one: *"performing setup operations up to and
+including any `onCreateCommand` and `updateContentCommand`… **No
+`postCreateCommand` commands are run during the creation of a prebuild.**"*
+
+Dedicated private VM per codespace with full root, DinD explicitly relied on
+(private-image pulls at runtime are documented). Private registry via
+`<PREFIX>_CONTAINER_REGISTRY_SERVER`/`_USER`/`_PASSWORD` secrets; ECR
+special-cased. Outbound internet open, no egress allowlist feature; **enabling
+org IP allow lists disables codespace creation entirely**.
+
+Checkout is **dictated**: `/workspaces` on the host VM, bind-mounted in. Only
+`/workspaces` survives a rebuild. Codespaces secrets are **not** available
+during image build or in features — only after the container is running.
+
+`dockerComposeFile` is supported by reference to containers.dev; GitHub
+publishes **no first-party compose guidance**, so you're on spec-implementation
+behavior alone.
+
+### Coder — tier 0 — self-hosted, but ignore its agent layer
+<https://coder.com/docs/admin/integrations/devcontainers/integration>
+
+AGPL, self-host-only, no managed cloud — so effectively BYO machine at zero
+marginal support cost. Terraform templates; hooks are
+`coder_agent.startup_script` / `shutdown_script` and `coder_script` with
+`run_on_start`/`run_on_stop`. Nested Docker is treated as a first-class problem
+with four documented approaches: **Sysbox**, **Envbox**, **rootless Podman**,
+socket mounting.
+
+**Two devcontainer paths with different spec coverage** — check the matrix, not
+the label:
+
+- **Dev Containers Integration** (current direction, `@devcontainers/cli` +
+  `coder_devcontainer` resource): compose support is **strongly implied but
+  never stated** — the docs never say "compose". Spike before committing.
+- **Envbuilder**: `dockerComposeFile`, `service`, `runServices`,
+  `initializeCommand`, `postAttachCommand`, `mounts`, `forwardPorts` all
+  **🔴 unsupported**. Compose is flatly out.
+
+**Ignore the agent layer.** Coder Tasks moves to Extended Support 2026-06-02 and
+is **removed in v2.37 (2026-09-01)**. Its replacement, Coder Agents, is
+deliberately *not* a wrapper: *"The workspace itself has no knowledge of AI. It
+is standard compute infrastructure — there are no LLM API keys, no agent
+harnesses, and no special software installed."* A Coder workspace is a dev
+machine; `coder ssh` in and run whatever agent you like.
+
+Optional **Agent Firewall** (process-level allowlist, nsjail/landjail) requires
+the AI Governance Add-On as of v2.32.
+
+### GitLab Duo Agent Platform — tier 1 (external) / 2 (native) / 0 (own runner)
+<https://docs.gitlab.com/user/duo_agent_platform/flows/execution/>
+
+Flows run as CI/CD jobs on GitLab Runner — hosted or yours. Runner must carry
+tag `gitlab--duo`, must be an instance runner or top-level-group runner, and
+must use a Docker-capable executor (`shell` unsupported).
+
+**It does not read `.gitlab-ci.yml`.** GitLab generates the job; config is a
+separate, narrower schema. Consequences:
+
+- **No `services:` key.** GitLab CI's service-container model does *not* carry
+  over — so unlike Copilot there is no transcribe-to-`services:` escape hatch.
+- **Custom CI/CD variables are unavailable to native flows**, all types and
+  scopes. The sanctioned secrets path is OIDC `id_tokens` to an external
+  manager — which maps cleanly onto Vault.
+- **`agent-config.yml` is read from the default branch only.**
+
+`.gitlab/duo/agent-config.yml` keys: `image`, `setup_script`,
+`network_policy.{allowed_domains,denied_domains,include_recommended_allowed,allow_all_unix_sockets}`,
+`cache.{paths,key}`, `id_tokens`. Cache is the *only* persistence — no
+snapshots.
+
+**`.gitlab/duo/flows/*.yaml` (external agents) is the better target**: `image`,
+`commands`, real CI/CD `variables`, `id_tokens`, and no SRT sandbox. Effectively
+a bring-your-own-container primitive; `commands:` maps directly onto
+`prepare` → `boot` → agent.
+
+Network phase split is explicit: *"`setup_script` commands run before SRT is
+applied and execute outside it."* Default SRT allowlist already includes
+`localhost` and `host.docker.internal`.
+
+Nested Docker **undocumented in both directions**; `allow_all_unix_sockets:
+true` is the obvious socket lever and `privileged = true` on your own runner the
+DinD lever. Private registry auth for `image:` is undocumented — likely a
+runner-level `config.toml` concern.
+
+Security note: flows run under the *triggering user's* composite identity, so
+write access to `agent-config.yml` influences what runs in another user's runner
+environment.
+
+### OpenHands — tier 0/1 (self-hosted), tier 4 (Cloud)
+<https://docs.openhands.dev/openhands/usage/advanced/custom-sandbox-guide>
+
+Three surfaces: OSS self-hosted, Cloud (SaaS), Enterprise (k8s, commercial).
+Docs moved to `docs.openhands.dev`; repo is now `OpenHands/OpenHands`; V0
+"runtime" is being replaced by V1 "sandbox".
+
+**The runtime container *is* the agent-server**, so you cannot supply an
+arbitrary image — you rebuild the agent-server *onto* your base:
+
+```
+docker buildx build --build-arg BASE_IMAGE=my-base:latest --target binary \
+  -f openhands-agent-server/openhands/agent_server/docker/Dockerfile ...
+```
+
+Then set **both** `AGENT_SERVER_IMAGE_REPOSITORY` and `AGENT_SERVER_IMAGE_TAG`
+— missing either silently falls back to the default. No registry-credential
+mechanism in OSS; the host must already be able to pull.
+
+Repo conventions: `.openhands/setup.sh`, `.openhands/pre-commit.sh`,
+`.openhands/hooks.json` (**deliberately Claude Code hooks-compatible** — same
+scripts, different location), skills at `.agents/skills/`, plus `AGENTS.md`.
+`devcontainer.json` is **not read**.
+
+Two implementation details that matter and aren't in the prose:
+- **`setup.sh` is `source`d, not exec'd** (`chmod +x && source`), cwd = project
+  dir, **600s timeout** — so `export FOO=bar` persists into the agent's shell.
+- **It re-runs on every conversation start**, even on a reused sandbox. It is a
+  `boot` script, not a `prepare` script. Prebake expensive work into the image.
+
+**No nested Docker in OSS** — the sandbox container is created with no
+`privileged`, no `cap_add`, no socket mount. Best fit is to run your compose
+stack *outside* the sandbox and reach it via `host.docker.internal`. Documented
+in-sandbox `docker compose` exists only in **Enterprise 0.18.2+** (k8s, kernel
+6.3+, userns remapping, no privileged mode).
+
+Checkout is `/workspace/project/{repo}` — or
+`/workspace/project/{conversation_id_hex}/{repo}` under any sandbox-grouping
+strategy other than `NO_GROUPING`. **Don't hardcode it.**
+
+**Cloud is a dead end**: no self-serve BYO image (`sandbox_spec_id` selects a
+pre-provisioned spec; no public endpoint registers one), no documented Docker.
+
+### Codegen / Replit / Daytona / Antigravity — tier 4
+
+- **Codegen** — UI-configured Setup Commands, run once and filesystem-snapshotted;
+  fixed image built from `ghcr.io/astral-sh/uv:python3.13-bookworm` with no
+  database services; Docker availability undocumented; **ingress is a single
+  fixed port 3000**. No devcontainer support.
+- **Replit** — Nix workspace, not containers. `.replit` + `replit.nix`, no
+  Dockerfile, **no Docker at all**. Managed Postgres exists; Redis/CouchDB/Vault
+  have no documented story. Devcontainer investment transfers at zero.
+- **Daytona** — OSS repo **unmaintained since June 2026** ("core development has
+  moved to a private codebase"), no self-hosting page. Devcontainer support gone
+  from the docs entirely. **No lifecycle hooks of any kind** — you write an
+  orchestrator against the SDK. 4 vCPU / 8 GB / 10 GB cap, and volumes
+  *"cannot support block storage access (databases)"*. Does document DinD images
+  and compose, and hosts Devin Outposts.
+- **Antigravity** — the IDE/CLI/SDK are **local-only**; the hosted surface is
+  Gemini API Managed Agents, an API-driven ephemeral sandbox with no repo
+  manifest, no setup hook, no image control, no Docker, no env vars, no
+  terminal. Credentials are injected as **HTTP headers at an egress proxy**, so
+  Postgres wire and Redis RESP get nothing at all. Google is also retiring
+  Firebase Studio *into* the local IDE — a directional signal.
 
 ### Claude Code cloud — tier 2
 <https://code.claude.com/docs/en/cloud-environments>

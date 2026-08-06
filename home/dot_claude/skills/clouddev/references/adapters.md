@@ -14,6 +14,150 @@ All schemas below checked **2026-08-06**. Re-verify before relying on one.
 
 ---
 
+## Ona — tier 1, direct topology — start here
+
+The closest thing to a native implementation of this contract. `devcontainer.json`
+carries the image (including `dockerComposeFile`); `.ona/automations.yaml`
+carries the phases:
+
+```yaml
+# .ona/automations.yaml
+tasks:
+  prepare:
+    name: Prepare
+    command: script/clouddev/prepare
+    triggeredBy: [prebuild, postDevcontainerStart]   # bake AND re-run on rebuild
+
+services:
+  backing:
+    name: Backing services
+    triggeredBy: [prebuild, postEnvironmentStart]
+    commands:
+      start: script/clouddev/boot --foreground      # MUST block
+      ready: script/clouddev/verify --services-only
+      stop:  script/clouddev/halt
+```
+
+Three things to get right:
+
+- **`commands.start` must block.** `docker compose up -d` exits immediately and
+  Ona marks the service Stopped. Use a foreground compose invocation — this is
+  the one place `boot` runs in blocking form rather than returning fast.
+- **Always define `ready:`** for prebuild services, or the snapshot may be taken
+  before images finish pulling. It also gates Starting→Running.
+- **`network_mode: host` on every compose service is required.** Omitting it
+  *"can lock you out of your dev container with no way to recover except
+  deleting the environment."* Service-name DNS collapses, so the manifest's
+  `services.env` localhost overlay is mandatory here, not optional.
+
+Prebuild sees org and project secrets but **never user secrets**. Build-time
+BuildKit secrets don't work with compose-based dev containers at all — if the
+image build needs a credential, you must choose between compose and build
+secrets. Artifacts generated during prebuild must be gitignored or written
+outside the workspace folder, since untracked changes are cleared on env start.
+
+---
+
+## Codespaces — tier 0/1, direct topology
+
+No agent product exists; this is a devcontainer host you `gh codespace ssh`
+into. The adapter is the devcontainer file itself, using the spec's own phase
+boundary:
+
+```json
+{
+  "dockerComposeFile": ["../docker/compose.services.yml", "docker-compose.yml"],
+  "service": "app",
+  "workspaceFolder": "/workspaces/myproject",
+  "updateContentCommand": "script/clouddev/prepare",
+  "postStartCommand": "script/clouddev/boot"
+}
+```
+
+`onCreateCommand` and `updateContentCommand` run at prebuild; `postCreate`,
+`postStart`, and `postAttach` never do. Codespaces secrets are **not** available
+during image build or in features — only once the container is running, so
+`prepare` cannot depend on them.
+
+---
+
+## Coder — tier 0
+
+Self-hosted, so this is a workspace template, not an agent adapter. Ignore
+Coder's agent layer entirely (Tasks is removed in v2.37; Coder Agents
+deliberately doesn't run third-party CLIs).
+
+```hcl
+resource "coder_agent" "main" {
+  startup_script = <<-EOT
+    script/clouddev/prepare
+    script/clouddev/boot
+  EOT
+}
+```
+
+Pick the **Dev Containers Integration** path, not envbuilder — envbuilder lists
+`dockerComposeFile`, `service`, and `runServices` as unsupported. Nested Docker
+needs one of Sysbox / Envbox / rootless Podman / socket mount.
+
+---
+
+## GitLab Duo — tier 1 (external agent)
+
+`.gitlab/duo/flows/<name>.yaml` — the permissive surface, with real CI/CD
+variables and no SRT sandbox:
+
+```yaml
+image: ghcr.io/acme/myproject-dev:main
+injectGatewayToken: true
+variables:
+  - DATABASE_PASSWORD
+commands:
+  - script/clouddev/prepare
+  - script/clouddev/boot
+  - script/clouddev/verify
+  - claude -p "$DUO_WORKFLOW_GOAL"
+```
+
+The native-flow surface (`.gitlab/duo/agent-config.yml`) has `image` and
+`setup_script` but **no `services:` key** and **no access to your CI/CD
+variables** — secrets go through OIDC `id_tokens` to an external manager, which
+suits Vault. Its config is also **default-branch-only**, so iterate locally.
+
+For tier 0, register your own runner tagged `gitlab--duo` and author the job
+yourself.
+
+---
+
+## OpenHands (self-hosted) — tier 0/1
+
+`.openhands/setup.sh` — but note it is a **`boot` script, not a `prepare`
+script**: it is `source`d (so exports persist), capped at 600s, and **re-runs on
+every conversation start** even on a reused sandbox.
+
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+script/clouddev/boot
+```
+
+Expensive work belongs in the image. Build the agent-server onto your dev image
+rather than supplying it directly — the runtime container *is* the agent-server:
+
+```
+docker buildx build --build-arg BASE_IMAGE=ghcr.io/acme/myproject-dev:main \
+  --target binary -f openhands-agent-server/openhands/agent_server/docker/Dockerfile ...
+```
+
+Then set **both** `AGENT_SERVER_IMAGE_REPOSITORY` and `AGENT_SERVER_IMAGE_TAG`.
+
+The OSS sandbox has **no nested Docker** — not privileged, no socket. Run the
+compose stack outside the sandbox and reach it via `host.docker.internal`.
+`.openhands/hooks.json` is Claude Code hooks-compatible, so hook scripts port
+across unchanged.
+
+---
+
 ## Claude Code cloud — tier 2, container topology
 
 No repo file; the setup script is configured in the environment UI at
@@ -334,11 +478,7 @@ preinstalled; 20GB disk.
 
 ---
 
-## Codespaces / Gitpod / Coder / Daytona — tier 1
-
-No adapter. These read `devcontainer.json` natively.
-
-The only requirement is that splitting compose doesn't break them:
+## The compose split, which every devcontainer-native adapter depends on
 
 ```yaml
 # .devcontainer/docker-compose.yml
@@ -351,16 +491,53 @@ services:
     depends_on: [postgresql, redis]
 ```
 
+Local behavior is unchanged; cloud simply never starts `app`. On Ona, every
+service in the included file also needs `network_mode: host`.
+
 ---
 
-## Codex cloud / Kiro Web / Amazon Q — tier 4, no adapter
+## Tier 0 — no adapter at all
 
-Unsupported, for reasons worth recording in the project so their absence doesn't
-read as an oversight:
+Nothing to write. Your devcontainer runs unmodified and a headless agent CLI
+runs inside it:
 
-- **Codex** — no nested Docker (`dockerd` doesn't work), fixed image. Backing
-  services would need a native-install path that never runs locally and rots.
-- **Kiro Web** — no documented lifecycle hook, no base-image control, sandbox
-  torn down per task with no snapshotting.
-- **Amazon Q Developer** — sunsetting (signups closed 2026-05-15); its
-  `devfile.yaml` surface has been de-documented.
+```bash
+claude -p "..."          # Claude Code
+droid exec "..."         # Factory
+devin -p "..."           # Cognition CLI (no `devin exec` subcommand)
+junie --headless "..."   # JetBrains
+```
+
+Applies to: Devin Outposts, Factory BYOM, Coder, a self-hosted GitLab runner,
+Codespaces via `gh codespace ssh`, self-hosted OpenHands, and your own CI. When
+a platform fights you, this is the exit.
+
+---
+
+## Non-targets — agents run on your compute
+
+Zed (ACP agents are subprocesses of the client), JetBrains Junie (*"executes
+entirely on your GitHub runners"*), Goose, Aider, Cline, OpenCode. Nothing to
+adapt; they are tier 0 by construction.
+
+---
+
+## Tier 4 — no adapter, and record why
+
+So their absence doesn't read as an oversight:
+
+- **Codex cloud** — no nested Docker (`dockerd` doesn't work), fixed image.
+- **Kiro Web** — no lifecycle hook, no base-image control, torn down per task
+  with no snapshotting.
+- **Amazon Q Developer** — sunsetting; `devfile.yaml` surface de-documented.
+- **Antigravity** — IDE is local-only; the hosted Gemini API sandbox has no
+  manifest, no hook, no image control, no Docker, and injects credentials only
+  as HTTP headers (useless for Postgres or Redis).
+- **Replit** — Nix workspace, no Docker at all, no CouchDB/Vault story.
+- **Daytona** — no lifecycle hooks of any kind, OSS frozen June 2026, volumes
+  explicitly cannot back a database. You'd write an orchestrator, not an
+  adapter.
+- **OpenHands Cloud** — no self-serve BYO image, no documented Docker. Use
+  self-hosted or Enterprise instead.
+- **Codegen** — fixed image, Docker undocumented, single fixed ingress port
+  3000.

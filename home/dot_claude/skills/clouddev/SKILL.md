@@ -66,9 +66,20 @@ Tier decides how much any of this costs. Do this before writing a line.
 | **3** | Their image, no usable per-session hook | `boot` must self-install or be agent-invoked |
 | **4** | No contract to target | document as unsupported; do not work around it |
 
-Tier 0 exists on more platforms than you'd expect — Devin Outposts, Factory
-BYOM, `droid exec` in your own CI. When a project's stack is heavy, reaching for
-tier 0 beats fighting a tier 3 platform. See `references/platforms.md`.
+Tier 0 is far more available than the marketing suggests: Devin Outposts,
+Factory BYOM, Coder (self-host-only), a self-hosted GitLab runner, Codespaces
+via `gh codespace ssh`, or simply a headless agent CLI in your own CI —
+`claude -p`, `droid exec`, `devin -p`, Junie headless are all the same shape.
+When a stack is heavy, reaching for tier 0 beats fighting a tier 3 platform.
+
+**One platform is worth singling out.** Ona (formerly Gitpod) has already built
+this convention: `devcontainer.json` including `dockerComposeFile`, plus
+`.ona/automations.yaml` whose triggers (`prebuild`, `postDevcontainerStart`,
+`postEnvironmentStart`, `beforeSnapshot`) are the phase model with names on
+them. When designing an adapter, read Ona's schema first — it is the closest
+thing to a reference implementation.
+
+See `references/platforms.md` for the full matrix.
 
 ## The two phases
 
@@ -83,6 +94,18 @@ They snapshot the first and discard the second. Cursor states it plainly:
 |---|---|---|---|
 | **`prepare`** | disk | once per snapshot | deps, image pulls, builds, cache warming |
 | **`boot`** | processes | every session | daemon start, `compose up`, dev servers |
+
+**This is the line the devcontainer spec already drew.** Codespaces and Ona both
+cut their prebuild at exactly the same place:
+
+| Phase | devcontainer lifecycle commands |
+|---|---|
+| `prepare` | `onCreateCommand`, `updateContentCommand` |
+| `boot` | `postCreateCommand`, `postStartCommand`, `postAttachCommand` |
+
+Codespaces states it flatly: *"No `postCreateCommand` commands are run during
+the creation of a prebuild."* So on devcontainer-native platforms the mapping is
+free — you are not inventing a split, you are naming one that exists.
 
 **The invariant that makes this portable:**
 
@@ -108,6 +131,25 @@ Four modes. A project's adapter picks one per platform.
 Self-install is a real requirement on `boot`, not a footnote: it has to work as
 a service unit, not only as a script something calls.
 
+### Supervised service slots are a separate primitive
+
+Three platforms offer a slot for long-running processes that is **not** a
+lifecycle hook: Amp's `.amp/services.yaml`, Ona's `.ona/automations.yaml`
+`services:`, Cursor's `terminals`. All supervisor- or tmux-backed, all visible
+to the agent, all surviving pause/resume where a hook's children would not.
+
+They invert `boot`'s contract, and the conflict is real:
+
+| Platform | Requirement |
+|---|---|
+| Amp `.agents/resume` | **return within 10s** |
+| Ona `commands.start` | **must block** — `docker compose up -d` exits and the service is marked Stopped |
+
+These are different slots, not a contradiction. Where a supervised slot exists,
+put the blocking foreground process there and give it a readiness probe; keep
+`boot` for the fire-and-return case. Ona's `commands.ready` is the model — it
+gates the Starting→Running transition *and* gates prebuild snapshotting.
+
 ### `boot` has a time budget
 
 | Platform | Budget |
@@ -132,6 +174,20 @@ provisioning**. Copilot is explicit:
 Codex air-gaps the agent phase by default; Claude Code cloud applies access
 levels to the session. A lazily-pulled image or a mid-task `bundle install`
 fails — and on Copilot it fails by quietly appending a warning to the PR body.
+
+### A shell setup script is the universal lowest common denominator
+
+Every platform surveyed — across every tier — accepts *some* shell script at
+provisioning time, and they all have the same shape: `.openhands/setup.sh`,
+Amp's `.agents/setup`, Cursor's `install`, GitLab's `setup_script`, Codegen's
+Setup Commands, Jules' one text box, Copilot's `steps`. That is why the manifest
+declares script *paths* rather than inlining commands: the paths are the
+portable part, and every adapter is a pointer at one.
+
+Corollary: **most platforms do not read `devcontainer.json`.** Only the
+devcontainer-native ones do (Codespaces, Ona, Coder's Dev Containers
+integration, Gitpod-lineage tooling). Everywhere else your devcontainer is a
+source of truth you *project from*, never a thing the platform consumes.
 
 ### `prepare` output is world-readable
 
@@ -585,6 +641,28 @@ For a **new client project with no devcontainer**, build the devcontainer
 first. This contract is a projection of a working devcontainer, not a
 replacement for one.
 
+### Two hazards to plan around before you start
+
+**Provisioning config is often default-branch-only.** GitLab: *"The
+configuration file is read-only from the project's default branch. Files
+committed to other branches are ignored, even when a flow runs from those
+branches."* Copilot requires `copilot-setup-steps.yml` on the default branch.
+Cursor builds from the environment's default branch.
+
+So on three platforms you **cannot iterate on provisioning in a branch** —
+every tweak is a merge to main. Bringing up a four-service stack by trial and
+error that way is brutal. Mitigations, in order of preference: make `prepare`
+and `boot` runnable locally so nearly all iteration happens off-platform; keep
+the platform-side adapter a one-line call so it rarely changes; land the
+adapter early, before the scripts it calls are finished.
+
+**"Devcontainer-native" is not binary.** Coder's envbuilder publishes a spec
+support matrix in which `dockerComposeFile`, `service`, `runServices`,
+`initializeCommand`, `postAttachCommand`, `mounts`, and `forwardPorts` are all
+🔴 unsupported — while its other devcontainer path (built on
+`@devcontainers/cli`) almost certainly does support compose but never says so in
+the docs. Check the matrix, not the label.
+
 ### Probe an unknown platform before designing for it
 
 Several platforms leave the decisive facts undocumented. These four commands
@@ -624,9 +702,21 @@ memory-snapshot persistence is usable at all), Docker on **Devin** and
   than "you used the wrong phase."
 - **A `boot` that blocks until healthy.** Amp gives it 10 seconds. Return, then
   health-gate in the background where `verify` can poll it.
-- **Fighting a tier 3 platform when tier 0 is available.** Devin Outposts and
-  Factory BYOM exist. A heavy stack on a managed box with no session hook is a
-  losing position you chose.
+- **Fighting a tier 3 platform when tier 0 is available.** Devin Outposts,
+  Factory BYOM, Coder, a self-hosted runner, or simply `claude -p` / `droid
+  exec` / `devin -p` in your own CI. A heavy stack on a managed box with no
+  session hook is a losing position you chose.
+- **Provisioning by prompt.** Antigravity's documented way to prepare an
+  environment is to send the agent an interaction telling it to install things,
+  then fork the resulting environment id. Codegen, Jules, and Factory managed
+  push you the same direction by omission. It is non-deterministic,
+  unreviewable, costs tokens, and cannot be diffed. Treat it as the floor you
+  land on when a platform gives you nothing — never as a design.
+- **Assuming a secrets mechanism reaches a non-HTTP client.** Antigravity
+  injects credentials as HTTP headers at an egress proxy — *"never exposed
+  inside the sandbox as environment variables or files."* Postgres wire and
+  Redis RESP get nothing. Check that a platform's secret path can reach your
+  actual clients before assuming the stack works.
 
 ## Platform facts decay
 
