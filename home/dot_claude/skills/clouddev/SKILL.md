@@ -116,7 +116,7 @@ rather than failing halfway through a QA pass.
 | `services-down` | stop services, leave data volumes alone unless asked | |
 | `exec` | run its argv in the dev environment; preserve the exit code; pass stdin through byte-exact; allocate a TTY only when `[ -t 0 ]`; rewrite paths by default (see below), with `--raw` to opt out | decide the TTY from the argument count; rewrite stdin; swallow a non-zero status behind a pipe |
 | `shell` | start a login shell in the dev environment, **forwarding its argv** to that shell (`-c '…'`, a script path); **built on `exec`**, never on its own topology logic | duplicate what `exec` knows; force interactivity when stdin is a pipe |
-| `path` | translate a path seen in dev-environment output into one the caller can open (`--reverse`, `--filter`); pass unmapped and relative paths through untouched; be the **identity function** when the paths are identical | guess, or mangle paths outside the mapped roots |
+| `path` | translate a path seen in dev-environment output into one the caller can open; take paths as argv or rewrite a stream on stdin; pass unmapped and relative paths through untouched; exit 0 always; be the **identity function** when the paths are identical | guess, canonicalize, or touch anything outside the declared roots |
 | `verify` | exit non-zero when the environment is broken; test one thing per declared capability | mutate the repo or leave state behind |
 
 `setup` runs once per environment on most platforms — they snapshot the
@@ -229,29 +229,60 @@ the fact: an agent reads a stack trace, a test failure, a coverage report, a
 screenshot location, and needs to open the file. Give it something to ask.
 
 ```bash
-clouddev/path /workspaces/myproject/app/models/user.rb   # → /workspace/app/models/user.rb
-clouddev/path --reverse spec/user_spec.rb                # → the path to hand to a command
-clouddev/path --filter < rspec-output.txt                # rewrite a whole stream
+path PATH...            # each arg is a path; one translated path per line
+path                    # no args: read stdin, rewrite occurrences in-stream
+path --to-container …   # opposite direction
 ```
+
+**Two modes, distinguished by whether there are arguments** — no flag needed,
+because the semantics genuinely differ:
+
+| Mode | Unit of translation | Use |
+|---|---|---|
+| argv | the whole token is a path | `path "$(cat .last-failure)"` |
+| stdin | occurrences *within* each line | `exec --raw rspec 2>&1 \| path` |
+
+Arguments win when both are present; stdin is ignored, not an error.
+
+**Direction.** Default is `--to-host`: *"I saw this in output from the dev
+environment — give me the path I can open."* That is the question that actually
+gets asked. `--to-container` exists mainly for `exec`'s own internals; an agent
+passing a path to a command never needs it, because `exec` already rewrites
+argv. Named for the two `paths:` keys rather than `--reverse`, which is
+unanswerable at a call site.
 
 Contract:
 
-- One path per line on stdin or as argv; one translated path per line on
-  stdout. Composable, no parsing ceremony.
-- Default direction is **inbound**: "I saw this in output from the dev
-  environment, give me the path I can open." `--reverse` goes the other way.
+- **Exit 0 always.** Pass-through is a legitimate outcome, not an error.
 - Only absolute paths prefixed by a declared root, at a path-component
   boundary, are translated. Everything else — relative paths, absolute paths
   outside the roots — passes through **unchanged**. See *What gets rewritten*
-  below; `path` and `exec` obey the same rule because they share one
-  implementation.
+  below; `path` and `exec` share one implementation, so they cannot drift.
+- **No canonicalization.** Never `realpath`, no `~` expansion, no `..`
+  collapsing, trailing slashes preserved. Resolving a symlink can walk you out
+  of the declared root and yield a path that is correct but useless.
 - **Under the direct topology it is the identity function** — same shape as
-  `exec` being `exec "$@"` there. Every project ships it; it just does nothing
-  when there's nothing to do. That's what makes it safe for an agent to call
+  `exec` being `exec "$@"` there. Every project ships it; it does nothing when
+  there is nothing to do. That is what makes it safe for an agent to call
   unconditionally.
 
-`--filter` is what `exec` uses internally, so there is one implementation of
-the mapping rather than two.
+Two edges worth knowing:
+
+**Stack-trace suffixes work for free.** Prefix-only rewriting leaves the tail
+of the token intact, so there is no `:LINE:COL` parsing anywhere:
+
+```
+path /workspaces/myproject/app/models/user.rb:42:in 'call'
+  → /workspace/app/models/user.rb:42:in 'call'
+```
+
+Agents paste these constantly. It matters that it falls out of the design
+rather than being a special case.
+
+**`file://` URLs translate only in stdin mode**, where occurrence-anywhere
+matching catches the embedded path; argv mode's prefix check won't match
+`file:///workspaces/…`. An acceptable asymmetry, but one to know rather than
+discover.
 
 #### Rewriting is `exec`'s default
 
@@ -263,8 +294,8 @@ by default. Scoped:
 
 | Direction | Default | Why |
 |---|---|---|
-| **argv, inbound** | always rewrite | cheap, unambiguous, no downside |
-| **stdout/stderr, outbound** | rewrite **only when the stream is not a TTY** | preserves color, progress bars, and interactivity for a human |
+| **argv, to-container** | always rewrite | cheap, unambiguous, no downside |
+| **stdout/stderr, to-host** | rewrite **only when the stream is not a TTY** | preserves color, progress bars, and interactivity for a human |
 | **stdin** | **never rewrite** | stdin is data — a SQL dump or a tarball must arrive byte-exact |
 
 That last row is the line worth holding: **argv is a command, stdin is data.**
