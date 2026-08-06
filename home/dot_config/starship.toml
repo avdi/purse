@@ -10,7 +10,7 @@
 # ---------------------------------------------------------------------------
 
 [profiles]
-claude-code = "$directory$git_branch$git_status$claude_model$claude_context$claude_cost${custom.caveman}"
+claude-code = "$directory$git_branch$git_status$claude_model$claude_context${custom.caveman}"
 
 [claude_model]
 format = "[$symbol$model]($style) "
@@ -21,9 +21,10 @@ style = "bold blue"
 format = "[$gauge $percentage]($style) "
 gauge_width = 8
 
+# Session cost is an API-pricing estimate. On a subscription plan it tracks
+# nothing that is actually billed, so it is off.
 [claude_cost]
-format = '[$symbol\$$cost]($style) '
-symbol = ""
+disabled = true
 
 # Badge for the caveman plugin's active mode. The plugin writes its mode to a
 # flag file; anything outside the known set renders nothing rather than echoing
