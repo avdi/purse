@@ -1,0 +1,7 @@
+{
+    "mcpServers": {
+        "codebase-memory-mcp": {
+            "command": "/home/avdi/.local/bin/codebase-memory-mcp"
+        }
+    }
+}
