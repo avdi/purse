@@ -9,6 +9,8 @@
 # shellcheck disable=SC2016  # $HOME intentionally unexpanded — written as literal text into rc files
 ALIASES_LINE='. "$HOME/.config/shell/aliases.sh"'
 LENTICEL_LINE='. "$HOME/.config/lenticel/shell-setup.sh" 2>/dev/null || true'
+MISE_BASH_LINE='eval "$(mise activate bash)"'
+MISE_ZSH_LINE='eval "$(mise activate zsh)"'
 
 _append_if_missing() {
   local file="$1"
@@ -32,5 +34,12 @@ fi
 _append_if_missing ~/.bashrc '.config/lenticel/shell-setup.sh' "$LENTICEL_LINE"
 if [ -f ~/.zshrc ]; then
   _append_if_missing ~/.zshrc '.config/lenticel/shell-setup.sh' "$LENTICEL_LINE"
+fi
+
+# mise activate → .bashrc and .zshrc (if present) — puts the pinned tool
+# versions (.ruby-version, etc.) on PATH per-directory.
+_append_if_missing ~/.bashrc 'mise activate bash' "$MISE_BASH_LINE"
+if [ -f ~/.zshrc ]; then
+  _append_if_missing ~/.zshrc 'mise activate zsh' "$MISE_ZSH_LINE"
 fi
 {{- end }}
