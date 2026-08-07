@@ -69,9 +69,12 @@ register_codex() {
 }
 
 register_copilot() {
+  # copilot CLI does not expand ${VAR} in header values (same limitation as
+  # auggie, see register_auggie below), so the github HTTP MCP cannot be
+  # registered with an env-var token reference — it would send the literal
+  # string and get a 401/400. copilot has its own built-in GitHub connection,
+  # so skip it here rather than register a broken entry.
   copilot mcp remove github >/dev/null 2>&1 || true
-  copilot mcp add --transport http github "$gh_url" \
-    --header "Authorization: $gh_bearer_dollar"
   copilot mcp remove playwright >/dev/null 2>&1 || true
   copilot mcp add playwright -- "$pw_cmd" "${pw_args[@]}"
   # Auggie MCP is incompatible with Copilot; remove stale registrations.

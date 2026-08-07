@@ -28,15 +28,24 @@ agentPlugins:
   # Built-in marketplaces (e.g. claude-plugins-official) are only auto-seeded
   # on an interactive first launch, so we register them explicitly here.
   marketplaces:
+    # copilot's marketplace schema rejects several `source` shapes used in
+    # this marketplace.json (same family of incompatibility as the copilot
+    # GitHub MCP header, see register_copilot in purse-outfit-agents), so it
+    # stays out of this one.
     - name: claude-plugins-official
       source: anthropics/claude-plugins-official
-      agents: [claude, codex, copilot, auggie]
+      agents: [claude, codex, auggie]
     - name: context7-marketplace
       source: upstash/context7
       agents: [claude, codex, copilot, auggie]
     - name: worktrunk
       source: max-sixty/worktrunk
       agents: [claude, codex]
+    # copilot can't use claude-plugins-official (see above), but superpowers
+    # publishes its own marketplace that copilot's schema accepts.
+    - name: superpowers-marketplace
+      source: obra/superpowers-marketplace
+      agents: [copilot]
     # caveman only ships a Claude plugin; Codex/Copilot use incompatible
     # mechanisms (npx skills add / bespoke installer), so it stays claude-only.
     - name: caveman
@@ -58,13 +67,16 @@ agentPlugins:
   plugins:
     - name: superpowers
       marketplace: claude-plugins-official
-      agents: [claude, codex, copilot, auggie]
+      agents: [claude, codex, auggie]
+    - name: superpowers
+      marketplace: superpowers-marketplace
+      agents: [copilot]
     - name: context7
       marketplace: context7-marketplace
       agents: [claude, codex, copilot, auggie]
     - name: ralph-loop
       marketplace: claude-plugins-official
-      agents: [claude, codex, copilot, auggie]
+      agents: [claude, codex, auggie]
     - name: claude-code-setup
       marketplace: claude-plugins-official
       agents: [claude]
