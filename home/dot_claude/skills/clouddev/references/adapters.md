@@ -273,6 +273,66 @@ Branch on `AMP_ORB=1`. Logs at `/home/user/.cache/amp/logs/{setup,resume}.log`.
 
 ---
 
+## Superconductor — tier 2, direct topology
+
+No repo config file is documented; the dev environment lives in project
+settings. That makes this the shortest adapter in the file — two boxes, one line
+each — and the shortness is the point, because the settings aren't in git and
+every character you put there is a character you can't review or diff.
+
+**Build commands** (= `prepare`; snapshotted, and the only thing that survives
+an instance restart):
+
+```bash
+script/clouddev/prepare
+```
+
+**Startup commands** (= `boot`; run automatically at launch):
+
+```bash
+script/clouddev/boot
+```
+
+Then **snapshot after the build commands succeed** — that snapshot is
+user-controlled and never expires, so every later implementation boots warm.
+Nothing rebuilds it on a timer either: wire `script/clouddev/refresh` plus a
+re-snapshot into a scheduled job, or accept that the snapshot ages.
+
+**HTTP services** are declared in settings, one marked Primary, and are the
+manifest's `ports:` transcribed by hand — the one place regenerating adapters
+means editing a web form:
+
+```yaml
+# clouddev.yml
+ports:
+  app:  3000     # → HTTP service "app", port 3000, Primary
+  vite: 3036     # → HTTP service "vite", port 3036
+```
+
+Each service gets an HTTPS URL and an injected host variable. **Use them in
+`boot`** — a framework host allowlist rejecting the generated hostname is the
+most likely reason a preview comes up blank:
+
+```bash
+# in script/clouddev/boot, when running under Superconductor
+export RAILS_DEVELOPMENT_HOSTS="${AGENT_RAILS_HOST:-localhost}"
+export VITE_ALLOWED_HOSTS="${AGENT_WEB_HOST:-localhost}"
+```
+
+Docker and compose work — it is a full VM, not a nested container — so the
+services compose file runs unmodified and the direct topology applies. This is
+the least friction any tier-2 platform here offers for a stateful stack.
+
+Instances pause after **15 minutes** idle and wake on return; the terminal
+reconnects as a new session. Assume startup commands may re-run and keep `boot`
+idempotent.
+
+The egress allowlist is per-project and configurable. **Verify whether it
+applies during build commands** before assuming `prepare` can reach your gem
+host or registry — if it does, widen the allowlist first.
+
+---
+
 ## Copilot cloud agent — tier 2, direct topology
 
 `.github/workflows/copilot-setup-steps.yml`, on the **default branch**. Single
@@ -517,8 +577,11 @@ a platform fights you, this is the exit.
 ## Non-targets — agents run on your compute
 
 Zed (ACP agents are subprocesses of the client), JetBrains Junie (*"executes
-entirely on your GitHub runners"*), Goose, Aider, Cline, OpenCode. Nothing to
-adapt; they are tier 0 by construction.
+entirely on your GitHub runners"*), Goose, Aider, Cline, OpenCode, and the local
+worktree orchestrators — Conductor, `oscardobsonbrown/superconductor`,
+super.engineering. Nothing to adapt; they are tier 0 by construction. Don't
+confuse that last group with cloud **Superconductor** (`superconductor.com`)
+above, which is tier 2 and has an adapter.
 
 ---
 

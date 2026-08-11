@@ -2,8 +2,9 @@
 name: clouddev
 description: >
   Make a devcontainer-based project runnable by cloud agent platforms (Claude
-  Code cloud, Cursor cloud agents, Amp orbs, Copilot cloud agent, Augment
-  Cosmos, Devin, Factory droids, Jules, Codespaces) — the platform tier model,
+  Code cloud, Cursor cloud agents, Amp orbs, Superconductor, Copilot cloud
+  agent, Augment Cosmos, Devin, Factory droids, Jules, Codespaces) — the
+  platform tier model,
   the prepare/boot phase split every snapshotting platform imposes, the
   clouddev.yml manifest and its entrypoint scripts, path mapping between the
   agent's box and the dev environment, publishing a dev image to a registry,
@@ -111,11 +112,17 @@ stateful projects the second group solved your problem before agents existed.
 ### 2. Is there a mission board?
 
 Can you see N runs at once, their status and output, and intervene? Ona, Amp,
-Devin, Factory, Copilot, and Claude Code cloud have one. Codespaces has a list
-of VMs and no agent concept whatsoever.
+Devin, Factory, Copilot, Superconductor, and Claude Code cloud have one.
+Codespaces has a list of VMs and no agent concept whatsoever.
 
 A platform with no board is not a factory host no matter how good its
 environment story is.
+
+**One board is agent-agnostic.** Superconductor drives Claude Code, Codex, Amp,
+Factory Droid, Cursor, Grok Build, OpenCode, and Pi as CLIs inside its own VMs,
+so adopting the board doesn't commit you to an agent vendor. Everywhere else the
+board and the agent ship together, and switching agents means switching hosts.
+That is the single strongest argument for *buy the board* below.
 
 ### 3. One box, N working copies — or one environment per branch?
 
@@ -125,11 +132,20 @@ it:
 
 | Preserves it | One env per branch/task |
 |---|---|
-| Factory (persistent computer, working directory set per session), Coder, Devin Outposts, any tier-0 box | Ona, Amp, Cursor, Copilot, Devin managed, Codespaces |
+| Factory (persistent computer, working directory set per session), Coder, Devin Outposts, any tier-0 box | Ona, Amp, Cursor, Copilot, Superconductor, Devin managed, Codespaces |
 
 Env-per-task is a legitimate trade — isolation and a board in exchange for the
 one-box model — but price it: N missions means N cold starts of the whole stack.
 Codespaces is the worst case, being branch-scoped *and* prebuild-per-branch.
+
+Superconductor is the interesting rebuttal, and it's the vendor who has thought
+about this hardest — its founding complaint is exactly the local one-box model
+buckling, *"each worktree required its own running docker-compose setup."* Its
+answer is to make the cold start cheap rather than to preserve the one-box
+model: a non-expiring snapshot taken after `prepare`, so each new environment
+boots warm. That doesn't restore per-worktree state, but it does take the price
+of env-per-task from *provision the stack N times* down to *boot it N times* —
+which is most of what the objection was about.
 
 ### The orchestrator-required trap
 
@@ -189,7 +205,7 @@ Four modes. A project's adapter picks one per platform.
 
 | Mode | Platforms | Mechanism |
 |---|---|---|
-| platform invokes per session | Cursor `start`, Amp `.agents/resume`, Claude Code `SessionStart`, Cosmos `on_startup.sh`, Copilot setup steps | direct call |
+| platform invokes per session | Cursor `start`, Amp `.agents/resume`, Claude Code `SessionStart`, Cosmos `on_startup.sh`, Superconductor startup commands, Copilot setup steps | direct call |
 | **self-install** | Devin | `prepare` installs a systemd unit that fires on VM boot |
 | **agent-invoked** | Jules, Factory managed | `AGENTS.md` tells the agent to run it — instruction, not guarantee |
 | **persistent** | Factory managed Droid Computers | memory snapshot; runs **once, ever** |
@@ -348,6 +364,14 @@ keeps the snapshot current without redoing `prepare`.
 
 Where a platform has no refresh hook, it is simply never called. Nothing else
 changes.
+
+**Superconductor inverts it**, and it is worth understanding as a trade rather
+than an omission: its snapshots are user-controlled and never expire, so nothing
+goes stale behind your back and nothing refreshes on your behalf either. Every
+other platform charges you a periodic rebuild you didn't ask for; this one hands
+you a snapshot that silently ages until someone re-snapshots after `prepare`.
+Keeping `refresh` cheap and idempotent is what makes that a scheduled CI job
+rather than a chore.
 
 ## `exec` is the seam
 
@@ -604,8 +628,16 @@ reachable, and every platform solves that differently:
 | Amp | **portals** — authenticated `*.onamp.dev` URLs; hairpin inside the orb so `$PUBLIC_URL` works |
 | Cursor | `ports` array in `environment.json`, "similar to devcontainers port forwarding" |
 | Factory | `droid computer port-forward <name> <mappings>` |
+| **Superconductor** | **HTTP services** — declare N, one marked Primary; each gets an HTTPS URL and an injected host var (`AGENT_WEB_HOST`, `AGENT_RAILS_HOST`, `AGENT_API_HOST`) |
 | Cosmos | **egress-only.** `auggie cloud tunnel open --port 3000` exists but is undocumented |
 | Copilot, Devin, Jules | nothing documented |
+
+Superconductor is the only platform here that addresses the failure this table
+otherwise hides: a framework host allowlist (Rails `config.hosts`, Vite
+`allowedHosts`) rejecting the platform's generated hostname, which reads as "the
+preview is broken" rather than "your app refused the Host header." Elsewhere you
+have to know to widen the allowlist yourself. Anywhere with ingress, do that in
+`boot` from whatever host variable the platform provides.
 
 Two constraints worth designing around before you need them:
 
@@ -744,8 +776,19 @@ env | grep -c YOUR_SECRET_NAME          # are secrets visible in this phase?
 Currently unanswered by documentation and worth probing: nested Docker on
 **Cosmos** and **Factory managed** (Factory's answer decides whether its
 memory-snapshot persistence is usable at all), Docker on **Devin** and
-**Jules**, and prepare-phase secret visibility on **Cosmos**, **Jules**, and
-**Amp**.
+**Jules**, and prepare-phase secret visibility on **Cosmos**, **Jules**,
+**Amp**, and **Superconductor**.
+
+Superconductor needs a fifth probe the others don't, because it is the one
+platform with a configurable egress allowlist whose *phase scope* is unstated:
+
+```bash
+curl -sS -o /dev/null -w '%{http_code}\n' https://rubygems.org   # in build commands vs. in the agent's shell
+```
+
+If the allowlist applies during build commands too, the
+network-work-belongs-in-`prepare` rule doesn't save you there — the allowlist
+does, and it has to be widened before `prepare` can run at all.
 
 ## Anti-patterns
 

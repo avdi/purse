@@ -4,7 +4,8 @@
 true.** These platforms ship changes monthly; re-read the linked doc before
 making a decision that costs real time.
 
-All entries below checked **2026-08-06**.
+All entries below checked **2026-08-06**, except **Superconductor**, added
+**2026-08-11**.
 
 ## Tiers
 
@@ -14,7 +15,7 @@ Tier decides how much the contract costs you. Establish it first.
 |---|---|---|
 | **0** | Bring your own machine — your box, your image | Devin Outposts, Factory BYOM, **Coder**, **Codespaces via `gh codespace ssh`**, self-hosted GitLab runner, self-hosted OpenHands, and any headless agent CLI in your own CI (`claude -p`, `droid exec`, `devin -p`, Junie headless) |
 | **1** | Platform accepts your image | **Ona**, Cursor, Gitpod-lineage/Coder devcontainer paths, Augment Cosmos, GitLab external agents |
-| **2** | Their image, real hooks for both phases | Claude Code cloud, Amp orbs, Copilot cloud agent, GitLab native flows |
+| **2** | Their image, real hooks for both phases | Claude Code cloud, Amp orbs, **Superconductor**, Copilot cloud agent, GitLab native flows |
 | **3** | Their image, no usable per-session hook | Devin (managed), Jules, Factory managed, Codegen |
 | **4** | No contract to target | Codex cloud, Kiro Web, Amazon Q in GitHub, Antigravity, Replit, OpenHands Cloud, Daytona |
 
@@ -30,7 +31,10 @@ prebuilds, so N concurrent missions means N VMs each cold-starting your stack.
 **Non-targets** (agents execute on *your* compute, so there is nothing to
 adapt): Zed (ACP agents run as subprocesses of the client), JetBrains Junie
 (*"executes entirely on your GitHub runners"*), Devin CLI `devin -p`, Goose,
-Aider, Cline, OpenCode. These are tier 0 by construction.
+Aider, Cline, OpenCode, and the local worktree-orchestrator class — Conductor,
+`oscardobsonbrown/superconductor`, super.engineering. These are tier 0 by
+construction. Note the name collision: cloud **Superconductor**
+(`superconductor.com`, tier 2) is unrelated to the local tools sharing the word.
 
 ## Summary
 
@@ -44,6 +48,7 @@ Aider, Cline, OpenCode. These are tier 0 by construction.
 | OpenHands (self-hosted) | 0/1 | your base, rebuilt as agent-server | **no** — not provisioned | `.openhands/setup.sh` | same script | `/workspace/project[/<conv>]/<repo>` |
 | Claude Code cloud | 2 | fixed | **yes**, preinstalled | setup script | `SessionStart` hook | not documented |
 | Cursor cloud agents | 1 | **yours** (Dockerfile) | yes, needs config | `install` | `start` + `terminals` | not documented |
+| **Superconductor** | 2 | fixed VM; BYO undocumented | **yes** — full VM, compose documented | build commands | startup commands | not documented |
 | Amp (orbs) | 2 | fixed Debian 12 | yes, you install it | `.agents/setup` | `.agents/resume` (**10s**) | `/home/user/workspace/repo` (observed) |
 | Copilot cloud agent | 2 | runner (or `snapshot`) | **`services:`**, not compose | — (none) | `copilot-setup-steps.yml` | `/workspace` (agent) |
 | Augment Cosmos | 1 | any registry, **incl. private** | **probably not** | `provision_script` | `on_startup.sh` | `/workspace/{org}/{repo}` |
@@ -128,9 +133,15 @@ agent's first turn.
 | Cursor staleness threshold | 24h default, `0` = always |
 | Amp snapshot reuse | 24h |
 | Claude Code cloud cache | ~7 days |
+| **Superconductor** | **never** — snapshots are user-controlled and *"don't expire"* |
 
 Third real phase, distinct from prepare and boot: cheap, idempotent, keeps a
 warm snapshot current.
+
+Superconductor is the one platform that inverts this. Nothing rebuilds on a
+timer, so `refresh` has no trigger and staleness becomes *your* problem — the
+snapshot drifts until a human re-snapshots after `prepare`. Cheap boots in
+exchange for a maintenance chore nobody else hands you.
 
 ### Files written during prepare get baked into the snapshot
 
@@ -450,6 +461,72 @@ one dev server.
 `AMP_ORB=1` set in every orb. 40GB disk on every size. Auto-pause after 5 min
 idle. First-class terminal pane sharing the agent's tmux. Postgres and Redis
 are in the base image; CouchDB and Vault are not.
+
+### Superconductor — tier 2 — **checked 2026-08-11** — the board with no agent vendor attached
+<https://www.superconductor.com/docs/>
+
+Cloud-only by conviction. The founding story is the local-worktree model
+failing under load — *"each worktree required its own running docker-compose
+setup"*, strained laptops, mental overhead — so the product is one **full cloud
+VM per implementation**, with Docker, an HTTPS preview, and a terminal the human
+shares with the agent.
+
+The phase split is native, and named almost exactly like this contract:
+
+| Superconductor | Contract | Documented behavior |
+|---|---|---|
+| **build commands** | `prepare` | *"changes won't persist across instance restarts unless you add them to your build commands"* |
+| **startup commands** | `boot` | run automatically at launch; start the dev server, exposed over HTTPS |
+
+**Docker and compose are first-class** — *"a full cloud VM with Docker support
+to run your entire stack, including databases, Redis, and background workers."*
+A VM, not a container-in-a-container, so the services half of the compose split
+runs unmodified. That is the strongest backing-services story of any tier-2
+platform here.
+
+**Snapshots are persistent, user-controlled, and don't expire** — unique in this
+survey. Snapshot after build commands and every later implementation boots warm.
+The cost is that nothing refreshes on a timer; see the refresh table above.
+
+**Ingress is the best-developed of any platform surveyed.** Per-HTTP-service
+HTTPS URLs, one marked Primary, a dropdown to switch, and — the part nobody else
+does — **injected host env vars** (`AGENT_WEB_HOST`, `AGENT_RAILS_HOST`,
+`AGENT_API_HOST`) aimed squarely at the framework host-allowlist problem (Rails
+`config.hosts`, Vite `allowedHosts`) that silently breaks previews elsewhere.
+Use them in startup commands for CORS, callback URLs, and absolute links.
+
+Idle behavior: pauses after **15 minutes** of inactivity, wakes in seconds on
+return. **The terminal disconnects across a pause and reopens as a new
+session**, which says the pause is not the Factory-style memory snapshot — treat
+`boot` as re-runnable and idempotent.
+
+Network: configurable per-project egress allowlists — *"agents run with strict
+network policies, and you can choose exactly what they can reach."* Whether the
+policy also covers the build-command phase is **undocumented**, and it matters:
+if it does, the network-work-belongs-in-prepare rule inverts here.
+
+**Agent-agnostic**: drives Claude Code, Codex, Amp, Factory Droid, Cursor, Grok
+Build, OpenCode, and Pi as CLIs inside the box. It is the only *board* in this
+survey you can adopt without also adopting an agent vendor — directly relevant
+to *buy the board, don't build it*.
+
+**Undocumented, and worth probing before designing around any of it:** custom
+base image and private-registry pull (assume unavailable), checkout path, secret
+visibility during build commands, and whether startup commands re-run on wake
+from a pause. Also unresolved: **no repo-committed config file is documented** —
+dev-environment config lives in project settings, not in git, the same hazard as
+Jules and Codegen. Mitigate identically: each settings box holds one line
+calling `script/clouddev/*`, so the repo stays the source of truth.
+
+**Name collision worth knowing.** Three unrelated local-first tools sit near this
+name: `oscardobsonbrown/superconductor` (*"run an army of Claude Code, Codex,
+etc. on your machine"*), super.engineering, and Conductor (`conductor.build`).
+All are tier 0 by construction. Only `superconductor.com` is a cloud platform.
+
+*Sourcing caveat: this entry was compiled from search-indexed summaries of the
+docs pages above — the site was unreachable from the research session, so quoted
+phrasing is close paraphrase rather than verified quotation. Re-read the docs
+directly before a decision that costs real time.*
 
 ### Copilot cloud agent — tier 2
 <https://docs.github.com/en/copilot/how-tos/copilot-on-github/customize-copilot/customize-cloud-agent/customize-the-agent-environment>
