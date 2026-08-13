@@ -45,6 +45,7 @@ Match the task to the tool:
 ## Workflow
 
 - Start tasks by determining how you (or I) will verify the outcome.
+- Load the `worktree` skill before **any** worktree operation — creating, entering, resuming, listing, removing, or troubleshooting one. The commands that look right are often the ones that silently do nothing.
 
 ## Tech Stack Defaults
 
