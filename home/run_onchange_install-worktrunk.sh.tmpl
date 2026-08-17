@@ -19,6 +19,14 @@ _installed_ver() {
   wt --version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1
 }
 
+# A stray `brew install worktrunk` shadows this pinned binary whenever
+# Homebrew's bin directory precedes ~/.local/bin on PATH — remove it so the
+# version pinned above is what `wt` actually resolves to.
+if command -v brew >/dev/null 2>&1 && brew list --formula worktrunk >/dev/null 2>&1; then
+  echo "→ worktrunk: removing stale Homebrew formula (shadows ~/.local/bin/wt)..."
+  brew uninstall worktrunk
+fi
+
 if [ "$(_installed_ver)" != "$WT_VERSION" ]; then
   echo "→ worktrunk: installing v${WT_VERSION}..."
   case "$(uname -s)-$(uname -m)" in

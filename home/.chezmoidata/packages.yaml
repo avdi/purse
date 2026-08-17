@@ -14,6 +14,8 @@ packages:
   # source-build its whole Rust toolchain in a home-dir prefix, so on all Unix
   # (Linux and macOS) it's installed as a prebuilt binary from GitHub releases
   # by run_onchange_install-worktrunk.sh. Windows uses winget (below).
+  # herdr has its own self-updating installer (herdr.dev/install.sh), run by
+  # run_onchange_install-packages.sh.
 
   # On Linux with apt+root the whole toolset is covered without Homebrew:
   # apt covers: ripgrep, direnv, jq, fzf
