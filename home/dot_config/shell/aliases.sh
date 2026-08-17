@@ -261,6 +261,13 @@ fi
 # intentional: single-project ephemeral environments get little value from a
 # frecency database that starts fresh each time.
 if command -v zoxide >/dev/null 2>&1; then
+  # Starship (below, when opted in) is deliberately initialized after zoxide
+  # so it owns PROMPT_COMMAND/precmd — that's exactly the ordering zoxide's
+  # own doctor check flags as "possibly misconfigured". Both hooks still
+  # chain correctly; silence the false positive rather than reorder.
+  if [ -f "${XDG_CONFIG_HOME:-$HOME/.config}/shell/starship-enabled" ]; then
+    export _ZO_DOCTOR=0
+  fi
   if [ -n "${ZSH_VERSION:-}" ]; then
     eval "$(zoxide init zsh)"
   else
