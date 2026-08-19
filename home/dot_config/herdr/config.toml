@@ -1,0 +1,6 @@
+# herdr configuration
+# Place this file at ~/.config/herdr/config.toml
+
+[terminal]
+# Executable used for new interactive panes.
+default_shell = "/bin/bash"
