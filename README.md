@@ -82,7 +82,7 @@ Run `purse-install-secrets` (aliases: `purse-setup-secrets`, `setup-secrets`) to
 **Adding a new secret:**
 
 1. Add the secret to Zoho Vault (title = env var name, password = the value).
-2. Find its numeric ID: `zv search -k "secret-name" --name --output json | jq '.[0]'`
+2. Find its numeric ID: `purse-get-secret-id ENV_VAR_NAME`
 3. Add `ENV_VAR_NAME=<id>` to `~/.config/purse/secret-ids.env`.
 4. Run `purse-install-secrets`.
 5. Commit the updated file: `chezmoi add ~/.config/purse/secret-ids.env`.

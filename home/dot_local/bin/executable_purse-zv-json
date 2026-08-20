@@ -1,0 +1,31 @@
+#!/usr/bin/env bash
+# purse-zv-json — run a zv subcommand and emit output vetted as JSON
+#
+# Usage: purse-zv-json SUBCOMMAND [args...]
+#
+# zv reports failures as prose on stdout and still exits 0, so piping it
+# straight to jq turns every failure into a parse error and leaves the caller
+# guessing at the cause. This names the auth states and only ever prints
+# something that parses as JSON, so a caller can pipe with confidence:
+#
+#   raw=$(purse-zv-json search -k NAME --name --strict --output json) || exit 1
+
+set -euo pipefail
+
+die() { echo "❌ $*" >&2; exit 1; }
+
+command -v zv >/dev/null 2>&1 || die "zv not found — run: chezmoi apply"
+command -v jq >/dev/null 2>&1 || die "jq not found — install it first"
+[ $# -gt 0 ] || die "Usage: purse-zv-json SUBCOMMAND [args...]"
+
+out=$(zv "$@" 2>&1 </dev/null) || die "'zv $1' failed: ${out:-no output}"
+
+case "$out" in
+  *"not logged in"*) die "Zoho Vault: not logged in — run: zv login && zv unlock" ;;
+  *"zv unlock"*)     die "Zoho Vault is locked — run: zv unlock" ;;
+esac
+
+printf '%s' "$out" | jq empty 2>/dev/null \
+  || die "'zv $1' returned something other than JSON: $(printf '%s' "$out" | head -1)"
+
+printf '%s' "$out"

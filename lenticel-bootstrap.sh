@@ -15,14 +15,27 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # ---- token resolution (purse-specific) ----
 ZV_SECRET_ID="${ZV_SECRET_ID:-}"
 
+# Every failure here is soft — lenticel installs without a token — but it says
+# which one it hit. zv reports auth failures as prose on stdout and still exits
+# 0, so the output is classified rather than trusted. This stays self-contained
+# (no purse-zv-json) because it runs at bootstrap, before ~/.local/bin is
+# guaranteed to be in place.
+_zv_skip() { echo "   $* — continuing without LENTICEL_TOKEN" >&2; return 1; }
+
 _zv_get_token() {
   [[ -n "$ZV_SECRET_ID" ]] || return 1
   command -v zv &>/dev/null || return 1
   command -v jq &>/dev/null || return 1
   command -v timeout &>/dev/null || return 1
   local out
-  out=$(timeout 5s zv get -id "$ZV_SECRET_ID" --not-safe --output json </dev/null 2>/dev/null) || return 1
-  jq -re '.secret.secretData[] | select(.id == "password") | .value' <<< "$out" 2>/dev/null
+  out=$(timeout 5s zv get -id "$ZV_SECRET_ID" --not-safe --output json </dev/null 2>&1) \
+    || { _zv_skip "zv failed or timed out"; return 1; }
+  case "$out" in
+    *"not logged in"*) _zv_skip "Zoho Vault: not logged in (zv login && zv unlock)"; return 1 ;;
+    *"zv unlock"*)     _zv_skip "Zoho Vault is locked (zv unlock)"; return 1 ;;
+  esac
+  jq -re '.secret.secretData[] | select(.id == "password") | .value' <<< "$out" 2>/dev/null \
+    || _zv_skip "no password field on Zoho Vault secret ${ZV_SECRET_ID}"
 }
 
 if [[ -z "${LENTICEL_TOKEN:-}" ]]; then
