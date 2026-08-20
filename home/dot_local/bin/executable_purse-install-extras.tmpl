@@ -78,7 +78,8 @@ if command -v herdr >/dev/null 2>&1; then
   echo "→ herdr already installed ($(herdr --version 2>/dev/null || echo version unknown))"
 else
   echo "→ Installing herdr..."
-  curl -fsSL https://herdr.dev/install.sh | sh
+  install_herdr() { curl -fsSL https://herdr.dev/install.sh | sh; }
+  optional_step "herdr install" install_herdr
 fi
 
 # ---- git 2.48+ (for worktree.useRelativePaths) ------------------------------
