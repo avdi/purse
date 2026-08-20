@@ -41,31 +41,36 @@ jq_upsert() {
 # --- per-agent MCP registration (each guarded by `have` in the driver) -------
 # These rely on the manifest values declared as locals in outfit_mcp_servers
 # (bash dynamic scoping makes them visible here).
+#
+# Args arrays expand as ${arr[@]+"${arr[@]}"} rather than "${arr[@]}": macOS
+# ships bash 3.2, where an empty array under `set -u` is an unbound-variable
+# error instead of zero words. codebase-memory-mcp declares `args: []`, so the
+# plain form aborted the whole run there.
 register_claude() {
   claude mcp remove github -s user >/dev/null 2>&1 || true
   claude mcp add --transport http github -s user "$gh_url" \
     --header "Authorization: $gh_bearer_dollar"
   claude mcp remove playwright -s user >/dev/null 2>&1 || true
-  claude mcp add playwright -s user -- "$pw_cmd" "${pw_args[@]}"
+  claude mcp add playwright -s user -- "$pw_cmd" ${pw_args[@]+"${pw_args[@]}"}
   claude mcp remove auggie -s user >/dev/null 2>&1 || true
-  claude mcp add auggie -s user -- "$ag_cmd" "${ag_args[@]}"
+  claude mcp add auggie -s user -- "$ag_cmd" ${ag_args[@]+"${ag_args[@]}"}
   claude mcp remove ripgrep -s user >/dev/null 2>&1 || true
-  claude mcp add ripgrep -s user -- "$rg_cmd" "${rg_args[@]}"
+  claude mcp add ripgrep -s user -- "$rg_cmd" ${rg_args[@]+"${rg_args[@]}"}
   claude mcp remove codebase-memory-mcp -s user >/dev/null 2>&1 || true
-  claude mcp add codebase-memory-mcp -s user -- "$cbm_cmd" "${cbm_args[@]}"
+  claude mcp add codebase-memory-mcp -s user -- "$cbm_cmd" ${cbm_args[@]+"${cbm_args[@]}"}
 }
 
 register_codex() {
   codex mcp remove github >/dev/null 2>&1 || true
   codex mcp add github --url "$gh_url" --bearer-token-env-var "$gh_token_var"
   codex mcp remove playwright >/dev/null 2>&1 || true
-  codex mcp add playwright -- "$pw_cmd" "${pw_args[@]}"
+  codex mcp add playwright -- "$pw_cmd" ${pw_args[@]+"${pw_args[@]}"}
   codex mcp remove auggie >/dev/null 2>&1 || true
-  codex mcp add auggie -- "$ag_cmd" "${ag_args[@]}"
+  codex mcp add auggie -- "$ag_cmd" ${ag_args[@]+"${ag_args[@]}"}
   codex mcp remove ripgrep >/dev/null 2>&1 || true
-  codex mcp add ripgrep -- "$rg_cmd" "${rg_args[@]}"
+  codex mcp add ripgrep -- "$rg_cmd" ${rg_args[@]+"${rg_args[@]}"}
   codex mcp remove codebase-memory-mcp >/dev/null 2>&1 || true
-  codex mcp add codebase-memory-mcp -- "$cbm_cmd" "${cbm_args[@]}"
+  codex mcp add codebase-memory-mcp -- "$cbm_cmd" ${cbm_args[@]+"${cbm_args[@]}"}
 }
 
 register_copilot() {
@@ -76,13 +81,13 @@ register_copilot() {
   # so skip it here rather than register a broken entry.
   copilot mcp remove github >/dev/null 2>&1 || true
   copilot mcp remove playwright >/dev/null 2>&1 || true
-  copilot mcp add playwright -- "$pw_cmd" "${pw_args[@]}"
+  copilot mcp add playwright -- "$pw_cmd" ${pw_args[@]+"${pw_args[@]}"}
   # Auggie MCP is incompatible with Copilot; remove stale registrations.
   copilot mcp remove auggie >/dev/null 2>&1 || true
   copilot mcp remove ripgrep >/dev/null 2>&1 || true
-  copilot mcp add ripgrep -- "$rg_cmd" "${rg_args[@]}"
+  copilot mcp add ripgrep -- "$rg_cmd" ${rg_args[@]+"${rg_args[@]}"}
   copilot mcp remove codebase-memory-mcp >/dev/null 2>&1 || true
-  copilot mcp add codebase-memory-mcp -- "$cbm_cmd" "${cbm_args[@]}"
+  copilot mcp add codebase-memory-mcp -- "$cbm_cmd" ${cbm_args[@]+"${cbm_args[@]}"}
 }
 
 register_devin() {
@@ -318,7 +323,7 @@ outfit_agent_plugins() {
   {{ end }}
   if [ "${#skill_targets[@]}" -gt 0 ]; then
     echo "→ skills.sh: installing {{ .source }} for ${skill_targets[*]}"
-    npx --yes skills@latest add "{{ .source }}" --global --skill '*' "${skill_args[@]}" --yes \
+    npx --yes skills@latest add "{{ .source }}" --global --skill '*' ${skill_args[@]+"${skill_args[@]}"} --yes \
       || warn "skills.sh install failed: {{ .source }}"
   fi
   {{ end }}
