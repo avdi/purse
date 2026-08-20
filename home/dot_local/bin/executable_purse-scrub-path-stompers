@@ -18,6 +18,11 @@ set -euo pipefail
 
 readonly ROGUE_PATH_PATTERN='^export PATH=.*\.local/bin.*PATH'
 
+# Installers announce themselves on the line above the PATH export. Removing
+# only the export leaves a header standing over nothing, and in a
+# chezmoi-managed rc file (~/.profile) that header is permanent drift.
+readonly ROGUE_MARKER_PATTERN='^# Added by .* installer'
+
 # Rewrite via a temp file rather than `sed -i`: the in-place flag takes a
 # mandatory backup suffix on BSD sed (macOS) and a forbidden one on GNU sed,
 # so there is no spelling of it that works on both.
@@ -25,11 +30,11 @@ scrub_file() {
   local file="$1"
   [ -f "$file" ] || return 0
   local removed
-  removed=$(grep -c "$ROGUE_PATH_PATTERN" "$file" 2>/dev/null || true)
+  removed=$(grep -cE "$ROGUE_PATH_PATTERN|$ROGUE_MARKER_PATTERN" "$file" 2>/dev/null || true)
   [ "$removed" -gt 0 ] || { echo "  $file — clean"; return 0; }
   local scrubbed
   scrubbed="$(mktemp)"
-  grep -v "$ROGUE_PATH_PATTERN" "$file" > "$scrubbed" || true
+  grep -vE "$ROGUE_PATH_PATTERN|$ROGUE_MARKER_PATTERN" "$file" > "$scrubbed" || true
   cat "$scrubbed" > "$file"
   rm -f "$scrubbed"
   echo "  $file — removed ${removed} line(s)"
