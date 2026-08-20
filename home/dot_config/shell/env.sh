@@ -12,22 +12,6 @@
 
 alias codew="code --wait"
 
-# EDITOR fallback chain. Prefer VS Code's `code --wait`, but only when the `code`
-# CLI actually WORKS — not merely when it's on PATH. Devcontainers ship a
-# /usr/local/bin/code stub that is always present yet exits 127 ("code or
-# code-insiders is not installed") whenever no real VS Code CLI is reachable:
-# VS Code's integrated terminal injects the working shim ahead of the stub, but a
-# shell you opened yourself (docker exec, ssh) hits only the failing stub. So we
-# probe `code --version` (exit 0 = usable, prints no window) rather than trust
-# `command -v`. Fall back to micro (a modern, non-modal terminal editor installed
-# to ~/.local/bin by purse-install-extras), then to vi as a universal last resort.
-if code --version >/dev/null 2>&1; then
-  export EDITOR="code --wait"
-elif command -v micro >/dev/null 2>&1; then
-  export EDITOR="micro"
-else
-  export EDITOR="vi"
-fi
 
 # Homebrew — the macOS system prefixes (/opt/homebrew on Apple silicon,
 # /usr/local on Intel), the linuxbrew prefix, and the home-dir prefix that
@@ -72,6 +56,27 @@ if [ -d "$HOME/.local/share/purse/shims" ]; then
   unset _purse_shims _purse_newpath _purse_rest _purse_seg
 fi
 export PATH
+
+# EDITOR fallback chain. Resolved AFTER the PATH work above: micro lives in
+# ~/.local/bin, so probing for it any earlier always misses on a shell that
+# didn't already have that directory — macOS zsh, which reads no ~/.profile.
+#
+# Prefer VS Code's `code --wait`, but only when the `code` CLI actually WORKS —
+# not merely when it's on PATH. Devcontainers ship a
+# /usr/local/bin/code stub that is always present yet exits 127 ("code or
+# code-insiders is not installed") whenever no real VS Code CLI is reachable:
+# VS Code's integrated terminal injects the working shim ahead of the stub, but a
+# shell you opened yourself (docker exec, ssh) hits only the failing stub. So we
+# probe `code --version` (exit 0 = usable, prints no window) rather than trust
+# `command -v`. Fall back to micro (a modern, non-modal terminal editor installed
+# to ~/.local/bin by purse-install-extras), then to vi as a universal last resort.
+if code --version >/dev/null 2>&1; then
+  export EDITOR="code --wait"
+elif command -v micro >/dev/null 2>&1; then
+  export EDITOR="micro"
+else
+  export EDITOR="vi"
+fi
 
 # GPG needs to know the current TTY to prompt for passphrase on git signing.
 # Git commit signing is opt-in per-repo; without GPG_TTY, pinentry-curses fails
