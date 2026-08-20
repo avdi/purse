@@ -36,10 +36,19 @@ needs_terminal() {
   [ -t 0 ] || die "$1 — no terminal to prompt on; run: $2"
 }
 
+# Only consulted once auth is actually needed: somewhere zv can't keep a
+# session, walking someone through a login that silently fails to persist is
+# worse than saying so.
+can_hold_session() {
+  command -v purse-zv-guard >/dev/null 2>&1 || return 0
+  purse-zv-guard
+}
+
 read_zv_state
 case "$ZV_STATE" in
   ready) exit 0 ;;
   logged-out)
+    can_hold_session || exit 1
     needs_terminal "Zoho Vault: not logged in" "zv login && zv unlock"
     echo "==> Not logged in. Starting zv login..." >&2
     zv login
@@ -47,6 +56,7 @@ case "$ZV_STATE" in
     zv unlock
     ;;
   locked)
+    can_hold_session || exit 1
     needs_terminal "Zoho Vault is locked" "zv unlock"
     echo "==> Vault is locked. Unlocking..." >&2
     zv unlock

@@ -79,6 +79,8 @@ GITHUB_TOKEN=2000003012345
 
 Run `purse-install-secrets` (aliases: `purse-setup-secrets`, `setup-secrets`) to pull the current values and write them to `~/.config/shell/secrets.sh` (mode 600, never committed). That file is auto-sourced by `~/.config/shell/env.sh` on every new shell.
 
+`zv` is host-side only. It keeps its session in the OS credential store — libsecret's Secret Service on Linux — which a container has no D-Bus session to reach, so `zv login` there reports success and the next command says "Credentials not found". Run `purse-install-secrets` on the host; the `devcontainer` shim forwards the resulting values into the container as env vars. `purse-zv-guard` is what warns you off the container-side path (`PURSE_ZV_ALLOW_CONTAINER=1` to override).
+
 **Adding a new secret:**
 
 1. Add the secret to Zoho Vault (title = env var name, password = the value).

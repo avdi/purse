@@ -1,0 +1,39 @@
+#!/usr/bin/env bash
+# purse-zv-guard — is this a machine where zv can keep a session?
+#
+# Usage: purse-zv-guard    (exit 0 = yes, silent; exit 1 = no, explanation on stderr)
+#
+# zv keeps its session in the OS credential store — on Linux that's libsecret's
+# Secret Service, reached over the session D-Bus. A container normally has
+# neither, and zv fails soundlessly: `zv login` prints "You are now logged in",
+# its keyring write fails ("Platform secure storage failure" lands in
+# ~/.config/zv/error.log), and the next command reports "Credentials not found
+# try logging in again". Reads are no better — a keyring it can't read looks
+# exactly like never having logged in.
+#
+# Secrets reach containers as env vars forwarded from the host by the purse
+# devcontainer shim, so zv is a host-side tool. PURSE_ZV_ALLOW_CONTAINER=1
+# overrides this for a container that does have a keyring.
+
+set -euo pipefail
+
+if [ "${PURSE_ZV_ALLOW_CONTAINER:-0}" = "1" ]; then exit 0; fi
+
+# Not a container → nothing to say.
+if [ ! -e /.dockerenv ] && [ ! -e /run/.containerenv ]; then exit 0; fi
+
+# A container with a session bus may well have a Secret Service behind it.
+if [ -n "${DBUS_SESSION_BUS_ADDRESS:-}" ] || [ -S "/run/user/$(id -u)/bus" ]; then exit 0; fi
+
+cat >&2 <<'MSG'
+⚠️  zv has nowhere to keep a session in this container: no D-Bus session, so no
+   Secret Service to store credentials in. `zv login` will report success and
+   the next zv command will say "Credentials not found try logging in again".
+
+   Secrets are meant to come from the host, not from zv in here:
+     • on the host: purse-install-secrets
+     • the purse devcontainer shim forwards the values in as env vars
+
+   To attempt it anyway: PURSE_ZV_ALLOW_CONTAINER=1
+MSG
+exit 1

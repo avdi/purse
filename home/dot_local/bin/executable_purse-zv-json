@@ -14,6 +14,14 @@ set -euo pipefail
 
 die() { echo "❌ $*" >&2; exit 1; }
 
+# A keyring zv can't read is indistinguishable from never having logged in, so
+# auth failures get the container explanation appended where it applies.
+die_auth() {
+  echo "❌ $*" >&2
+  command -v purse-zv-guard >/dev/null 2>&1 && { purse-zv-guard || true; }
+  exit 1
+}
+
 command -v zv >/dev/null 2>&1 || die "zv not found — run: chezmoi apply"
 command -v jq >/dev/null 2>&1 || die "jq not found — install it first"
 [ $# -gt 0 ] || die "Usage: purse-zv-json SUBCOMMAND [args...]"
@@ -21,8 +29,8 @@ command -v jq >/dev/null 2>&1 || die "jq not found — install it first"
 out=$(zv "$@" 2>&1 </dev/null) || die "'zv $1' failed: ${out:-no output}"
 
 case "$out" in
-  *"not logged in"*) die "Zoho Vault: not logged in — run: zv login && zv unlock" ;;
-  *"zv unlock"*)     die "Zoho Vault is locked — run: zv unlock" ;;
+  *"not logged in"*) die_auth "Zoho Vault: not logged in — run: zv login && zv unlock" ;;
+  *"zv unlock"*)     die_auth "Zoho Vault is locked — run: zv unlock" ;;
 esac
 
 printf '%s' "$out" | jq empty 2>/dev/null \

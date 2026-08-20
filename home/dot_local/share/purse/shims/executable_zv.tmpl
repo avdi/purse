@@ -20,6 +20,23 @@
 
 set -euo pipefail
 
+# The commands that establish a session are the ones a container can't keep, so
+# they warn and ask rather than reporting a success that evaporates. Reads fall
+# through and fail on their own terms — purse-zv-json explains those.
+case "${1:-}" in
+  login|unlock|lock|logout)
+    if command -v purse-zv-guard >/dev/null 2>&1 && ! purse-zv-guard; then
+      [ -t 0 ] || exit 1
+      printf '   Continue anyway? [y/N] ' >&2
+      read -r reply || reply=""
+      case "$reply" in
+        [yY]|[yY][eE][sS]) ;;
+        *) exit 1 ;;
+      esac
+    fi
+    ;;
+esac
+
 self_canonical="$(realpath "$0" 2>/dev/null || printf '%s' "$0")"
 
 # Locate the real Linux zv: the next `zv` on PATH that isn't this shim.
