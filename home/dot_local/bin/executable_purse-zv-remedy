@@ -1,0 +1,25 @@
+#!/usr/bin/env bash
+# purse-zv-remedy — explain, on stderr, how to get a working zv on this machine.
+#
+# Usage: purse-zv-remedy   (always exits 0; callers decide their own exit code)
+#
+# "Run chezmoi apply" is the answer on most machines, where the read-source-state
+# hook installs zv. It is NOT the answer on Apple silicon without Rosetta: Zoho
+# ships an x86_64-only macOS build, so the hook deliberately declines to install
+# a binary that would die with "bad CPU type" on every call. Sending someone to
+# `chezmoi apply` there loops them through the command that just opted out.
+
+set -euo pipefail
+
+if [ "$(uname -s)" = "Darwin" ] && [ "$(uname -m)" = "arm64" ] \
+   && ! /usr/bin/pgrep -q oahd; then
+  cat >&2 <<'MSG'
+   zv ships as x86_64-only for macOS and needs Rosetta 2, which isn't
+   installed. Install it, then re-run chezmoi apply:
+
+       softwareupdate --install-rosetta --agree-to-license
+       chezmoi apply
+MSG
+else
+  echo "   Run: chezmoi apply" >&2
+fi

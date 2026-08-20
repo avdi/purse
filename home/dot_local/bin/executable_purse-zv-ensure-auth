@@ -11,7 +11,7 @@ set -euo pipefail
 
 die() { echo "❌ $*" >&2; exit 1; }
 
-command -v zv >/dev/null 2>&1 || die "zv not found — run: chezmoi apply"
+command -v zv >/dev/null 2>&1 || { echo "❌ zv not found" >&2; purse-zv-remedy; exit 1; }
 
 # zv reports auth failures as prose on stdout and still exits 0, so its exit
 # status says nothing about whether the vault is reachable. Every caller has to

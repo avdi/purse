@@ -51,7 +51,8 @@ done < <(type -aP zv 2>/dev/null || true)
 
 fallthrough() {
   if [ -z "$real_zv" ]; then
-    echo "zv shim: real Linux zv not found on PATH — run: chezmoi apply" >&2
+    echo "zv shim: real zv not found on PATH" >&2
+    purse-zv-remedy
     exit 127
   fi
   exec "$real_zv" "$@"
