@@ -27,9 +27,11 @@ esac
 # Zoho publishes only an x86_64 build for macOS, so Apple silicon runs it under
 # Rosetta. Installing it without Rosetta would put a binary on PATH that passes
 # `command -v` and then dies with "bad CPU type" on every call — worse than not
-# installing it at all.
+# installing it at all. Test for the installed oahd binary rather than a running
+# oahd process: the daemon starts on demand, so a process check reads as "no
+# Rosetta" on a capable Mac that simply hasn't translated anything yet.
 if [ "$zv_platform" = "macos" ] && [ "$(uname -m)" = "arm64" ] \
-   && ! /usr/bin/pgrep -q oahd; then
+   && [ ! -x /usr/libexec/rosetta/oahd ]; then
   cat >&2 <<'EOF'
 ⚠️  zv (Zoho Vault CLI) ships as x86_64-only for macOS and needs Rosetta 2,
    which isn't installed. Secret templating and purse-install-secrets stay

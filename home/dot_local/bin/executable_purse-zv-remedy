@@ -11,8 +11,12 @@
 
 set -euo pipefail
 
+# /usr/libexec/rosetta/oahd is installed by Rosetta and stays put. The oahd
+# daemon it belongs to is launched on demand, so testing for a running process
+# would call a Rosetta-capable Mac incapable whenever nothing had needed
+# translation yet.
 if [ "$(uname -s)" = "Darwin" ] && [ "$(uname -m)" = "arm64" ] \
-   && ! /usr/bin/pgrep -q oahd; then
+   && [ ! -x /usr/libexec/rosetta/oahd ]; then
   cat >&2 <<'MSG'
    zv ships as x86_64-only for macOS and needs Rosetta 2, which isn't
    installed. Install it, then re-run chezmoi apply:
