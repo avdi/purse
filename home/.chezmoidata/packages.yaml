@@ -56,7 +56,13 @@ packages:
   agents_npm:
     - "@anthropic-ai/claude-code"  # claude
     - "@openai/codex"              # codex
-    - "devin-cli"                  # devin
+    # - "devin-cli"                # NOT the Devin CLI. npm's devin-cli is an empty
+    #                              # placeholder: v0.0.1, no bin, no code, no repo,
+    #                              # so it installed nothing and left no `devin` on
+    #                              # PATH. Installing an unowned name with
+    #                              # `npm install -g --force` on every run is also a
+    #                              # supply-chain hazard if it's ever populated.
+    #                              # Restore only with a package that's verified real.
     - "@augmentcode/auggie"        # auggie
     - "opencode-ai"                # opencode
     - "@github/copilot"            # copilot
