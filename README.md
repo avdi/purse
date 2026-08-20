@@ -53,7 +53,7 @@ home/
   run_onchange_install-packages.ps1.tmpl  # installs packages on Windows (winget)
   run_once_setup-shell.sh             # wires aliases + direnv into rc files (once)
   run_once_setup-lenticel.sh.tmpl     # bootstraps lenticel frp tunnel (once)
-.install-zv.sh                        # installs Zoho Vault CLI before apply (Linux)
+.install-zv.sh                        # installs Zoho Vault CLI before apply (Linux/macOS)
 .install-zv.ps1                       # installs Zoho Vault CLI before apply (Windows)
 install.sh                            # VS Code / Codespace auto-dotfiles hook
 lenticel-bootstrap.sh                 # frp tunnel client setup
@@ -106,7 +106,9 @@ This requires `zv` to be authenticated before running `chezmoi apply`. For bulk 
 
 ### `zv` CLI
 
-`zv` (Zoho Vault CLI) is installed automatically by a chezmoi pre-hook before every `apply` — `.install-zv.sh` on Linux, `.install-zv.ps1` on Windows. Both drop the binary into `~/.local/bin/` and exit immediately if `zv` is already on PATH. Authenticate once with `zv login`.
+`zv` (Zoho Vault CLI) is installed automatically by a chezmoi pre-hook before every `apply` — `.install-zv.sh` on Linux and macOS, `.install-zv.ps1` on Windows. Both drop the binary into `~/.local/bin/` and exit immediately if a real `zv` is already on PATH (the purse shim doesn't count). Authenticate once with `zv login`.
+
+**macOS:** Zoho publishes an x86_64-only build, so Apple silicon needs Rosetta 2. Without it the hook declines to install rather than leaving a binary that dies with "bad CPU type" on every call; `purse-zv-remedy` prints the fix (`softwareupdate --install-rosetta --agree-to-license`).
 
 **WSL2 keyring:** the Linux `zv` stores its vault session via libsecret's Secret Service (gnome-keyring + D-Bus), which is fragile under WSL2. On WSL2 the `~/.local/share/purse/shims/zv` shim therefore routes `zv` through the Windows `zv.exe`, whose session lives in the durable Windows Credential Manager. It falls through to the Linux `zv` off WSL2, when no Windows `zv.exe` is found, or when `PURSE_ZV_WINDOWS=0`. Authenticate the Windows side once with `zv login`.
 

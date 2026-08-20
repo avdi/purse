@@ -35,7 +35,23 @@ These dotfiles are applied across several distinct contexts; keep all of them in
 - **Windows / PowerShell** — the Windows side of the same PCs. Relevant files use `.ps1` extensions; chezmoi templates gate Windows-only content with `{{ if eq .chezmoi.os "windows" }}`.
 - **GitHub Codespaces** — cloud dev environments spun up from repos. Dotfiles are applied automatically by Codespaces on container start.
 - **Dev containers** — local or remote Docker-based environments (VS Code devcontainer / `devcontainer` CLI). Dotfiles are injected the same way as Codespaces.
-- **macOS** — not yet in active use but planned. Assume any shell or tooling changes should remain portable (avoid Linux-isms like `readlink -f`; prefer `realpath` or POSIX idioms).
+- **macOS** — in active use. It runs a BSD userland and an ancient bash, so it is
+  where Linux-isms surface. When touching shell code, keep these in mind:
+  - **bash is 3.2.** `"${empty[@]}"` under `set -u` is an unbound-variable error,
+    not zero words — write `${arr[@]+"${arr[@]}"}`. No associative arrays, no
+    `mapfile`, no `${var,,}`. `/usr/bin/env bash` finds 3.2 too unless brew's
+    bash is installed, which it isn't by default.
+  - **BSD tools take different flags.** `sed -i` requires a backup suffix (GNU
+    forbids one — rewrite through a temp file instead); `stat -c` is `stat -f`
+    (or use `[ -O ]`); `realpath` has no `-m`.
+  - **GNU-only commands are absent**: `timeout`, `nproc`, `fc-cache`, `xdg-open`.
+    Guard on `command -v` and degrade rather than failing.
+  - **Homebrew is not on PATH after its own installer runs** — it only prints the
+    `brew shellenv` line. Resolve it from `/opt/homebrew` or `/usr/local`.
+  - **zsh is the login shell** and there is no default `~/.zshrc`; zsh never
+    reads `~/.profile`. Anything that wires up a shell must create the rc file.
+  - **`~/.local/bin` shadows system commands.** Don't install a Linux
+    compatibility wrapper whose name collides with a real macOS tool (`open`).
 
 Scripts that are platform-specific should guard themselves or be named/templated clearly. When adding a new tool or path assumption, consider whether it holds across all of the above.
 
