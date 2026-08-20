@@ -16,6 +16,9 @@ packages:
   # by run_onchange_install-worktrunk.sh. Windows uses winget (below).
   # herdr has its own self-updating installer (herdr.dev/install.sh), run by
   # purse-install-extras — it's an opt-in tool, not part of the core toolset.
+  # gh (GitHub CLI) is absent from Debian stable and stale in Ubuntu universe,
+  # so on Linux it comes from GitHub releases via run_onchange_install-packages.sh;
+  # macOS uses brew and Windows winget (both below).
 
   # On Linux with apt+root the whole toolset is covered without Homebrew:
   # apt covers: ripgrep, direnv, jq, fzf
@@ -31,6 +34,7 @@ packages:
   # Homebrew packages (macOS, or Linux without root)
   brew:
     - git
+    - gh          # GitHub CLI — git's credential helper for github.com
     - ripgrep
     - direnv
     - jq          # JSON processor — required by purse-outfit-agents
@@ -73,3 +77,4 @@ packages:
     - id: ajeetdsouza.zoxide        # frecency-based directory jumper
     - id: junegunn.fzf              # fuzzy finder — used by zoxide's zi and standalone
     - id: gitkraken.cli             # gk (GitKraken CLI) — its MCP server is wired up by purse-outfit-agents
+    - id: GitHub.cli                # gh (GitHub CLI) — git's credential helper for github.com

@@ -176,6 +176,32 @@ elif command -v apt-get >/dev/null 2>&1 && have_root; then
     fi
   fi
 
+  # gh (GitHub CLI): git's credential helper for github.com, per ~/.config/git/config.
+  # Absent from Debian stable and stale in Ubuntu universe, so take the release
+  # binary — same approach as gk/zoxide/yq above.
+  if ! command -v gh >/dev/null 2>&1; then
+    case "$(uname -m)" in
+      x86_64|amd64)  _gh_arch="amd64" ;;
+      aarch64|arm64) _gh_arch="arm64" ;;
+      armv7*)        _gh_arch="armv6" ;;
+      *)             _gh_arch="" ;;
+    esac
+    if [ -n "$_gh_arch" ]; then
+      echo "→ gh: installing GitHub CLI from GitHub releases..."
+      _gh_ver="$(curl -fsSL https://api.github.com/repos/cli/cli/releases/latest | grep '"tag_name"' | cut -d'"' -f4 | tr -d 'v')"
+      if [ -z "$_gh_ver" ]; then
+        echo "⚠️  gh: could not determine latest version (GitHub API rate limit?) — skipping" >&2
+      else
+        curl -fsSL "https://github.com/cli/cli/releases/download/v${_gh_ver}/gh_${_gh_ver}_linux_${_gh_arch}.tar.gz" \
+          | tar -xz --strip-components=2 -C "$HOME/.local/bin" "gh_${_gh_ver}_linux_${_gh_arch}/bin/gh" \
+          || echo "⚠️  gh: download failed — skipping" >&2
+        chmod +x "$HOME/.local/bin/gh" 2>/dev/null || true
+      fi
+    else
+      echo "⚠️  gh: unsupported arch $(uname -m) — skipping" >&2
+    fi
+  fi
+
   # uv: fast Python package manager and tool runner (not in apt — use the official installer)
   if ! command -v uv >/dev/null 2>&1; then
     echo "→ uv: installing via official installer..."
