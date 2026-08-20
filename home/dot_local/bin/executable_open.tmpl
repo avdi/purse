@@ -1,8 +1,13 @@
-{{- if ne .chezmoi.os "windows" -}}
+{{- if and (ne .chezmoi.os "windows") (ne .chezmoi.os "darwin") -}}
 #!/usr/bin/env bash
 # open compatibility wrapper for Linux/WSL shells.
 # Some CLIs (including Zoho Vault) hardcode `open` (macOS) to launch URLs.
 # This wrapper forwards to $BROWSER when configured, otherwise xdg-open.
+#
+# Excluded on macOS, which has the real `open` this emulates. ~/.local/bin
+# precedes /usr/bin, so installing it there shadows the system command with a
+# single-argument stub — breaking `open .`, `open -a App`, `open -R`, and the
+# rest. The empty render tells chezmoi to remove the target.
 
 set -euo pipefail
 
