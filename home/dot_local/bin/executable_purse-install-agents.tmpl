@@ -20,7 +20,9 @@ if [ "$(node_major)" -ge 22 ]; then
   npm config set prefix "$HOME/.local"
 
   # Fix root-owned npm cache (left by earlier sudo npm runs) to avoid EACCES.
-  if [ -d "$HOME/.cache/npm" ] && [ "$(stat -c '%u' "$HOME/.cache/npm")" != "$(id -u)" ]; then
+  # `-O` (owned by the effective UID) is POSIX; `stat` spells its format flag
+  # differently on GNU (-c) and BSD/macOS (-f).
+  if [ -d "$HOME/.cache/npm" ] && [ ! -O "$HOME/.cache/npm" ]; then
     echo "→ npm cache is root-owned; fixing with chown..."
     sudo chown -R "$(id -u):$(id -g)" "$HOME/.cache/npm"
   fi

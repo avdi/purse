@@ -60,9 +60,10 @@ real_remote_url() {
     case "$url" in
       *://*|git@*) echo "$url"; return 0 ;;
     esac
-    # Local path — resolve and recurse.
+    # Local path — resolve and recurse. A cd/pwd round-trip resolves it
+    # relative to $dir without GNU realpath's -m, which BSD/macOS lacks.
     local next
-    next="$(cd "$dir" && realpath -m "$url" 2>/dev/null)" || return 1
+    next="$(cd "$dir" && cd "$url" 2>/dev/null && pwd -P)" || return 1
     [ -d "$next" ] || return 1
     dir="$next"
     depth=$(( depth + 1 ))

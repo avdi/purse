@@ -9,6 +9,7 @@
 # Known offenders:
 #   codebase-memory-mcp  → appends to ~/.bashrc
 #   Antigravity CLI      → appends to ~/.bashrc and ~/.profile
+#   Claude Code native installer → appends to ~/.zshrc
 #
 # Pattern matched: lines of the form
 #   export PATH="$HOME/.local/bin:$PATH"   (or variations)
@@ -17,18 +18,25 @@ set -euo pipefail
 
 readonly ROGUE_PATH_PATTERN='^export PATH=.*\.local/bin.*PATH'
 
+# Rewrite via a temp file rather than `sed -i`: the in-place flag takes a
+# mandatory backup suffix on BSD sed (macOS) and a forbidden one on GNU sed,
+# so there is no spelling of it that works on both.
 scrub_file() {
   local file="$1"
   [ -f "$file" ] || return 0
-  local before after
-  before=$(grep -c "$ROGUE_PATH_PATTERN" "$file" 2>/dev/null || true)
-  [ "$before" -gt 0 ] || { echo "  $file — clean"; return 0; }
-  sed -i "\|$ROGUE_PATH_PATTERN|d" "$file"
-  after=$(grep -c "$ROGUE_PATH_PATTERN" "$file" 2>/dev/null || true)
-  echo "  $file — removed $((before - after)) line(s)"
+  local removed
+  removed=$(grep -c "$ROGUE_PATH_PATTERN" "$file" 2>/dev/null || true)
+  [ "$removed" -gt 0 ] || { echo "  $file — clean"; return 0; }
+  local scrubbed
+  scrubbed="$(mktemp)"
+  grep -v "$ROGUE_PATH_PATTERN" "$file" > "$scrubbed" || true
+  cat "$scrubbed" > "$file"
+  rm -f "$scrubbed"
+  echo "  $file — removed ${removed} line(s)"
 }
 
 echo "purse-scrub-path-stompers: scanning shell init files..."
-scrub_file "$HOME/.bashrc"
-scrub_file "$HOME/.profile"
+for rc in "$HOME/.bashrc" "$HOME/.profile" "$HOME/.zshrc" "$HOME/.zprofile"; do
+  scrub_file "$rc"
+done
 echo "purse-scrub-path-stompers: done"
