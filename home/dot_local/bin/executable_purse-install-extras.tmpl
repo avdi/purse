@@ -43,6 +43,20 @@ else
   ( cd "$HOME/.local/bin" && curl -fsSL https://getmic.ro | bash )
 fi
 
+# ---- herdr (terminal workspace manager for AI coding agents) ----------------
+# A single prebuilt binary from the project's own installer, which also handles
+# its updates from then on (`herdr update` / `herdr channel`). Identical on
+# macOS and Linux, no root required.
+#
+# Project: https://herdr.dev
+
+if command -v herdr >/dev/null 2>&1; then
+  echo "→ herdr already installed ($(herdr --version 2>/dev/null || echo version unknown))"
+else
+  echo "→ Installing herdr..."
+  curl -fsSL https://herdr.dev/install.sh | sh
+fi
+
 # ---- git 2.48+ (for worktree.useRelativePaths) ------------------------------
 # worktree.useRelativePaths sets extensions.relativeworktrees on the repo,
 # which older git refuses to parse — so a worktree created by a modern host git

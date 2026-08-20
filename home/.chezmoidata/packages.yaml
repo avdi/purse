@@ -15,7 +15,7 @@ packages:
   # (Linux and macOS) it's installed as a prebuilt binary from GitHub releases
   # by run_onchange_install-worktrunk.sh. Windows uses winget (below).
   # herdr has its own self-updating installer (herdr.dev/install.sh), run by
-  # run_onchange_install-packages.sh.
+  # purse-install-extras — it's an opt-in tool, not part of the core toolset.
 
   # On Linux with apt+root the whole toolset is covered without Homebrew:
   # apt covers: ripgrep, direnv, jq, fzf

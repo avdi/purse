@@ -16,17 +16,6 @@
 set -euo pipefail
 mkdir -p "$HOME/.local/bin"
 
-# ---- herdr (terminal workspace manager for AI coding agents) ---------------
-# Official installer manages its own updates (`herdr update` / `herdr channel`)
-# and works identically on macOS and Linux, so it's bootstrapped once here,
-# ahead of the OS-specific package installs below.
-if ! command -v herdr >/dev/null 2>&1; then
-  echo "→ herdr: installing via official installer..."
-  curl -fsSL https://herdr.dev/install.sh | sh
-else
-  echo "→ herdr: already installed ($(herdr --version))"
-fi
-
 # ---- helpers ----------------------------------------------------------------
 
 node_major() {

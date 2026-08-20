@@ -35,6 +35,7 @@ have gh && ! gh auth token >/dev/null 2>&1 && _auth_need="gh"
 
 note_extras=""
 have dbr || note_extras="dbr not installed"
+have herdr || note_extras="${note_extras:+${note_extras}; }herdr not installed"
 _git_v="$(git --version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+' | head -1)"
 _git_maj="${_git_v%%.*}"; _git_min="${_git_v##*.}"
 if [ -z "$_git_v" ] || [ "$_git_maj" -lt 2 ] || { [ "$_git_maj" -eq 2 ] && [ "$_git_min" -lt 48 ]; }; then
@@ -45,7 +46,7 @@ fi
 cat <<EOF
 
 ── purse: manual setup commands (not run by \`chezmoi apply\`) ──
-  • purse-install-extras   Homebrew + full toolset (no root needed) + devcontainer-bridge (dbr)${note_extras}
+  • purse-install-extras   Homebrew + full toolset (no root needed) + devcontainer-bridge (dbr) + herdr${note_extras}
   • purse-install-agents   AI agent CLIs (claude, codex, cursor, devin, auggie, agy, opencode)${note_agents}
   • purse-outfit-agents    MCP servers + agent plugins + GitKraken MCP + codebase-memory-mcp${note_outfit}
   • purse-auth-tools       Verify/remediate logins: gh, gk, auggie, MCP tokens${note_auth}
