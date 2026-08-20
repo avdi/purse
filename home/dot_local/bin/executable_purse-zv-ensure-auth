@@ -9,29 +9,53 @@
 
 set -euo pipefail
 
-command -v zv >/dev/null 2>&1 || { echo "❌ zv not found — run: chezmoi apply" >&2; exit 1; }
+die() { echo "❌ $*" >&2; exit 1; }
 
-# zv writes errors to stdout; capture both channels to be safe.
-# Branch on exit code; use captured output only to discriminate error type.
-err=""
-if err=$(zv list category 2>&1); then
-  exit 0  # vault is accessible
-fi
+command -v zv >/dev/null 2>&1 || die "zv not found — run: chezmoi apply"
 
-if printf '%s' "$err" | grep -q "not logged in"; then
-  echo "==> Not logged in. Starting zv login..." >&2
-  zv login
-  echo "==> Unlocking vault..." >&2
-  zv unlock
-elif printf '%s' "$err" | grep -q "zv unlock"; then
-  echo "==> Vault is locked. Unlocking..." >&2
-  zv unlock
-else
-  echo "❌ Unexpected zv error: ${err}" >&2
-  exit 1
-fi
+# zv reports auth failures as prose on stdout and still exits 0, so its exit
+# status says nothing about whether the vault is reachable. Every caller has to
+# classify by message instead. ZV_OUTPUT carries the raw text for reporting.
+# Sets ZV_STATE and ZV_OUTPUT rather than printing the state: a command
+# substitution would run this in a subshell and drop the message with it.
+ZV_STATE=""
+ZV_OUTPUT=""
+read_zv_state() {
+  ZV_OUTPUT=$(zv list category 2>&1 </dev/null || true)
+  case "$ZV_OUTPUT" in
+    *"not logged in"*)      ZV_STATE=logged-out ;;
+    *"zv unlock"*)          ZV_STATE=locked ;;
+    error:*|*$'\n'error:*)  ZV_STATE=error ;;
+    *)                      ZV_STATE=ready ;;
+  esac
+}
 
-if ! zv list category >/dev/null 2>&1; then
-  echo "❌ Still can't access vault after auth — try: zv login && zv unlock" >&2
-  exit 1
-fi
+# zv login and zv unlock both prompt, so without a terminal the only useful
+# thing to do is say which command the human needs to run.
+needs_terminal() {
+  [ -t 0 ] || die "$1 — no terminal to prompt on; run: $2"
+}
+
+read_zv_state
+case "$ZV_STATE" in
+  ready) exit 0 ;;
+  logged-out)
+    needs_terminal "Zoho Vault: not logged in" "zv login && zv unlock"
+    echo "==> Not logged in. Starting zv login..." >&2
+    zv login
+    echo "==> Unlocking vault..." >&2
+    zv unlock
+    ;;
+  locked)
+    needs_terminal "Zoho Vault is locked" "zv unlock"
+    echo "==> Vault is locked. Unlocking..." >&2
+    zv unlock
+    ;;
+  error)
+    die "zv could not reach the vault: ${ZV_OUTPUT}"
+    ;;
+esac
+
+read_zv_state
+[ "$ZV_STATE" = ready ] \
+  || die "Still can't access vault after auth: ${ZV_OUTPUT}"
