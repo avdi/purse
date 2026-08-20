@@ -32,7 +32,7 @@ if [ "$zv_platform" = "macos" ] && [ "$(uname -m)" = "arm64" ] \
    && ! /usr/bin/pgrep -q oahd; then
   cat >&2 <<'EOF'
 ⚠️  zv (Zoho Vault CLI) ships as x86_64-only for macOS and needs Rosetta 2,
-   which isn't installed. Secret templating and purse-setup-secrets stay
+   which isn't installed. Secret templating and purse-install-secrets stay
    unavailable until you run:
 
        softwareupdate --install-rosetta --agree-to-license
