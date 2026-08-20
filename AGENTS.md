@@ -109,7 +109,7 @@ WSL2, when no Windows `zv.exe` is found, or when `PURSE_ZV_WINDOWS=0`.
 `zv` stays host-only there. Instead the `devcontainer`/`dc` shim
 (`home/dot_local/share/purse/shims/executable_devcontainer.tmpl`) forwards every
 var declared in `~/.config/shell/secrets.sh` (the `PURSE_TOKENS` vars written by
-`purse-setup-secrets`, already exported into the host shell) into the container
+`purse-install-secrets`, already exported into the host shell) into the container
 via `--remote-env` — reading only the var names from the file, values from the
 live host env. Opt out with `PURSE_DEVCONTAINER_FORWARD_SECRETS=0`. So don't try
 to run `zv login`/`unlock` inside a container; forward from the host instead.

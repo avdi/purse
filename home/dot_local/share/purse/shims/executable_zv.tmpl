@@ -10,7 +10,7 @@
 # which is fragile under WSL2 (needs a live gnome-keyring + D-Bus session) and
 # absent in headless contexts. The Windows build keys off the OS credential
 # store instead. zv.exe emits plain LF and shares the same CLI/exit codes, so
-# callers (purse-setup-secrets, purse-zv-ensure-auth) work unchanged.
+# callers (purse-install-secrets, purse-zv-ensure-auth) work unchanged.
 #
 # Effective only when this directory is on PATH ahead of the real zv — see
 # ~/.config/shell/env.sh.

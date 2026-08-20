@@ -36,7 +36,7 @@ dotfiles_target="${PURSE_DOTFILES_TARGET_PATH:-~/dotfiles}"
 forward_env_names="${PURSE_DEVCONTAINER_FORWARD_ENV:-GH_TOKEN GITHUB_TOKEN BUNDLE_GITHUB__COM}"
 
 # Also forward every secret from ~/.config/shell/secrets.sh (the PURSE_TOKENS
-# vars written by purse-setup-secrets and already exported into this shell by
+# vars written by purse-install-secrets and already exported into this shell by
 # env.sh). Containers have no keyring / no zv session, so forwarding the values
 # from the host is how in-container tools get them — zv stays host-only. We read
 # only the var *names* here; values come from the live host environment below.

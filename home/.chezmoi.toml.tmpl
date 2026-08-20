@@ -42,7 +42,7 @@ persistentState = {{ joinPath .chezmoi.homeDir ".chezmoistate.boltdb" | quote }}
 # The configured args are always prepended, so in templates you only pass the ID.
 #
 # Requires zv to be authenticated before running chezmoi apply.
-# For bulk env-var secrets, prefer setup-secrets instead (no auth needed at apply time).
+# For bulk env-var secrets, prefer purse-install-secrets instead (no auth needed at apply time).
 {{/*
 Minimal usage in any *.tmpl:
 

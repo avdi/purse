@@ -16,7 +16,7 @@
 #               auggie is special: it's exposed as an MCP tool to *other* agents,
 #               so its session backs everyone's codebase-retrieval.
 #   token-type  github / context7 — no login, just an env var sourced from
-#               Zoho Vault via purse-setup-secrets. We only check presence
+#               Zoho Vault via purse-install-secrets. We only check presence
 #               (never print values) and point at the remediation command.
 #
 # Deliberately does NOT try to authenticate every installed agent CLI at once —
@@ -117,7 +117,7 @@ remediate_token()  {
   local var="$1"
   echo "     $var is sourced from Zoho Vault. To set it:"
   echo "       1. Add a '$var' field to the PURSE_TOKENS note in Zoho Vault"
-  echo "       2. Run: purse-setup-secrets"
+  echo "       2. Run: purse-install-secrets"
   echo "       3. Open a new shell (or: source ~/.config/shell/secrets.sh)"
 }
 

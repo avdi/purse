@@ -94,7 +94,7 @@ if command -v ssh-agent >/dev/null 2>&1; then
   unset _ssh_agent_env
 fi
 
-# Secrets pulled from Zoho Vault by setup-secrets (not chezmoi-managed, never committed)
+# Secrets pulled from Zoho Vault by purse-install-secrets (not chezmoi-managed, never committed)
 # shellcheck disable=SC1091
 [ -f "${HOME}/.config/shell/secrets.sh" ] && . "${HOME}/.config/shell/secrets.sh"
 
