@@ -7,26 +7,49 @@
 
 set -euo pipefail
 
+# Each section installs an independent extra, so a failure in one must not
+# strand the others. Under `set -e` an unguarded failure aborts the whole
+# script — dbr's installer needing a sudo password was enough to skip every
+# section below it. Report and carry on instead.
+optional_step() {
+  local what="$1"; shift
+  "$@" || {
+    warn_skipped+=("$what")
+    echo "⚠️  $what failed — continuing with the remaining extras" >&2
+  }
+}
+warn_skipped=()
+
 # ---- devcontainer-bridge (dbr) ----------------------------------------------
 # Enables host-side port forwarding and xdg-open → host browser inside
 # devcontainers. The purse devcontainer shim injects the dbr feature into
 # every `devcontainer up`; having dbr running on the host activates it.
 #
+# dbr's installer hardcodes /usr/local/bin and escalates with sudo when that
+# isn't writable, so this needs a TTY to answer the password prompt. Without
+# dbr the injected feature is simply inert and containers still come up.
+#
 # Project: https://github.com/bradleybeddoes/devcontainer-bridge
+
+install_dbr() {
+  curl -fsSL https://github.com/bradleybeddoes/devcontainer-bridge/releases/latest/download/install.sh | bash
+}
 
 if command -v dbr >/dev/null 2>&1; then
   echo "→ dbr already installed ($(dbr --version 2>/dev/null || echo version unknown))"
 else
   echo "→ Installing devcontainer-bridge (dbr)..."
-  curl -fsSL https://github.com/bradleybeddoes/devcontainer-bridge/releases/latest/download/install.sh | bash
+  optional_step "dbr install" install_dbr
 fi
 
 # --host 127.0.0.1 avoids dbr's default host.docker.internal probe, which on
 # WSL resolves to the Windows LAN IP and stalls long enough to bust the 5s
 # spawn deadline. The daemon still binds 0.0.0.0 so containers reach it via
 # host.docker.internal as normal.
-echo "→ dbr ensure (start/update host daemon)..."
-dbr ensure --host 127.0.0.1
+if command -v dbr >/dev/null 2>&1; then
+  echo "→ dbr ensure (start/update host daemon)..."
+  optional_step "dbr ensure" dbr ensure --host 127.0.0.1
+fi
 
 # ---- micro (modern terminal editor; EDITOR fallback) ------------------------
 # A single static Go binary — the non-`code` EDITOR fallback wired up in
@@ -40,7 +63,8 @@ if command -v micro >/dev/null 2>&1; then
 else
   echo "→ Installing micro editor to ~/.local/bin..."
   mkdir -p "$HOME/.local/bin"
-  ( cd "$HOME/.local/bin" && curl -fsSL https://getmic.ro | bash )
+  install_micro() { ( cd "$HOME/.local/bin" && curl -fsSL https://getmic.ro | bash ); }
+  optional_step "micro install" install_micro
 fi
 
 # ---- herdr (terminal workspace manager for AI coding agents) ----------------
@@ -170,6 +194,13 @@ if [ "$(uname)" = "Darwin" ] \
   brew install {{ .packages.brew | join " " }}
 else
   echo "→ brew: skipped (Linux with apt — toolset covered by apt/GitHub releases)"
+fi
+
+if [ "${#warn_skipped[@]}" -gt 0 ]; then
+  echo
+  echo "⚠️  Skipped after failure: ${warn_skipped[*]}"
+  echo "   Re-run purse-install-extras from an interactive terminal to retry"
+  echo "   (dbr's installer needs a sudo password)."
 fi
 
 cat <<'EOF'

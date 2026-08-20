@@ -89,11 +89,25 @@ status_gk() {
   echo unauthed; return 1
 }
 
+# `timeout` is GNU coreutils. macOS ships neither it nor coreutils' gtimeout,
+# and a missing command exits 127 — which a probe would read as "unauthenticated"
+# rather than "couldn't measure". Run uncapped instead when there's no timeout.
+run_capped() {
+  local secs="$1"; shift
+  if have timeout; then
+    timeout "$secs" "$@"
+  elif have gtimeout; then
+    gtimeout "$secs" "$@"
+  else
+    "$@"
+  fi
+}
+
 # auggie: `token print` succeeds only with a live OAuth session. It can be slow,
 # so cap it. A present-but-expired session prints nothing and fails.
 status_auggie() {
   have auggie || { echo absent; return 2; }
-  if timeout 30 auggie token print >/dev/null 2>&1; then echo authed; return 0; fi
+  if run_capped 30 auggie token print >/dev/null 2>&1; then echo authed; return 0; fi
   echo unauthed; return 1
 }
 
