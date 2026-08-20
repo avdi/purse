@@ -1,6 +1,21 @@
 {{- $codespaces := env "CODESPACES" | not | not -}}
 sourceDir = {{ .chezmoi.sourceDir | quote }}
 
+{{- /* Inside a container the state DB sits at the root of $HOME rather than
+       under ~/.config. Containers commonly mount volumes over the XDG dirs
+       (~/.config, ~/.cache, ~/.local/share, ~/.local/state) while the rest of
+       $HOME — notably ~/.local/bin, where the installer scripts put their
+       binaries — belongs to the container's own filesystem. Keeping the state
+       DB out of those volumes ties chezmoi's bookkeeping to the lifetime of
+       the tree it describes: a recreated container starts stateless and
+       re-runs the run_once/run_onchange installers that repopulate
+       ~/.local/bin, while a restarted one keeps both. Every one of those
+       scripts is guarded (command -v / append-if-missing), so a re-run on an
+       already-provisioned container is a no-op. */ -}}
+{{- if stat "/.dockerenv" }}
+persistentState = {{ joinPath .chezmoi.homeDir ".chezmoistate.boltdb" | quote }}
+{{- end }}
+
 [data]
     codespaces = {{ $codespaces }}
 
