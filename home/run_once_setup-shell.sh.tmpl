@@ -22,24 +22,34 @@ _append_if_missing() {
   fi
 }
 
-# Shell aliases → .profile and .bashrc (and .zshrc if present)
-for rc in ~/.profile ~/.bashrc; do
+# Create the rc file for any shell that's actually installed, so the wiring
+# below has somewhere to land. macOS is the case that forces this: zsh is the
+# default login shell but ships no ~/.zshrc, and zsh never reads ~/.profile —
+# so an append-only-if-present policy leaves a Mac with no purse wiring at all.
+_ensure_rc_for_shell() {
+  local shell_name="$1"
+  local rc="$2"
+  if command -v "$shell_name" >/dev/null 2>&1 && [ ! -f "$rc" ]; then
+    printf '# Created by purse run_once_setup-shell\n' > "$rc"
+    echo "Created $rc"
+  fi
+}
+
+_ensure_rc_for_shell zsh ~/.zshrc
+_ensure_rc_for_shell bash ~/.bashrc
+
+# Shell aliases → .profile, .bashrc, .zshrc
+for rc in ~/.profile ~/.bashrc ~/.zshrc; do
   _append_if_missing "$rc" '.config/shell/aliases.sh' "$ALIASES_LINE"
 done
-if [ -f ~/.zshrc ]; then
-  _append_if_missing ~/.zshrc '.config/shell/aliases.sh' "$ALIASES_LINE"
-fi
 
-# Lenticel → .bashrc (and .zshrc if present)
-_append_if_missing ~/.bashrc '.config/lenticel/shell-setup.sh' "$LENTICEL_LINE"
-if [ -f ~/.zshrc ]; then
-  _append_if_missing ~/.zshrc '.config/lenticel/shell-setup.sh' "$LENTICEL_LINE"
-fi
+# Lenticel → .bashrc, .zshrc
+for rc in ~/.bashrc ~/.zshrc; do
+  _append_if_missing "$rc" '.config/lenticel/shell-setup.sh' "$LENTICEL_LINE"
+done
 
-# mise activate → .bashrc and .zshrc (if present) — puts the pinned tool
-# versions (.ruby-version, etc.) on PATH per-directory.
+# mise activate → .bashrc and .zshrc — puts the pinned tool versions
+# (.ruby-version, etc.) on PATH per-directory.
 _append_if_missing ~/.bashrc 'mise activate bash' "$MISE_BASH_LINE"
-if [ -f ~/.zshrc ]; then
-  _append_if_missing ~/.zshrc 'mise activate zsh' "$MISE_ZSH_LINE"
-fi
+_append_if_missing ~/.zshrc 'mise activate zsh' "$MISE_ZSH_LINE"
 {{- end }}

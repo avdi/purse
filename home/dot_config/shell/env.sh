@@ -29,6 +29,23 @@ else
   export EDITOR="vi"
 fi
 
+# Homebrew — the macOS system prefixes (/opt/homebrew on Apple silicon,
+# /usr/local on Intel), the linuxbrew prefix, and the home-dir prefix that
+# `purse-install-extras` uses in no-root environments. `brew shellenv` prepends
+# brew's bin/man paths and exports HOMEBREW_* for the session.
+#
+# Runs BEFORE the PATH construction below: shellenv prepends brew's bin, so
+# doing it afterwards would push brew ahead of the purse shims and let brew's
+# own `devcontainer` win over the shim that wraps it.
+for _brew in /opt/homebrew/bin/brew /usr/local/bin/brew \
+             "$HOME/.homebrew/bin/brew" /home/linuxbrew/.linuxbrew/bin/brew; do
+  if [ -x "$_brew" ]; then
+    eval "$("$_brew" shellenv)"
+    break
+  fi
+done
+unset _brew
+
 # Prepend ~/.local/bin so user scripts shadow system binaries.
 # Deduplicated so sourcing this file multiple times is a no-op.
 if [ -d "$HOME/.local/bin" ]; then
@@ -55,18 +72,6 @@ if [ -d "$HOME/.local/share/purse/shims" ]; then
   unset _purse_shims _purse_newpath _purse_rest _purse_seg
 fi
 export PATH
-
-# Local Homebrew — wired up by `purse-install-extras` in no-root environments
-# (installed to ~/.homebrew) or the standard linuxbrew prefix. `brew shellenv`
-# prepends brew's bin/man paths and exports HOMEBREW_* for the session.
-# No-op when neither prefix exists (e.g. macOS, where brew is already on PATH).
-for _brew in "$HOME/.homebrew/bin/brew" /home/linuxbrew/.linuxbrew/bin/brew; do
-  if [ -x "$_brew" ]; then
-    eval "$("$_brew" shellenv)"
-    break
-  fi
-done
-unset _brew
 
 # GPG needs to know the current TTY to prompt for passphrase on git signing.
 # Git commit signing is opt-in per-repo; without GPG_TTY, pinentry-curses fails

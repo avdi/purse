@@ -48,9 +48,28 @@ have_root() {
 # Brew may already be present on Linux (e.g. for a newer git) and that's fine —
 # we just don't install our listed packages through it.
 
-if [ "$(uname)" = "Darwin" ] && ! command -v brew >/dev/null 2>&1; then
+# The Homebrew installer does not touch the PATH of the shell that invoked it —
+# it only prints the `brew shellenv` line to add to an rc file. So a freshly
+# installed brew is invisible to `command -v` for the rest of this script.
+# activate_brew resolves it from the standard prefixes and evals shellenv, and
+# is called both before and after the install attempt.
+activate_brew() {
+  command -v brew >/dev/null 2>&1 && return 0
+  for _brew_bin in /opt/homebrew/bin/brew /usr/local/bin/brew; do
+    if [ -x "$_brew_bin" ]; then
+      eval "$("$_brew_bin" shellenv)"
+      return 0
+    fi
+  done
+  return 1
+}
+
+if [ "$(uname)" = "Darwin" ] && ! activate_brew; then
   echo "→ Homebrew not found on macOS; installing..."
-  /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+  # NONINTERACTIVE stops the installer waiting on a RETURN keypress, which a
+  # `chezmoi apply` driven from a script would never supply.
+  NONINTERACTIVE=1 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+  activate_brew || true
 fi
 
 # ---- system packages ---------------------------------------------------------
@@ -63,7 +82,7 @@ fi
 
 if [ "$(uname)" = "Darwin" ]; then
   # ---- macOS: Homebrew -------------------------------------------------------
-  if ! command -v brew >/dev/null 2>&1; then
+  if ! activate_brew; then
     echo "⚠️  Homebrew not found on macOS" >&2
     exit 1
   fi
