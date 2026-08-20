@@ -24,11 +24,10 @@ persistentState = {{ joinPath .chezmoi.homeDir ".chezmoistate.boltdb" | quote }}
     autoPush = true
 
 {{- /* Per-OS zv installer hook. The script bodies live next to this repo
-       (one above sourceDir, since .chezmoiroot points at home/). The Linux
-       script downloads the linux build of zv; the Windows script downloads
-       the win build. macOS isn't wired up yet — install zv manually if you
-       need secret templating there. */ -}}
-{{- if eq .chezmoi.os "linux" }}
+       (one above sourceDir, since .chezmoiroot points at home/).
+       .install-zv.sh picks the linux or macos build from `uname -s`; the
+       Windows script downloads the win build. */ -}}
+{{- if or (eq .chezmoi.os "linux") (eq .chezmoi.os "darwin") }}
 [hooks.read-source-state.pre]
     command = {{ joinPath (.chezmoi.sourceDir | dir) ".install-zv.sh" | quote }}
 {{- else if eq .chezmoi.os "windows" }}
