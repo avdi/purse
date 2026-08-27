@@ -1,63 +1,87 @@
 {{- if eq .chezmoi.os "windows" -}}
-# chezmoi run_once: set up PowerShell profile (Windows only)
+# chezmoi run_once: set up PowerShell profile(s) (Windows only)
 #
-# Idempotently adds tool initialisation hooks to the current-user profile
-# ($PROFILE / CurrentUserCurrentHost). Appending to the profile rather than
-# managing it as a chezmoi-owned file lets the user add their own content
-# without conflicts.
+# Idempotently adds tool-initialisation hooks to the CurrentUserCurrentHost
+# profile of every PowerShell host installed on this machine.
+#
+# We target each host's profile path EXPLICITLY rather than the running host's
+# $PROFILE: chezmoi runs this script under one host (Windows PowerShell 5.1),
+# but the user may interactively use another (PowerShell 7 / pwsh). Keying off
+# $PROFILE lands the blocks in a profile no interactive shell loads — which is
+# exactly what happened before this was fixed. Appending (rather than managing
+# the file) lets the user keep their own profile content.
 #
 # Unix/macOS shell setup is handled by run_once_setup-shell.sh.tmpl instead.
-{{ if ne .chezmoi.os "windows" }}
-Write-Host "This script is for Windows only. Skipping." -ForegroundColor Yellow
-exit 0
-{{ end }}
 $ErrorActionPreference = 'Stop'
 
-$profileDir = Split-Path $PROFILE -Parent
-if (-not (Test-Path $profileDir)) {
-    New-Item -ItemType Directory -Path $profileDir -Force | Out-Null
-}
-if (-not (Test-Path $PROFILE)) {
-    New-Item -ItemType File -Path $PROFILE -Force | Out-Null
+# OneDrive-aware Documents root (honours Known Folder redirection).
+$docs = [Environment]::GetFolderPath('MyDocuments')
+
+# CurrentUserCurrentHost profile path for each PowerShell host present.
+# Windows PowerShell 5.1 ships with Windows; PowerShell 7+ only if installed.
+$targets = @(Join-Path $docs 'WindowsPowerShell\Microsoft.PowerShell_profile.ps1')
+if (Get-Command pwsh -ErrorAction SilentlyContinue) {
+    $targets += Join-Path $docs 'PowerShell\Microsoft.PowerShell_profile.ps1'
 }
 
 function Add-ProfileBlock {
-    param([string]$Marker, [string]$Block)
-    $content = Get-Content $PROFILE -Raw -ErrorAction SilentlyContinue
+    param([string]$Path, [string]$Marker, [string]$Block)
+    $dir = Split-Path $Path -Parent
+    if (-not (Test-Path $dir))  { New-Item -ItemType Directory -Path $dir -Force | Out-Null }
+    if (-not (Test-Path $Path)) { New-Item -ItemType File -Path $Path -Force | Out-Null }
+    $content = Get-Content $Path -Raw -ErrorAction SilentlyContinue
     if ($content -notmatch [regex]::Escape($Marker)) {
-        Add-Content -Path $PROFILE -Value ""
-        Add-Content -Path $PROFILE -Value $Block
-        Write-Host "Added '$Marker' block to $PROFILE"
+        Add-Content -Path $Path -Value ""
+        Add-Content -Path $Path -Value $Block
+        Write-Host "Added '$Marker' block to $Path"
     }
 }
 
-# zoxide — frecency-based directory jumper
-Add-ProfileBlock `
-    -Marker '# zoxide init' `
-    -Block @'
+foreach ($profilePath in $targets) {
+    # zoxide — frecency-based directory jumper
+    Add-ProfileBlock -Path $profilePath -Marker '# zoxide init' -Block @'
 # zoxide init
 if (Get-Command zoxide -ErrorAction SilentlyContinue) {
     Invoke-Expression (& { (zoxide init powershell | Out-String) })
 }
 '@
 
-# starship — cross-shell prompt (config: ~/.config/starship.toml)
-Add-ProfileBlock `
-    -Marker '# starship init' `
-    -Block @'
+    # starship — cross-shell prompt (config: ~/.config/starship.toml).
+    # Opt-in: activates only once starship is on PATH (run purse-launch-starship).
+    Add-ProfileBlock -Path $profilePath -Marker '# starship init' -Block @'
 # starship init
 if (Get-Command starship -ErrorAction SilentlyContinue) {
     Invoke-Expression (&starship init powershell)
 }
 '@
 
-# mise — polyglot runtime manager (Ruby, Node, etc.)
-Add-ProfileBlock `
-    -Marker '# mise init' `
-    -Block @'
+    # mise — polyglot runtime manager (Ruby, Node, etc.)
+    Add-ProfileBlock -Path $profilePath -Marker '# mise init' -Block @'
 # mise init
 if (Get-Command mise -ErrorAction SilentlyContinue) {
     (&mise activate pwsh) | Out-String | Invoke-Expression
 }
 '@
+
+    # worktrunk (wt) — git worktree manager shell integration.
+    # On Windows `wt` also resolves to Windows Terminal (a WindowsApps
+    # app-execution alias) which usually sorts first on PATH, so worktrunk's own
+    # default detection (Get-Command wt | Select -First 1) can pick Windows
+    # Terminal by mistake. Bind WORKTRUNK_BIN to the real worktrunk binary — the
+    # first `wt` that is NOT the WindowsApps alias — before sourcing the
+    # integration. The integration then defines a `wt` function that, being a
+    # function, outranks the Windows Terminal app alias, so `wt` means worktrunk
+    # in this shell. No-ops (leaving `wt` as Windows Terminal) where worktrunk
+    # isn't installed.
+    Add-ProfileBlock -Path $profilePath -Marker '# worktrunk init' -Block @'
+# worktrunk init
+$wtBin = Get-Command wt -CommandType Application -ErrorAction SilentlyContinue |
+    Where-Object { $_.Source -notlike '*\WindowsApps\*' } |
+    Select-Object -First 1 -ExpandProperty Source
+if ($wtBin) {
+    $env:WORKTRUNK_BIN = $wtBin
+    (& $wtBin config shell init powershell | Out-String) | Invoke-Expression
+}
+'@
+}
 {{- end -}}

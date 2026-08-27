@@ -251,9 +251,16 @@ _work_resolve_issue_target() {
 
 alias wb=work
 
-# wt — git worktree manager shell integration (enables directory switching)
+# wt — worktrunk (git worktree manager) shell integration (enables directory
+# switching). On Windows `wt` is also Windows Terminal (a WindowsApps
+# app-execution alias); running `wt config shell init bash` against it just
+# spawns terminal windows instead of emitting shell code, so skip when the
+# resolved `wt` is Windows Terminal rather than worktrunk.
 if command -v wt >/dev/null 2>&1; then
-  eval "$(command wt config shell init bash 2>/dev/null)" 2>/dev/null || true
+  case "$(command -v wt)" in
+    *[Ww]indows[Aa]pps*) : ;;  # Windows Terminal, not worktrunk — do not init
+    *) eval "$(command wt config shell init bash 2>/dev/null)" 2>/dev/null || true ;;
+  esac
 fi
 
 # zoxide — frecency-based directory jumper; replaces cd with 'z' / 'zi'
