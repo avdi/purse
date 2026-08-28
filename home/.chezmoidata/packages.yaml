@@ -82,5 +82,5 @@ packages:
     - id: max-sixty.worktrunk       # git worktree manager
     - id: ajeetdsouza.zoxide        # frecency-based directory jumper
     - id: junegunn.fzf              # fuzzy finder — used by zoxide's zi and standalone
-    - id: gitkraken.cli             # gk (GitKraken CLI) — its MCP server is wired up by purse-outfit-agents
+    - id: GitKraken.cli             # gk (GitKraken CLI) — its MCP server is wired up by purse-outfit-agents
     - id: GitHub.cli                # gh (GitHub CLI) — git's credential helper for github.com

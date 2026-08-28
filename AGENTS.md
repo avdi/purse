@@ -82,7 +82,8 @@ listing it in `mcp-servers.yaml` we let `gk mcp install --all` detect every
 installed MCP client and write the stdio entry itself. `gk` is installed by
 `run_onchange_install-packages` — from GitHub releases into `~/.local/bin` on
 Unix (it's not in apt and brew ships it as a macOS-only cask), and via winget
-(`gitkraken.cli`) on Windows.
+(`GitKraken.cli` — note the casing; `winget --exact` matches ids
+case-sensitively, so a lowercased id silently installs nothing) on Windows.
 
 Registration is per-agent: agents with a non-interactive MCP CLI are configured
 via that CLI (`claude`, `codex`, `copilot`, `auggie`, `vscode`); agents whose CLI

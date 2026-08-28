@@ -32,9 +32,26 @@ if (-not (Test-Command winget)) {
 }
 
 Write-Host "→ winget: installing packages..." -ForegroundColor Cyan
+
+# `winget --exact` matches ids CASE-SENSITIVELY, so a mis-cased id in
+# packages.yaml resolves to nothing. winget reports that on stdout and exits
+# non-zero, but the loop below ignores exit codes deliberately: winget also
+# exits non-zero for benign outcomes ("already installed", "no upgrade found"),
+# so treating any failure as fatal would break every re-apply.
+#
+# NO_APPLICATIONS_FOUND (0x8A150014) is the one code that always means the id
+# is wrong rather than the package being fine, so surface just that one. This
+# is how `gitkraken.cli` (really `GitKraken.cli`) silently installed nothing.
+$NoApplicationsFound = -1978335212
+$badIds = @()
 {{ range .packages.winget }}
 winget install --id {{ .id }} --exact --accept-package-agreements --accept-source-agreements --silent
+if ($LASTEXITCODE -eq $NoApplicationsFound) { $badIds += '{{ .id }}' }
 {{ end }}
+if ($badIds) {
+    Write-Warning "winget found no package for: $($badIds -join ', ')"
+    Write-Warning "  Check the id and its casing in .chezmoidata/packages.yaml (winget search <name>)."
+}
 
 # ---- npm packages -----------------------------------------------------------
 # Refresh PATH after winget installs Node.js so we don't need a new shell.
