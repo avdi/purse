@@ -6,9 +6,15 @@
 #
 # What this does:
 #   1. Install Cascadia Code NF from microsoft/cascadia-code (official NF build)
-#   2. Install starship via winget
+#   2. Register the fonts with Windows so apps can actually see them
+#   3. Install starship via winget
 #   (The PowerShell profile already has a guarded starship init block from
-#    run_once_setup-powershell-profile — it activates once starship is on PATH.)
+#    run_once_setup-powershell-profile -- it activates once starship is on PATH.)
+
+# Keep this file ASCII-only. chezmoi writes it without a BOM, and Windows
+# PowerShell 5.1 reads a BOM-less .ps1 as ANSI -- a stray non-ASCII character
+# (a U+2713 check mark, say) corrupts the surrounding string and fails to
+# parse the script.
 
 $ErrorActionPreference = 'Stop'
 
@@ -18,10 +24,149 @@ $FontUrl     = "https://github.com/microsoft/cascadia-code/releases/download/v$F
 $FontDir     = "$env:LOCALAPPDATA\Microsoft\Windows\Fonts"
 $RegPath     = 'HKCU:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Fonts'
 
+# ---- Font registration helpers ----------------------------------------------
+#
+# Dropping .ttf files into the per-user font directory does NOT make them
+# visible to anything. A font is only usable once it is BOTH:
+#
+#   a) listed under HKCU Fonts, keyed by the font's real name (name ID 4 from
+#      the TTF 'name' table, e.g. "Cascadia Code NF SemiBold"), with the value
+#      set to the FULL PATH of the file. A bare filename only resolves for
+#      machine-wide fonts under %WINDIR%\Fonts; per-user entries need the path.
+#      This name is the identity apps enumerate -- keying off the filename stem
+#      ("CascadiaCodeNF-SemiBold") registers a font nothing can find by name.
+#   b) handed to the session font table via AddFontResourceW, followed by a
+#      WM_FONTCHANGE broadcast. Without this, nothing sees the font until the
+#      next logon.
+
+if (-not ('PurseFont.Native' -as [type])) {
+    Add-Type -TypeDefinition @'
+using System;
+using System.Runtime.InteropServices;
+
+namespace PurseFont
+{
+    public static class Native
+    {
+        [DllImport("gdi32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+        public static extern int AddFontResourceW(string lpszFilename);
+
+        [DllImport("user32.dll", CharSet = CharSet.Auto)]
+        public static extern IntPtr SendMessageTimeout(
+            IntPtr hWnd, uint Msg, IntPtr wParam, IntPtr lParam,
+            uint fuFlags, uint uTimeout, out UIntPtr lpdwResult);
+
+        public static void BroadcastFontChange()
+        {
+            UIntPtr result;
+            // HWND_BROADCAST = 0xffff, WM_FONTCHANGE = 0x001D,
+            // SMTO_ABORTIFHUNG = 0x0002, 1000ms timeout.
+            SendMessageTimeout(
+                (IntPtr)0xffff, 0x001D, IntPtr.Zero, IntPtr.Zero,
+                0x0002, 1000, out result);
+        }
+    }
+}
+'@
+}
+
+# Read name ID 4 ("full font name") out of a TrueType 'name' table.
+# All TTF integers are big-endian; Windows-platform (ID 3) strings are UTF-16BE.
+function Get-TtfFullName {
+    param([string]$Path)
+
+    try {
+        $bytes = [System.IO.File]::ReadAllBytes($Path)
+
+        # Big-endian readers.
+        $u16 = { param($o) [uint32]$bytes[$o] * 256 + $bytes[$o + 1] }
+        $u32 = {
+            param($o)
+            [uint32]$bytes[$o] * 16777216 + [uint32]$bytes[$o + 1] * 65536 +
+            [uint32]$bytes[$o + 2] * 256 + [uint32]$bytes[$o + 3]
+        }
+
+        $numTables = & $u16 4
+        $nameOffset = 0
+
+        for ($i = 0; $i -lt $numTables; $i++) {
+            $rec = 12 + ($i * 16)
+            $tag = [System.Text.Encoding]::ASCII.GetString($bytes, $rec, 4)
+            if ($tag -eq 'name') { $nameOffset = & $u32 ($rec + 8); break }
+        }
+        if ($nameOffset -eq 0) { return $null }
+
+        $count        = & $u16 ($nameOffset + 2)
+        $stringOffset = & $u16 ($nameOffset + 4)
+
+        $best = $null
+        for ($i = 0; $i -lt $count; $i++) {
+            $rec = $nameOffset + 6 + ($i * 12)
+            $platformId = & $u16 $rec
+            $nameId     = & $u16 ($rec + 6)
+            if ($nameId -ne 4) { continue }
+
+            $len = & $u16 ($rec + 8)
+            $off = $nameOffset + $stringOffset + (& $u16 ($rec + 10))
+
+            if ($platformId -eq 3) {
+                # Windows platform, UTF-16BE. Preferred -- take it and stop.
+                return [System.Text.Encoding]::BigEndianUnicode.GetString($bytes, $off, $len)
+            } elseif ($null -eq $best) {
+                # Mac/Unicode platform fallback, kept only if no ID 3 record shows up.
+                $best = [System.Text.Encoding]::ASCII.GetString($bytes, $off, $len)
+            }
+        }
+        return $best
+    } catch {
+        return $null
+    }
+}
+
+# Register one font file for the current user. Returns $true if the registry
+# needed changing (i.e. this was a fresh or a repaired registration).
+function Register-UserFont {
+    param([string]$FontPath)
+
+    $file = Split-Path $FontPath -Leaf
+    $full = Get-TtfFullName $FontPath
+    if ([string]::IsNullOrWhiteSpace($full)) {
+        # Fall back to the filename stem rather than skipping the font entirely.
+        $full = [System.IO.Path]::GetFileNameWithoutExtension($FontPath)
+    }
+    $valueName = "$full (TrueType)"
+
+    $key = Get-Item -Path $RegPath
+    $changed = $false
+
+    # Drop stale entries pointing at this same file under any other name --
+    # this is what clears out earlier filename-stem registrations.
+    foreach ($existing in $key.GetValueNames()) {
+        if ($existing -eq $valueName) { continue }
+        $data = $key.GetValue($existing)
+        if ($data -isnot [string]) { continue }
+        if ((Split-Path $data -Leaf) -eq $file) {
+            Remove-ItemProperty -Path $RegPath -Name $existing -Force
+            $changed = $true
+        }
+    }
+
+    if ($key.GetValue($valueName) -ne $FontPath) {
+        Set-ItemProperty -Path $RegPath -Name $valueName -Value $FontPath -Force
+        $changed = $true
+    }
+
+    # Cheap and idempotent; also covers the case where the registry was already
+    # correct but this logon session has not loaded the font.
+    [PurseFont.Native]::AddFontResourceW($FontPath) | Out-Null
+
+    return $changed
+}
+
 # ---- 1. Cascadia Code NF -----------------------------------------------------
 
 if (Test-Path "$FontDir\CascadiaCodeNF-Regular.ttf") {
-    Write-Host "-> Cascadia Code NF: already installed in $FontDir"
+    Write-Host "-> Cascadia Code NF: font files already present in $FontDir"
 } else {
     Write-Host "-> Cascadia Code NF: downloading v$FontVersion from microsoft/cascadia-code..." -ForegroundColor Cyan
     if (-not (Test-Path $FontDir)) { New-Item -ItemType Directory -Path $FontDir -Force | Out-Null }
@@ -32,14 +177,33 @@ if (Test-Path "$FontDir\CascadiaCodeNF-Regular.ttf") {
         Invoke-WebRequest -Uri $FontUrl -OutFile "$TmpDir\$ArchiveName" -UseBasicParsing
         Expand-Archive -Path "$TmpDir\$ArchiveName" -DestinationPath $TmpDir -Force
 
-        $ttfs = Get-ChildItem -Path "$TmpDir\ttf\static" -Filter 'CascadiaCodeNF-*.ttf'
-        foreach ($ttf in $ttfs) {
+        foreach ($ttf in Get-ChildItem -Path "$TmpDir\ttf\static" -Filter 'CascadiaCodeNF-*.ttf') {
             Copy-Item -Path $ttf.FullName -Destination "$FontDir\$($ttf.Name)" -Force
-            Set-ItemProperty -Path $RegPath -Name "$($ttf.BaseName) (TrueType)" -Value $ttf.Name -Force
         }
-        Write-Host "✓ Cascadia Code NF installed ($($ttfs.Count) fonts)" -ForegroundColor Green
+        Write-Host "  downloaded font files" -ForegroundColor Green
     } finally {
         Remove-Item -Recurse -Force $TmpDir -ErrorAction SilentlyContinue
+    }
+}
+
+# Registration runs unconditionally: it is idempotent, and it repairs machines
+# where an earlier version of this script copied the files but mis-registered
+# them (filename-stem key, relative path, no AddFontResource).
+$installed = @(Get-ChildItem -Path $FontDir -Filter 'CascadiaCodeNF-*.ttf' -ErrorAction SilentlyContinue)
+if ($installed.Count -eq 0) {
+    Write-Warning "No CascadiaCodeNF-*.ttf found in $FontDir -- font install did not produce files."
+} else {
+    $repaired = 0
+    foreach ($ttf in $installed) {
+        if (Register-UserFont $ttf.FullName) { $repaired++ }
+    }
+
+    if ($repaired -gt 0) {
+        [PurseFont.Native]::BroadcastFontChange()
+        Write-Host "OK: Cascadia Code NF registered ($($installed.Count) fonts, $repaired updated)" -ForegroundColor Green
+        Write-Host "  Restart Windows Terminal to pick up the new fonts." -ForegroundColor Yellow
+    } else {
+        Write-Host "-> Cascadia Code NF: already registered ($($installed.Count) fonts)"
     }
 }
 
@@ -56,5 +220,5 @@ if (Get-Command starship -ErrorAction SilentlyContinue) {
 }
 
 Write-Host ""
-Write-Host "✓ Starship ready. Set your terminal font to: Cascadia Code NF" -ForegroundColor Green
+Write-Host "OK: Starship ready. Set your terminal font to: Cascadia Code NF" -ForegroundColor Green
 {{- end -}}
