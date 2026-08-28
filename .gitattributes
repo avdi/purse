@@ -1,0 +1,4 @@
+# Windows Terminal rewrites settings.json with LF endings. Without this pin,
+# core.autocrlf=true would check the file out as CRLF, and every `chezmoi diff`
+# would then report the whole file as drifted against the live LF copy.
+home/AppData/Local/Packages/Microsoft.WindowsTerminal_8wekyb3d8bbwe/LocalState/settings.json text eol=lf

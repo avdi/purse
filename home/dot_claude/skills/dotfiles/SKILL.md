@@ -47,6 +47,8 @@ home/
     rules/
       symlink_global.md.tmpl  # ~/.augment/rules/global.md → ~/.config/ai/system-prompt.md
   dot_config/git/config.tmpl  # ~/.config/git/config (managed git config; ~/.gitconfig is an unmanaged stub)
+  AppData/Local/Packages/Microsoft.WindowsTerminal_8wekyb3d8bbwe/LocalState/
+    settings.json             # Windows Terminal config (Windows only)
 ```
 
 ## Common workflows
@@ -72,6 +74,23 @@ Edit `home/dot_config/ai/system-prompt.md` — that file is the source of truth.
 
 After editing, run `chezmoi re-add ~/.config/ai/system-prompt.md` if you edited
 the deployed copy directly.
+
+### Windows Terminal settings
+
+Managed in place at its real path — **not** via a symlink, and **not** a `.tmpl`
+(so `chezmoi re-add` round-trips cleanly). Windows Terminal owns the file and
+rewrites it on every UI settings change, so pull changes back explicitly:
+
+```powershell
+chezmoi diff      # shows what the Terminal UI changed
+chezmoi re-add "$env:LOCALAPPDATA\Packages\Microsoft.WindowsTerminal_8wekyb3d8bbwe\LocalState\settings.json"
+```
+
+`.chezmoiignore` skips the `AppData` tree on non-Windows. `.gitattributes` pins the
+file to `eol=lf` so `core.autocrlf` doesn't fake a full-file diff.
+
+Superseded the old `avdi/dotfiles` repo, which symlinked this path — Windows Terminal
+replaced the symlink with a plain file and the config silently fell out of VCS.
 
 ### Add an agent skill
 

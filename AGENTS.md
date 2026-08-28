@@ -16,8 +16,12 @@ Commit after each logical change; push promptly. Rebase on the remote if a push 
   - `run_once_*` scripts are executed by chezmoi once per machine.
   - `run_onchange_*` scripts are re-executed whenever their content changes.
   - `run_before_*` / `run_after_*` scripts run before/after **every** `chezmoi apply`.
+  - `home/AppData/...` — Windows-only target paths. Managed in place (no symlink);
+    `.chezmoiignore` skips the whole `AppData` tree on non-Windows so it doesn't
+    create stub dirs there. Currently just Windows Terminal's `settings.json`.
 - `docs/` — reference documentation (not installed by chezmoi).
 - `install.sh` — bootstraps chezmoi on a new machine.
+- `.gitattributes` — line-ending pins for files an external app owns and rewrites.
 
 **Gotcha — `run_` scripts always appear in `chezmoi diff`/`apply`.** chezmoi renders
 every `run_` script as a "new file" diff on each apply, because it can't know whether

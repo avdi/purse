@@ -53,6 +53,10 @@ home/
   run_onchange_install-packages.ps1.tmpl  # installs packages on Windows (winget)
   run_once_setup-shell.sh             # wires aliases + direnv into rc files (once)
   run_once_setup-lenticel.sh.tmpl     # bootstraps lenticel frp tunnel (once)
+  AppData/Local/Packages/Microsoft.WindowsTerminal_8wekyb3d8bbwe/LocalState/settings.json
+                                      # → Windows Terminal settings (Windows only;
+                                      #   .chezmoiignore skips the AppData tree
+                                      #   everywhere else). See "Windows Terminal".
 .install-zv.sh                        # installs Zoho Vault CLI before apply (Linux/macOS)
 .install-zv.ps1                       # installs Zoho Vault CLI before apply (Windows)
 install.sh                            # VS Code / Codespace auto-dotfiles hook
@@ -62,6 +66,30 @@ lenticel-bootstrap.sh                 # frp tunnel client setup
 Packages are declared in `.chezmoidata/packages.yaml`. Adding or removing an entry
 and running `chezmoi apply` is all it takes — the `run_onchange_` scripts re-run
 automatically whenever the rendered package list changes.
+
+## Windows Terminal
+
+Windows Terminal's `settings.json` is managed **in place**, at its real path under
+`%LOCALAPPDATA%\Packages\Microsoft.WindowsTerminal_8wekyb3d8bbwe\LocalState\`.
+
+Not via a symlink. The old `avdi/dotfiles` repo symlinked that path into the repo,
+and Windows Terminal eventually replaced the symlink with a plain file — silently
+detaching the config from version control. Managing the file directly avoids that
+whole failure mode.
+
+The trade-off is that Windows Terminal owns the file and rewrites it whenever you
+change a setting in the UI. So the workflow is bidirectional:
+
+```bash
+chezmoi diff        # see what the UI changed since the last sync
+chezmoi re-add "$LOCALAPPDATA/Packages/Microsoft.WindowsTerminal_8wekyb3d8bbwe/LocalState/settings.json"
+chezmoi apply       # push repo state back out (e.g. on a new machine)
+```
+
+Deliberately kept as a plain file, **not** a `.tmpl`, so `chezmoi re-add` round-trips
+cleanly. `.gitattributes` pins it to `eol=lf`, because Windows Terminal writes LF and
+`core.autocrlf=true` would otherwise check it out as CRLF and make every `chezmoi diff`
+report the entire file as drifted.
 
 ## Secret management
 

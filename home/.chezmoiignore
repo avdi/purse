@@ -10,3 +10,10 @@
 # mutations — notably VS Code's injected credential.helper — never dirty a
 # chezmoi-tracked file.
 .gitconfig
+
+# Windows Terminal settings live at a Windows-only path. Ignore the whole
+# AppData tree elsewhere so chezmoi doesn't create stub ~/AppData dirs on
+# Linux/macOS.
+{{ if ne .chezmoi.os "windows" }}
+AppData
+{{ end }}
