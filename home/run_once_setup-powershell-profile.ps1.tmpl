@@ -83,5 +83,41 @@ if ($wtBin) {
     (& $wtBin config shell init powershell | Out-String) | Invoke-Expression
 }
 '@
+
+    # WSL UTF-8 output. Without this, `wsl` emits UTF-16-ish output that shows up
+    # as NUL bytes between characters in PowerShell, corrupting anything that
+    # captures or pipes it. Not the default, for historical reasons.
+    # https://stackoverflow.com/questions/64104790
+    Add-ProfileBlock -Path $profilePath -Marker '# wsl utf8' -Block @'
+# wsl utf8
+$env:WSL_UTF8 = 1
+'@
+
+    # winget tab completion, per
+    # https://learn.microsoft.com/en-us/windows/package-manager/winget/tab-completion
+    Add-ProfileBlock -Path $profilePath -Marker '# winget completion' -Block @'
+# winget completion
+if (Get-Command winget -ErrorAction SilentlyContinue) {
+    Register-ArgumentCompleter -Native -CommandName winget -ScriptBlock {
+        param($wordToComplete, $commandAst, $cursorPosition)
+        [Console]::InputEncoding = [Console]::OutputEncoding = $OutputEncoding = [System.Text.Utf8Encoding]::new()
+        $Local:word = $wordToComplete.Replace('"', '""')
+        $Local:ast = $commandAst.ToString().Replace('"', '""')
+        winget complete --word="$Local:word" --commandline "$Local:ast" --position $cursorPosition | ForEach-Object {
+            [System.Management.Automation.CompletionResult]::new($_, $_, 'ParameterValue', $_)
+        }
+    }
+}
+'@
+
+    # Small ergonomics carried over from the retired avdi/dotfiles repo.
+    # Set-Alias rather than New-Alias: re-sourcing the profile is common, and
+    # New-Alias throws once the alias already exists.
+    Add-ProfileBlock -Path $profilePath -Marker '# purse ergonomics' -Block @'
+# purse ergonomics
+Set-Alias -Name which -Value Get-Command
+
+function marco { Write-Host "Polo!" }
+'@
 }
 {{- end -}}
