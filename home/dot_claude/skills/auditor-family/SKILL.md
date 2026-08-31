@@ -4,7 +4,9 @@ description: >
   Set up and maintain a family-of-auditors review framework in a project: the
   standards-skill / auditor-agent split, the auditor-general dispatcher, area
   auditors discovered along three axes (modules, cross-cutting concerns,
-  technology), the two-round diff audit and one-round spec audit, and the
+  technology), the generalist closing auditor that reads each round's diff
+  and consolidated verdict together for design/architecture smells no area
+  auditor owns, the two-round diff audit and one-round spec audit, and the
   curator and toolmonger meta-agents that keep the framework evolving. Use when
   bootstrapping agent code review for a repo, adding/splitting/retiring an
   auditor, writing a standards skill, or diagnosing a review framework that
@@ -21,11 +23,12 @@ short name (`<prefix>-`):
 | **Standards skill** | `.claude/skills/<prefix>-<area>-standards/SKILL.md` | *Guidelines.* The concrete rules, with bad/good code pairs. Loaded **before** doing work in that area. |
 | **Area auditor** | `.claude/agents/<prefix>-auditor-<area>.md` | *Owner.* A scrupulous subagent that **enforces** the paired skill and the area's intended direction. Read-only. |
 
-Plus three meta-agents:
+Plus meta-agents:
 
 | Agent | Role |
 |---|---|
 | `<prefix>-auditor-general` | Entry point. Reads a changeset, emits an ordered, model-tiered **dispatch plan** of which area auditors to run. Does not review. |
+| `<prefix>-auditor-generalist` | Closing pass, invoked directly (not via the dispatch plan) at the end of each round with the diff plus that round's consolidated verdict — fresh, judgment-based eyes for design/architecture smells and gaps no area auditor structurally owns. |
 | `<prefix>-guidance-curator` | Harvests durable lessons out of reviews and self-reported digs, lands them in the right skill or auditor. |
 | `<prefix>-toolmonger` | Turns ad-hoc commands into tools, fixes friction, seeds skills with pointers to them. |
 
@@ -33,7 +36,10 @@ Plus three meta-agents:
 auditor cites it.** Duplicating a rule into both is the framework's most common
 decay mode: the two copies drift, and nobody knows which is authoritative. An
 auditor's own text carries only what a skill can't: values, *Direction*,
-severity calibration, and what it refuses to let through.
+severity calibration, and what it refuses to let through. The generalist
+auditor is the one exception to "no auditor without a paired skill" (see
+Bootstrapping step 6) — its whole job is judgment no standards skill could
+substitute for.
 
 ## Bootstrapping a project
 
@@ -97,7 +103,19 @@ area auditor references rather than restates.
 
 Templates in `references/meta-agents.md`.
 
-### 6. Wire it into the project doc
+### 6. Write the generalist auditor
+
+Template: `references/generalist-auditor.md`. Unlike every other auditor, it
+has no paired skill — nobody could write, and nobody should try to write, a
+standards skill enumerating every extractable design pattern. Its job is
+exactly the gestalt judgment a written rule can't substitute for: does this
+change agglomerate instead of following the codebase's implicit patterns, and
+what would an experienced developer say to refactor it toward? Wire in
+whatever code-intelligence MCP servers the environment has (codebase-Q&A,
+call-graph, LSP navigation) — each optional, each inert rather than an error
+if unregistered.
+
+### 7. Wire it into the project doc
 
 `AGENTS.md` gets: a **Skills Index** table (skill → when to use), an
 **Auditors** index grouped functional / technology / module, and the workflow
@@ -131,6 +149,14 @@ round 1's state if uncommitted).
 with a **commit range** bounding only the fix (`<boundary-sha>..HEAD`) — not a
 prose summary, not a pasted diff. It scopes the plan to those changes and
 routes only the auditors whose area the fixes touch.
+
+**Close each round with the generalist auditor.** After consolidating a
+round's verdict — round 1, and round 2 if it runs — invoke
+`<prefix>-auditor-generalist` directly (it is never on the dispatch plan) with
+the full changeset and that consolidated verdict, and fold anything it returns
+into the same round's disposition before posting the round's PR comment. It's
+the one pass reading the diff and the verdict together with fresh, generalist
+judgment; see `references/generalist-auditor.md`.
 
 **Two rounds is the cap.** Round 2 is final: auditors must not hold findings
 back expecting a round 3, and the invoking agent fixes or consciously accepts
@@ -186,6 +212,7 @@ code."
 | A real bug shipped that an area owns | Add a `## What you scrutinize most` bullet to that auditor, or fix the severity calibration. |
 | A skill exceeds ~200 lines | Move detail into `references/` under the skill; keep SKILL.md scannable. |
 | A transition finishes | Delete the `## Direction` entry. Stale direction is worse than none. |
+| The generalist's "roster gap" bucket names the same missing auditor twice | Stop deferring — bootstrap that area auditor (steps 2–3) instead of letting the generalist keep covering for it. |
 
 Only the curator edits standards, and only ever as **standards-only commits**
 separate from code fixes, one concern per commit — so the reasoning lives in
@@ -196,7 +223,8 @@ the standards' own history.
 - Duplicating a coding rule into both the skill and its auditor.
 - Creating auditors from a taxonomy instead of from areas someone can name the
   invariants of.
-- An auditor with no paired skill — it will invent rules.
+- An area auditor with no paired skill — it will invent rules. (The generalist
+  auditor is the sole, deliberate exception.)
 - Letting the auditor-general write the review itself instead of dispatching.
 - Dispatching every auditor on every change; an unrelated auditor is noise that
   trains the reader to skim.
@@ -205,6 +233,10 @@ the standards' own history.
 - Minting a broad new mandate from one reviewer's stylistic aside.
 - Auditors that only criticize: acknowledging what a change got right is how
   the instinct gets reinforced.
+- Skipping the generalist pass because "no auditor owns design smells" — that
+  gap is exactly its job, not a reason to leave it uncovered.
+- Routing a design smell to "propose a new auditor" instead of reporting it
+  directly, just because no skill backs it.
 
 ## References
 
@@ -213,6 +245,7 @@ the standards' own history.
 - `references/area-auditor.md` — area auditor charter template.
 - `references/auditor-general.md` — dispatcher template.
 - `references/meta-agents.md` — curator and toolmonger templates.
+- `references/generalist-auditor.md` — generalist closing-auditor template.
 
 Subagent frontmatter mechanics (tools, `mcpServers`, model): see the
 `defining-subagents` skill.

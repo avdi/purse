@@ -25,6 +25,27 @@ alias gs="git status"
 alias vs="vscli open"
 alias vsr="vscli recent"
 alias lt="lenticel"
+
+# `brew` shim — Homebrew's bin is deliberately NOT on PATH by default (see
+# env.sh): it prepends brew's pkg-config ahead of the system one, which
+# silently broke a `bundle install` (native gem builds picked up brew's
+# pkg-config instead of the system one). This function locates the real brew
+# binary directly (same prefixes as purse-install-extras' find_brew) and
+# shellenv's it only inside a subshell, so PATH/HOMEBREW_* changes apply to
+# this one invocation and never leak into the interactive shell. For a
+# persistent brew-on-PATH shell, run `eval "$(brew shellenv)"` yourself.
+brew() {
+  local _brew_bin
+  for _brew_bin in /opt/homebrew/bin/brew /usr/local/bin/brew \
+                   "$HOME/.homebrew/bin/brew" /home/linuxbrew/.linuxbrew/bin/brew; do
+    [ -x "$_brew_bin" ] && break
+  done
+  if [ ! -x "$_brew_bin" ]; then
+    echo "brew: no Homebrew installation found" >&2
+    return 127
+  fi
+  ( eval "$("$_brew_bin" shellenv)" && exec "$_brew_bin" "$@" )
+}
 # `dc` lives at ~/.local/bin/dc as a script (routes through the devcontainer
 # shim that injects --dotfiles-* flags); intentionally not aliased here so the
 # script stays discoverable via `which dc` and works in non-interactive shells.

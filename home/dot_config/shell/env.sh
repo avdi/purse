@@ -12,23 +12,11 @@
 
 alias codew="code --wait"
 
-
-# Homebrew — the macOS system prefixes (/opt/homebrew on Apple silicon,
-# /usr/local on Intel), the linuxbrew prefix, and the home-dir prefix that
-# `purse-install-extras` uses in no-root environments. `brew shellenv` prepends
-# brew's bin/man paths and exports HOMEBREW_* for the session.
-#
-# Runs BEFORE the PATH construction below: shellenv prepends brew's bin, so
-# doing it afterwards would push brew ahead of the purse shims and let brew's
-# own `devcontainer` win over the shim that wraps it.
-for _brew in /opt/homebrew/bin/brew /usr/local/bin/brew \
-             "$HOME/.homebrew/bin/brew" /home/linuxbrew/.linuxbrew/bin/brew; do
-  if [ -x "$_brew" ]; then
-    eval "$("$_brew" shellenv)"
-    break
-  fi
-done
-unset _brew
+# Homebrew is intentionally NOT put on PATH by default here — see the `brew`
+# function in aliases.sh. Putting brew's bin on every shell's PATH prepends
+# brew's pkg-config ahead of the system one, which silently breaks native gem
+# builds (e.g. `bundle install` picking up brew's pkg-config and failing to
+# find system library headers).
 
 # Prepend ~/.local/bin so user scripts shadow system binaries.
 # Deduplicated so sourcing this file multiple times is a no-op.
