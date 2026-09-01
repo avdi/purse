@@ -1,9 +1,5 @@
 "$schema" = 'https://starship.rs/config-schema.json'
 
-# Shell prompt: the default module set ($all), minus $custom. $custom would
-# pull in [custom.caveman] below, which is meant only for the claude-code
-# statusline profile — without this override it leaks into every shell
-# prompt too, since $custom has no way to select individual custom modules.
 format = """
 $username\
 $hostname\
@@ -114,7 +110,7 @@ $character"""
 # ---------------------------------------------------------------------------
 
 [profiles]
-claude-code = "$directory$git_branch$git_status$claude_model$claude_context${custom.caveman}"
+claude-code = "$directory$git_branch$git_status$claude_model$claude_context"
 
 [claude_model]
 format = "[$symbol$model]($style) "
@@ -129,14 +125,3 @@ gauge_width = 8
 # nothing that is actually billed, so it is off.
 [claude_cost]
 disabled = true
-
-# Badge for the caveman plugin's active mode. The plugin writes its mode to a
-# flag file; anything outside the known set renders nothing rather than echoing
-# unvetted bytes into the terminal.
-[custom.caveman]
-description = "Active caveman plugin mode"
-when = 'grep -qxE "lite|full|ultra|wenyan-lite|wenyan|wenyan-full|wenyan-ultra|commit|review|compress" "$HOME/.claude/.caveman-active" 2>/dev/null'
-command = 'tr "[:lower:]" "[:upper:]" < "$HOME/.claude/.caveman-active"'
-format = "[\\[CAVEMAN:$output\\]]($style)"
-style = "bold 172"
-shell = ["bash", "--noprofile", "--norc"]
