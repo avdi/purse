@@ -12,11 +12,22 @@
 
 alias codew="code --wait"
 
-# Homebrew is intentionally NOT put on PATH by default here — see the `brew`
-# function in aliases.sh. Putting brew's bin on every shell's PATH prepends
-# brew's pkg-config ahead of the system one, which silently breaks native gem
-# builds (e.g. `bundle install` picking up brew's pkg-config and failing to
-# find system library headers).
+# EDITOR fallback chain. Prefer VS Code's `code --wait`, but only when the `code`
+# CLI actually WORKS — not merely when it's on PATH. Devcontainers ship a
+# /usr/local/bin/code stub that is always present yet exits 127 ("code or
+# code-insiders is not installed") whenever no real VS Code CLI is reachable:
+# VS Code's integrated terminal injects the working shim ahead of the stub, but a
+# shell you opened yourself (docker exec, ssh) hits only the failing stub. So we
+# probe `code --version` (exit 0 = usable, prints no window) rather than trust
+# `command -v`. Fall back to micro (a modern, non-modal terminal editor installed
+# to ~/.local/bin by purse-install-extras), then to vi as a universal last resort.
+if code --version >/dev/null 2>&1; then
+  export EDITOR="code --wait"
+elif command -v micro >/dev/null 2>&1; then
+  export EDITOR="micro"
+else
+  export EDITOR="vi"
+fi
 
 # Prepend ~/.local/bin so user scripts shadow system binaries.
 # Deduplicated so sourcing this file multiple times is a no-op.
@@ -45,26 +56,17 @@ if [ -d "$HOME/.local/share/purse/shims" ]; then
 fi
 export PATH
 
-# EDITOR fallback chain. Resolved AFTER the PATH work above: micro lives in
-# ~/.local/bin, so probing for it any earlier always misses on a shell that
-# didn't already have that directory — macOS zsh, which reads no ~/.profile.
-#
-# Prefer VS Code's `code --wait`, but only when the `code` CLI actually WORKS —
-# not merely when it's on PATH. Devcontainers ship a
-# /usr/local/bin/code stub that is always present yet exits 127 ("code or
-# code-insiders is not installed") whenever no real VS Code CLI is reachable:
-# VS Code's integrated terminal injects the working shim ahead of the stub, but a
-# shell you opened yourself (docker exec, ssh) hits only the failing stub. So we
-# probe `code --version` (exit 0 = usable, prints no window) rather than trust
-# `command -v`. Fall back to micro (a modern, non-modal terminal editor installed
-# to ~/.local/bin by purse-install-extras), then to vi as a universal last resort.
-if code --version >/dev/null 2>&1; then
-  export EDITOR="code --wait"
-elif command -v micro >/dev/null 2>&1; then
-  export EDITOR="micro"
-else
-  export EDITOR="vi"
-fi
+# Local Homebrew — wired up by `purse-install-extras` in no-root environments
+# (installed to ~/.homebrew) or the standard linuxbrew prefix. `brew shellenv`
+# prepends brew's bin/man paths and exports HOMEBREW_* for the session.
+# No-op when neither prefix exists (e.g. macOS, where brew is already on PATH).
+for _brew in "$HOME/.homebrew/bin/brew" /home/linuxbrew/.linuxbrew/bin/brew; do
+  if [ -x "$_brew" ]; then
+    eval "$("$_brew" shellenv)"
+    break
+  fi
+done
+unset _brew
 
 # GPG needs to know the current TTY to prompt for passphrase on git signing.
 # Git commit signing is opt-in per-repo; without GPG_TTY, pinentry-curses fails
@@ -92,7 +94,7 @@ if command -v ssh-agent >/dev/null 2>&1; then
   unset _ssh_agent_env
 fi
 
-# Secrets pulled from Zoho Vault by purse-install-secrets (not chezmoi-managed, never committed)
+# Secrets pulled from Zoho Vault by setup-secrets (not chezmoi-managed, never committed)
 # shellcheck disable=SC1091
 [ -f "${HOME}/.config/shell/secrets.sh" ] && . "${HOME}/.config/shell/secrets.sh"
 

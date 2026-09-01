@@ -16,7 +16,7 @@
 #               auggie is special: it's exposed as an MCP tool to *other* agents,
 #               so its session backs everyone's codebase-retrieval.
 #   token-type  github / context7 — no login, just an env var sourced from
-#               Zoho Vault via purse-install-secrets. We only check presence
+#               Zoho Vault via purse-setup-secrets. We only check presence
 #               (never print values) and point at the remediation command.
 #
 # Deliberately does NOT try to authenticate every installed agent CLI at once —
@@ -89,25 +89,11 @@ status_gk() {
   echo unauthed; return 1
 }
 
-# `timeout` is GNU coreutils. macOS ships neither it nor coreutils' gtimeout,
-# and a missing command exits 127 — which a probe would read as "unauthenticated"
-# rather than "couldn't measure". Run uncapped instead when there's no timeout.
-run_capped() {
-  local secs="$1"; shift
-  if have timeout; then
-    timeout "$secs" "$@"
-  elif have gtimeout; then
-    gtimeout "$secs" "$@"
-  else
-    "$@"
-  fi
-}
-
 # auggie: `token print` succeeds only with a live OAuth session. It can be slow,
 # so cap it. A present-but-expired session prints nothing and fails.
 status_auggie() {
   have auggie || { echo absent; return 2; }
-  if run_capped 30 auggie token print >/dev/null 2>&1; then echo authed; return 0; fi
+  if timeout 30 auggie token print >/dev/null 2>&1; then echo authed; return 0; fi
   echo unauthed; return 1
 }
 
@@ -131,7 +117,7 @@ remediate_token()  {
   local var="$1"
   echo "     $var is sourced from Zoho Vault. To set it:"
   echo "       1. Add a '$var' field to the PURSE_TOKENS note in Zoho Vault"
-  echo "       2. Run: purse-install-secrets"
+  echo "       2. Run: purse-setup-secrets"
   echo "       3. Open a new shell (or: source ~/.config/shell/secrets.sh)"
 }
 
