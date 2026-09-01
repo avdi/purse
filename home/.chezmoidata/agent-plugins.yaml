@@ -51,11 +51,6 @@ agentPlugins:
     - name: caveman
       source: JuliusBrussee/caveman
       agents: [claude]
-    # context-mode's docs only quote the Claude /plugin flow; Codex/Copilot
-    # plugin support is unverified, so it stays claude-only.
-    - name: context-mode
-      source: mksglu/context-mode
-      agents: [claude]
     # mattpocock-skills deliberately ships only a Claude plugin; its Codex
     # plugin is deferred because Codex cannot express the curated skill paths.
     - name: mattpocock
@@ -89,12 +84,24 @@ agentPlugins:
     - name: caveman
       marketplace: caveman
       agents: [claude]
-    - name: context-mode
-      marketplace: context-mode
-      agents: [claude]
     - name: mattpocock-skills
       marketplace: mattpocock
       agents: [claude]
+
+  # Retired from the shortlist above but possibly still installed on machines
+  # outfitted under an older manifest. purse-outfit-agents uninstalls these
+  # explicitly so `chezmoi apply` + re-outfit actually converges existing
+  # environments, not just fresh ones. Drop an entry once you're confident
+  # every machine has been re-outfitted past it.
+  retired:
+    marketplaces:
+      # Friction in daily use outweighed its context-window savings.
+      - name: context-mode
+        agents: [claude]
+    plugins:
+      - name: context-mode
+        marketplace: context-mode
+        agents: [claude]
 
   # Universal Agent Skills packages for agents not covered by a package's
   # native plugin. `command` detects an installed agent; `target` is the

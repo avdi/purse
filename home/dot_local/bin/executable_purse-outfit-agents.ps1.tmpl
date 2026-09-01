@@ -35,6 +35,33 @@ function Invoke-CheckedCommand($Command, [string[]]$Arguments) {
     }
 }
 
+Write-Host "-> Retired plugins: uninstalling anything dropped from the shortlist..." -ForegroundColor Cyan
+{{ range $agent := .agentPlugins.agents }}
+if (Test-Command '{{ $agent }}') {
+    {{ range $.agentPlugins.retired.plugins }}
+    {{- if has $agent .agents }}
+    try { Invoke-CheckedCommand '{{ $agent }}' @('plugin', 'uninstall', '{{ .name }}@{{ .marketplace }}') } catch {}
+    {{- end }}
+    {{- end }}
+    {{ range $.agentPlugins.retired.marketplaces }}
+    {{- if has $agent .agents }}
+    try { Invoke-CheckedCommand '{{ $agent }}' @('plugin', 'marketplace', 'remove', '{{ .name }}') } catch {}
+    {{- end }}
+    {{- end }}
+}
+{{ end }}
+
+# context-mode wired a SessionStart hook straight into settings.json instead
+# of shipping it in the plugin's own hooks.json, so `plugin uninstall` above
+# doesn't clean it up. Scrub the dangling entry and the hook file itself
+# (chezmoi already stopped deploying it once removed from the source state).
+$ClaudeSettings = "$env:USERPROFILE\.claude\settings.json"
+if ((Test-Command 'jq') -and (Test-Path $ClaudeSettings)) {
+    $Filtered = jq '.hooks.SessionStart = ((.hooks.SessionStart // []) | map(select([.hooks[]?.command // "" | contains("context-mode-cache-heal")] | any | not))) | if (.hooks.SessionStart | length) == 0 then del(.hooks.SessionStart) else . end' $ClaudeSettings
+    if ($LASTEXITCODE -eq 0) { Set-Content -Path $ClaudeSettings -Value $Filtered }
+}
+Remove-Item "$env:USERPROFILE\.claude\hooks\context-mode-cache-heal.mjs" -Force -ErrorAction SilentlyContinue
+
 Write-Host "-> Agent plugins: registering marketplaces and installing plugins..." -ForegroundColor Cyan
 {{ range $agent := .agentPlugins.agents }}
 if (Test-Command '{{ $agent }}') {

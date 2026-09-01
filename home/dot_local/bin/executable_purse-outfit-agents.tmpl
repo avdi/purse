@@ -276,7 +276,54 @@ outfit_mcp_servers() {
 }
 
 # =============================================================================
-# 2. Agent extensions — register marketplaces and install native plugins into
+# 2. Retired plugins/marketplaces — uninstall anything dropped from the
+#    agent-plugins.yaml shortlist so an existing machine actually converges to
+#    the current manifest instead of only ever gaining entries. Driven by the
+#    `agentPlugins.retired` manifest section; add an entry there (not here)
+#    when retiring a plugin.
+# =============================================================================
+outfit_remove_retired_plugins() {
+  echo "→ Retired plugins: uninstalling anything dropped from the shortlist..."
+  {{ range $agent := .agentPlugins.agents }}
+  if have {{ $agent }}; then
+    : # no-op so the body is never empty when this agent has no retired entries
+    {{ range $.agentPlugins.retired.plugins }}
+    {{- if has $agent .agents }}
+    echo "→ {{ $agent }} plugin uninstall {{ .name }}@{{ .marketplace }}"
+    {{ $agent }} plugin uninstall "{{ .name }}@{{ .marketplace }}" >/dev/null 2>&1 || true
+    {{- end }}
+    {{- end }}
+    {{ range $.agentPlugins.retired.marketplaces }}
+    {{- if has $agent .agents }}
+    echo "→ {{ $agent }} plugin marketplace remove {{ .name }}"
+    {{ $agent }} plugin marketplace remove "{{ .name }}" >/dev/null 2>&1 || true
+    {{- end }}
+    {{- end }}
+  fi
+  {{ end }}
+
+  # context-mode wired a SessionStart hook straight into settings.json instead
+  # of shipping it in the plugin's own hooks.json, so `plugin uninstall` above
+  # doesn't clean it up. Scrub the dangling entry and the hook file itself
+  # (chezmoi already stopped deploying it once removed from the source state).
+  if have jq && [ -f "$HOME/.claude/settings.json" ]; then
+    local cfg="$HOME/.claude/settings.json" tmp
+    tmp=$(mktemp)
+    jq '
+      .hooks.SessionStart = (
+        (.hooks.SessionStart // [])
+        | map(select(
+            [.hooks[]?.command // "" | contains("context-mode-cache-heal")] | any | not
+          ))
+      ) |
+      if (.hooks.SessionStart | length) == 0 then del(.hooks.SessionStart) else . end
+    ' "$cfg" > "$tmp" && mv "$tmp" "$cfg"
+  fi
+  rm -f "$HOME/.claude/hooks/context-mode-cache-heal.mjs"
+}
+
+# =============================================================================
+# 3. Agent extensions — register marketplaces and install native plugins into
 #    every agent that natively supports the Claude plugin/marketplace format
 #    (Claude Code, Codex CLI, GitHub Copilot CLI, Auggie; see
 #    .chezmoidata/agent-plugins.yaml for why VS Code/Cursor/Devin/Antigravity
@@ -330,7 +377,7 @@ outfit_agent_plugins() {
 }
 
 # =============================================================================
-# 3. Worktrunk plugin workaround — worktrunk issue #3417: Claude Code hardcodes
+# 4. Worktrunk plugin workaround — worktrunk issue #3417: Claude Code hardcodes
 #    hooks/hooks.json as the plugin hook discovery path and ignores the "hooks"
 #    field in plugin.json. Since commit 2677f05, worktrunk renamed the file to
 #    claude-hooks.json, breaking hook discovery silently. Workaround: symlink
@@ -357,7 +404,7 @@ outfit_worktrunk_workaround() {
 }
 
 # =============================================================================
-# 4. Claude Code hooks — register the cbm-code-discovery-gate hook into
+# 5. Claude Code hooks — register the cbm-code-discovery-gate hook into
 #    ~/.claude/settings.json. It intercepts Grep/Glob PreToolUse events and
 #    injects graph context from codebase-memory-mcp via hook-augment (in-process,
 #    300 ms timeout, every failure path exits 0 — physically cannot block a call).
@@ -404,7 +451,7 @@ outfit_claude_hooks() {
 }
 
 # =============================================================================
-# 5. codebase-memory-mcp — download the static binary. MCP registration is
+# 6. codebase-memory-mcp — download the static binary. MCP registration is
 #    handled by outfit_mcp_servers above (declarative manifest), not by the
 #    binary's own `install -y` which has unwanted side-effects (PATH stomping,
 #    opinionated CLAUDE.md injection, hooks). Bump CBM_VERSION to force a
@@ -501,7 +548,7 @@ outfit_codebase_memory_mcp() {
 }
 
 # =============================================================================
-# 5. spec-kit (specify CLI) — Spec-Driven Development toolkit, installed as a
+# 7. spec-kit (specify CLI) — Spec-Driven Development toolkit, installed as a
 #    uv tool. Moved here from run_onchange_install-packages so initial setup
 #    doesn't require uv to be available upfront.
 # =============================================================================
@@ -519,7 +566,7 @@ outfit_spec_kit() {
 }
 
 # =============================================================================
-# 6. skills-ref — reference library for Agent Skills, installed as a uv tool.
+# 8. skills-ref — reference library for Agent Skills, installed as a uv tool.
 #    Provides the `skills-ref` CLI for validating, reading, and generating
 #    <available_skills> XML blocks for agent prompts.
 # =============================================================================
@@ -535,7 +582,7 @@ outfit_skills_ref() {
 }
 
 # =============================================================================
-# 7. Global skills — install the declarative shortlist from
+# 9. Global skills — install the declarative shortlist from
 #    .chezmoidata/global-skills.yaml into every present agent, globally.
 #    Each entry maps to: npx skills add <source> --skill <skill> -g -y
 #    Requires node/npx; skips gracefully if absent.
@@ -554,7 +601,7 @@ outfit_global_skills() {
 }
 
 # =============================================================================
-# 8. GitKraken MCP — gk ships its own multi-client installer. `gk mcp install
+# 10. GitKraken MCP — gk ships its own multi-client installer. `gk mcp install
 #    --all` detects every installed MCP client and writes a stdio entry that
 #    runs `gk mcp`. Authentication (`gk auth login`) is only needed when the
 #    server runs, not to write the config, so this is safe non-interactively.
@@ -573,6 +620,7 @@ outfit_gitkraken_mcp() {
 # (per-item `|| warn`) and run first; codebase-memory-mcp (the heavy binary
 # download) runs last so a network failure there can't block the cheaper steps.
 outfit_mcp_servers
+outfit_remove_retired_plugins
 outfit_agent_plugins
 outfit_worktrunk_workaround
 outfit_claude_hooks
