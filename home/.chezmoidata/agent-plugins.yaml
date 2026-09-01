@@ -46,11 +46,6 @@ agentPlugins:
     - name: superpowers-marketplace
       source: obra/superpowers-marketplace
       agents: [copilot]
-    # caveman only ships a Claude plugin; Codex/Copilot use incompatible
-    # mechanisms (npx skills add / bespoke installer), so it stays claude-only.
-    - name: caveman
-      source: JuliusBrussee/caveman
-      agents: [claude]
     # mattpocock-skills deliberately ships only a Claude plugin; its Codex
     # plugin is deferred because Codex cannot express the curated skill paths.
     - name: mattpocock
@@ -81,9 +76,6 @@ agentPlugins:
     - name: worktrunk
       marketplace: worktrunk
       agents: [claude]
-    - name: caveman
-      marketplace: caveman
-      agents: [claude]
     - name: mattpocock-skills
       marketplace: mattpocock
       agents: [claude]
@@ -98,9 +90,15 @@ agentPlugins:
       # Friction in daily use outweighed its context-window savings.
       - name: context-mode
         agents: [claude]
+      # Statusline badge clutter outweighed the terse-response benefit.
+      - name: caveman
+        agents: [claude]
     plugins:
       - name: context-mode
         marketplace: context-mode
+        agents: [claude]
+      - name: caveman
+        marketplace: caveman
         agents: [claude]
 
   # Universal Agent Skills packages for agents not covered by a package's
