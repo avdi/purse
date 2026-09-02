@@ -1,5 +1,4 @@
-[tools]
-ruby = "4"
-
 [settings]
-idiomatic_version_file = true
+# Honour a project's .ruby-version, so each repo gets the Ruby it pins without a
+# global default fighting it.
+idiomatic_version_file_enable_tools = ["ruby"]
