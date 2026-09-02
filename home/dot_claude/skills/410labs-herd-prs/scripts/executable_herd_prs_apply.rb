@@ -7,6 +7,7 @@
 #
 # Usage:
 #   herd_prs_apply.rb move   <owner/repo> <number> <StatusName> [--issue]
+#   herd_prs_apply.rb add    <owner/repo> <number> <StatusName> [--issue]
 #   herd_prs_apply.rb assign <owner/repo> <number> <login> [--issue]
 #   herd_prs_apply.rb comment <owner/repo> <number> <body-from-stdin>
 #   herd_prs_apply.rb sync-branch <owner/repo> <number>
@@ -15,6 +16,10 @@
 # issue — pass --issue only for a number that's an issue with no PR at all
 # (e.g. a no-linked-PR item). `assign` always needs --issue to pick the right
 # GitHub object (`gh issue edit` vs `gh pr edit`) — it can't guess.
+#
+# `add` puts an item onto the board for the first time (see "Orphan check" in
+# SKILL.md) — `move` errors on anything not already there. Pass --issue for
+# an issue number; otherwise it's treated as a PR.
 #
 # `move` and `assign` need the gh token's "project"/repo write scopes — this
 # script's auth_check! tells you the exact fix if a call 403s on scope.
@@ -26,6 +31,7 @@ def usage!
   warn <<~USAGE
     Usage:
       herd_prs_apply.rb move <owner/repo> <number> <StatusName> [--issue]
+      herd_prs_apply.rb add <owner/repo> <number> <StatusName> [--issue]
       herd_prs_apply.rb assign <owner/repo> <number> <login> [--issue]
       herd_prs_apply.rb comment <owner/repo> <number>   (body piped via stdin)
       herd_prs_apply.rb sync-branch <owner/repo> <number>
@@ -55,6 +61,57 @@ def move(owner_repo, number, status_name, issue: false)
     }
   GQL
   puts "Moved #{owner_repo}##{number} -> #{status_name}"
+end
+
+# Puts a PR or issue onto project #14 for the first time and sets its status
+# in one call. `move` can't do this — it only updates an item that's already
+# there. Content node id comes straight from the repo, not from an existing
+# project item (there isn't one yet).
+def add(owner_repo, number, status_name, issue: false)
+  option_id = STATUS_OPTIONS.fetch(status_name) do
+    warn "Unknown status #{status_name.inspect}. Valid: #{STATUS_OPTIONS.keys.join(', ')}"
+    exit 1
+  end
+  org, repo = owner_repo.split("/")
+  content_field = issue ? "issue" : "pullRequest"
+  lookup = gh_graphql(<<~GQL)
+    query {
+      repository(owner: "#{org}", name: "#{repo}") {
+        #{content_field}(number: #{number}) { id }
+      }
+    }
+  GQL
+  content_id = lookup.dig("data", "repository", content_field, "id")
+  unless content_id
+    warn "#{owner_repo}##{number}: couldn't resolve a node id (wrong number, or wrong --issue/PR kind?)."
+    exit 1
+  end
+
+  added = gh_graphql(<<~GQL)
+    mutation {
+      addProjectV2ItemById(input: {
+        projectId: "#{PROJECT_ID}"
+        contentId: "#{content_id}"
+      }) { item { id } }
+    }
+  GQL
+  item_id = added.dig("data", "addProjectV2ItemById", "item", "id")
+  unless item_id
+    warn "#{owner_repo}##{number}: addProjectV2ItemById failed -- #{added.inspect}"
+    exit 1
+  end
+
+  gh_graphql(<<~GQL)
+    mutation {
+      updateProjectV2ItemFieldValue(input: {
+        projectId: "#{PROJECT_ID}"
+        itemId: "#{item_id}"
+        fieldId: "#{STATUS_FIELD_ID}"
+        value: { singleSelectOptionId: "#{option_id}" }
+      }) { projectV2Item { id } }
+    }
+  GQL
+  puts "Added #{owner_repo}##{number} -> #{status_name}"
 end
 
 def assign(owner_repo, number, login, issue: false)
@@ -110,6 +167,12 @@ when "move"
   usage! unless owner_repo && number && status_name
   auth_check!("project")
   move(owner_repo, number.to_i, status_name, issue: !!issue)
+when "add"
+  issue = ARGV.delete("--issue")
+  owner_repo, number, status_name = ARGV
+  usage! unless owner_repo && number && status_name
+  auth_check!("project")
+  add(owner_repo, number.to_i, status_name, issue: !!issue)
 when "assign"
   issue = ARGV.delete("--issue")
   owner_repo, number, login = ARGV

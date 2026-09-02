@@ -2,8 +2,9 @@
 name: 410labs-herd-prs
 description: >
   Upkeep pass over Avdi's "Avdi's Desk" 410Labs GitHub Project: board stats, column hygiene
-  (including conflict resolution and moving stuck items), and a paste-ready "please review"
-  list for whatever's genuinely ready for someone else to look at.
+  (including conflict resolution and moving stuck items), an org-wide orphan check for open
+  PRs not tracked on the board at all, and a paste-ready "please review" list for whatever's
+  genuinely ready for someone else to look at.
 ---
 
 # 410Labs Herd PRs
@@ -11,7 +12,8 @@ description: >
 Upkeep pass over Avdi's "Avdi's Desk" GitHub Project (org: 410Labs, project
 #14): board stats, a paste-ready "please review" list, and active hygiene —
 resolving merge conflicts, moving items to the column they actually belong
-in, fixing assignees — not just flagging problems and stopping.
+in, fixing assignees, and catching open PRs that never made it onto the board
+at all — not just flagging problems and stopping.
 
 Originally scoped as just a review-queue digest; broadened because a plain
 PR-authorship search misses most of the board, and because flagging issues
@@ -45,6 +47,69 @@ desk isn't that:
 
 `scripts/herd_prs.rb` (read-only report) and `scripts/herd_prs_apply.rb`
 (mutating actions) handle the mechanical parts of all of this.
+
+## Orphan check: PRs not on the board at all
+
+The rest of this skill is about PRs *on* the board. This check is the
+opposite: does Avdi have an **open PR he authored that isn't tracked
+anywhere on Avdi's Desk** — not as a direct item, not via a linked issue, in
+any column? "Herd my PRs" without this misses exactly the PRs most likely to
+be forgotten, since nothing on the board points at them.
+
+This is the one place in this skill where filtering by **authorship** is
+correct, not a shortcut to avoid — see *Why not just search PRs* above. The
+main workflow can't use authorship because board membership is the filter for
+"what's in scope"; here, authorship is exactly how you find what board
+membership can't: things not on the board.
+
+1. **List every open PR Avdi authored, org-wide:**
+   ```
+   gh search prs --owner 410Labs --author avdi --state open \
+     --json repository,number,title,url,updatedAt,isDraft --limit 200
+   ```
+2. **For each one, ask GitHub directly whether it's tracked**, rather than
+   crawling every column with `herd_prs.rb`:
+   ```
+   gh pr view <number> -R 410Labs/<repo> --json projectItems,closingIssuesReferences
+   ```
+   Empty `projectItems` means the PR itself isn't a board item. If
+   `closingIssuesReferences` is non-empty, also check each linked issue —
+   the *issue* may be the board item instead:
+   ```
+   gh issue view <issue-number> -R 410Labs/<repo> --json projectItems,state
+   ```
+   Watch the `title` field inside `projectItems` — it names which *project*
+   the item is on. An issue can be tracked on a different org project
+   entirely (e.g. "The Big Board") and still count as an orphan for Avdi's
+   Desk purposes; being tracked *somewhere* isn't being tracked *here*.
+
+   This is more reliable than a column crawl for two reasons: it answers
+   "is this tracked" directly instead of requiring you to enumerate every
+   status, and it doesn't depend on `herd_prs.rb --status Done` succeeding —
+   that column has grown large enough to occasionally time out the GraphQL
+   query (`HTTP 502`/`504`) rather than return, so a crawl can silently
+   under-count exactly the column most likely to hide a false orphan.
+3. **Confirmed orphans go on the board, never in Inbox/The Stack.** Avdi's
+   rule: issues can sit in the early, not-yet-started columns (Inbox, The
+   Stack) with no PR yet, but a PR represents work already in progress — by
+   definition it is never placed earlier than **Working**. Place it there at
+   minimum, and promote further only if the state actually warrants it:
+   - `APPROVED`, no unresolved review threads, CI green, not draft → **Ready**
+   - not draft, unreviewed or reviewed-clean, mergeable, not conflicting → **Review**
+   - draft, conflicting, or genuinely still being worked → **Working**
+4. **Add it** with `herd_prs_apply.rb add <owner/repo> <number> <StatusName>
+   [--issue]` — `move` errors on anything not already on the board; `add`
+   resolves the content's node id, puts it on project #14, and sets its
+   status in one call. Safe to re-run: adding an item already on the board
+   doesn't duplicate it.
+5. **Confirm before bulk-adding.** This can span every repo in the org and
+   turn up PRs open for months — some still wanted, some abandoned
+   experiments. Separate "opened in the last week or two" (add without much
+   thought) from "stale for weeks or longer" (list them and ask whether to
+   add-and-triage or close, rather than deciding for Avdi).
+
+This check is a full org-wide sweep and more expensive than the per-column
+report — run it periodically, not necessarily every pass.
 
 ## Workflow
 
@@ -269,6 +334,9 @@ Actions:
 - <verb> mailstrom#<n> — <what, terse>
 - <verb> mailstrom#<n> — <what, terse>
 
+Orphan check (omit if not run this pass):
+- N found, N added (N Working, N Review, N Ready), N flagged stale for a triage decision
+
 Please review:
 - [mailstrom#123](url) — Fix IMAP reconnect backoff (re-review, feedback addressed, 9d)
 - [mailstrom#124](url) — ...
@@ -286,6 +354,9 @@ Still needs you:
 - **Actions**: one line per mutation actually *performed* (not just
   flagged) — conflict resolved & pushed, column moved, assignee added, CI
   re-run triggered. Terse — verb, PR, what — not a paragraph.
+- **Orphan check**: only when that sweep ran this pass (see *Orphan check*
+  above) — omit the section entirely otherwise. One line with the counts;
+  name the stale ones under **Still needs you**, not here.
 - **Please review**: the formatted list (see Output format below),
   ready to paste as-is.
 - **Still needs you**: goes *last* — everything that couldn't be
@@ -296,6 +367,14 @@ Still needs you:
   pending, omit the section rather than writing "none."
 
 ## Output format
+
+**When the report's destination is the terminal itself** (the reply Avdi
+reads in Claude Code, not something copied elsewhere), Markdown link syntax
+`[text](url)` shows up as literal brackets — the terminal doesn't render it.
+Use a bare URL on its own line under each item instead, so it's actually
+clickable. The Markdown-link guidance below is for the *paste-ready* list —
+somewhere with real Markdown rendering (Slack, GitHub, a PR comment) — not
+for what's printed directly in the response.
 
 **Please-review list** — standard Markdown links, **not** Slack's
 `<url|text>` mrkdwn syntax — that syntax reliably breaks when copied through
