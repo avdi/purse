@@ -109,8 +109,11 @@ from a single declarative manifest and loop in `purse-outfit-agents`.
 - `home/.chezmoidata/agent-plugins.yaml` — the manifest: `agents` (the CLIs this
   applies to), `marketplaces` (name → source, each tagged with which agents
   should register it), and `plugins` (name → marketplace, each tagged with which
-  agents should install it). This lets one plugin (e.g. `superpowers`) fan out to
+  agents should install it). This lets one plugin (e.g. `context7`) fan out to
   every supporting agent while another stays Claude-only.
+- `retired` mirrors those two lists for entries dropped from the shortlist, so
+  `purse-outfit-agents` uninstalls them and an already-outfitted machine
+  converges instead of only ever gaining plugins.
 - VS Code also supports this plugin format (Preview), but only via global-user
   `settings.json` — no CLI verb — so it's intentionally left unmanaged, alongside
   Cursor/Devin/Antigravity which don't share the format at all.

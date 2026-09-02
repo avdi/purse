@@ -41,11 +41,6 @@ agentPlugins:
     - name: worktrunk
       source: max-sixty/worktrunk
       agents: [claude, codex]
-    # copilot can't use claude-plugins-official (see above), but superpowers
-    # publishes its own marketplace that copilot's schema accepts.
-    - name: superpowers-marketplace
-      source: obra/superpowers-marketplace
-      agents: [copilot]
     # mattpocock-skills deliberately ships only a Claude plugin; its Codex
     # plugin is deferred because Codex cannot express the curated skill paths.
     - name: mattpocock
@@ -55,12 +50,6 @@ agentPlugins:
   # Plugins to install, in `name@marketplace` form, and which agents should
   # install each one.
   plugins:
-    - name: superpowers
-      marketplace: claude-plugins-official
-      agents: [claude, codex, auggie]
-    - name: superpowers
-      marketplace: superpowers-marketplace
-      agents: [copilot]
     - name: context7
       marketplace: context7-marketplace
       agents: [claude, codex, copilot, auggie]
@@ -93,6 +82,9 @@ agentPlugins:
       # Statusline badge clutter outweighed the terse-response benefit.
       - name: caveman
         agents: [claude]
+      # Only existed so copilot could reach superpowers; see below.
+      - name: superpowers-marketplace
+        agents: [copilot]
     plugins:
       - name: context-mode
         marketplace: context-mode
@@ -100,6 +92,14 @@ agentPlugins:
       - name: caveman
         marketplace: caveman
         agents: [claude]
+      # mattpocock-skills covers most of what superpowers was here for, with
+      # far less prompt weight and no mandatory skill-invocation preamble.
+      - name: superpowers
+        marketplace: claude-plugins-official
+        agents: [claude, codex, auggie]
+      - name: superpowers
+        marketplace: superpowers-marketplace
+        agents: [copilot]
 
   # Universal Agent Skills packages for agents not covered by a package's
   # native plugin. `command` detects an installed agent; `target` is the
