@@ -113,8 +113,25 @@ status_context7() {
 remediate_gh()     { log "gh auth login"; gh auth login; }
 remediate_gk()     { log "gk auth login"; gk auth login; }
 remediate_auggie() { log "auggie login (backs the auggie MCP for all agents)"; auggie login; }
+# Every step of the fix is a host step: there is no keyring in here for zv to
+# unlock, which is why the host resolves these and dcbridge tunnels them in.
+# Printing the host recipe unqualified sends you off to run `purse-setup-secrets`
+# against a vault session that cannot exist.
+remediate_token_in_container() {
+  local var="$1"
+  echo "     $var is tunnelled in from the host — no vault session exists in here."
+  echo "     On the host:"
+  echo "       1. Add a '$var' field to the PURSE_TOKENS note in Zoho Vault"
+  echo "       2. Run: purse-setup-secrets && dcbridge --refresh-secrets"
+  echo "     Then back in here: open a new shell."
+}
+
 remediate_token()  {
   local var="$1"
+  if [ -f /.dockerenv ] || [ -n "${DEVCONTAINER:-}" ]; then
+    remediate_token_in_container "$var"
+    return
+  fi
   echo "     $var is sourced from Zoho Vault. To set it:"
   echo "       1. Add a '$var' field to the PURSE_TOKENS note in Zoho Vault"
   echo "       2. Run: purse-setup-secrets"
