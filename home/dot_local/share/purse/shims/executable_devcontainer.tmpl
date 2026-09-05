@@ -15,7 +15,9 @@
 #     so host-side port forwarding and xdg-open work like in VS Code (requires
 #     `dbr` installed on the host; runs `dbr ensure` opportunistically);
 #   - auto-injects --config from DEVCONTAINER_CONFIG (set per-project via
-#     direnv) when the caller hasn't already supplied --config.
+#     direnv) when the caller hasn't already supplied --config;
+#   - refuses `up` from a linked git worktree, since the container and its
+#     bind mounts get pinned to whichever checkout created them.
 #
 # Defers to the next `devcontainer` on PATH (the real binary, typically the
 # symlink npm drops into ~/.local/bin/ that points into node_modules).
@@ -103,6 +105,49 @@ if [ "${1:-}" = "exec" ]; then
   exec "$real_devcontainer" exec \
     "${remote_env_args[@]+"${remote_env_args[@]}"}" \
     "$@"
+fi
+
+# The workspace the CLI will act on: an explicit --workspace-folder, else cwd.
+workspace_folder=""
+expecting_workspace_folder=0
+for arg in "$@"; do
+  if [ "$expecting_workspace_folder" -eq 1 ]; then
+    workspace_folder="$arg"
+    expecting_workspace_folder=0
+    continue
+  fi
+  case "$arg" in
+    --workspace-folder)   expecting_workspace_folder=1 ;;
+    --workspace-folder=*) workspace_folder="${arg#*=}" ;;
+  esac
+done
+workspace_folder="${workspace_folder:-$PWD}"
+
+# A container built from a linked worktree pins its bind-mount sources to that
+# checkout's path, and outlives it: remove the worktree and the container can
+# no longer start, in a way only `docker rm` clears. The main worktree is the
+# stable home for it — reach the other worktrees from inside the container.
+# Prints the main worktree's path when we're in a linked one, nothing otherwise.
+main_worktree="$(
+  cd "$workspace_folder" 2>/dev/null || exit 0
+  git rev-parse --git-dir >/dev/null 2>&1 || exit 0
+  canonicalize() { realpath "$1" 2>/dev/null || printf '%s' "$1"; }
+  [ "$(canonicalize "$(git rev-parse --git-dir)")" \
+    = "$(canonicalize "$(git rev-parse --git-common-dir)")" ] && exit 0
+  # The first porcelain record is always the main worktree. Let awk read the
+  # whole stream rather than exiting early: under pipefail an early exit leaves
+  # git killed by SIGPIPE, which would fail this assignment under errexit.
+  git worktree list --porcelain | awk 'NR == 1 && /^worktree /{print substr($0, 10)}'
+)" || true
+if [ -n "$main_worktree" ] && [ "${PURSE_DEVCONTAINER_ALLOW_WORKTREE:-0}" != "1" ]; then
+  {
+    echo "devcontainer shim: refusing to run \`up\` from a linked worktree."
+    echo "  here:  $workspace_folder"
+    echo "  main:  $main_worktree"
+    echo "Start the container from the main worktree, or set"
+    echo "PURSE_DEVCONTAINER_ALLOW_WORKTREE=1 to override."
+  } >&2
+  exit 1
 fi
 
 # Detect whether the caller already supplied any --dotfiles-* or --config
