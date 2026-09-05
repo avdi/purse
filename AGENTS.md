@@ -27,6 +27,35 @@ and it is a normal detour, not a scope expansion to check in about. Finish the
 dotfiles change the same way you would if you had started here, then return to
 what you were doing.
 
+### What it does not license
+
+The policy is about not stalling on the push. It is not a license to put
+anything at all into a public repo that auto-deploys to every machine. Stop and
+raise these:
+
+- **Secret values.** This repo stores secret *IDs* (`.config/purse/secret-ids.env`)
+  and resolves them at runtime through `zv`; `~/.config/shell/secrets.sh` is
+  chezmoiignored for exactly this reason. A live token, API key, private key, or
+  password does not go in — not in a template, not in a comment, not in a commit
+  message. If one is already committed, say so plainly: it needs rotating, not
+  just reverting.
+- **`chezmoi add` / `re-add` on a file you have not read.** Adding a directory,
+  or re-adding a config some tool rewrote in place, is how a credential gets in
+  by accident. Read it first.
+- **Someone else's material** — a colleague's key, a client's config, an
+  employer's internal hostnames or infrastructure detail. The audience is Avdi's
+  own machines, but the repo is public.
+- **`run_once_*` / `run_onchange_*` scripts that delete, overwrite, or `sudo`.**
+  These execute unattended on every machine that pulls, including fresh
+  Codespaces and devcontainers. Adding one is a decision worth confirming.
+- **Boot-path and auth-path changes** — `dot_bashrc`/`dot_profile`, `env.sh`,
+  `~/.ssh/config`, the git credential helper. A mistake here breaks a machine you
+  are not sitting at and may not be able to reach. Apply and verify locally
+  first, and keep failures non-fatal.
+- **Rewriting pushed history.** Rebasing your own unpushed commits onto the
+  remote is the normal answer to a rejected push. Force-pushing over commits that
+  are already on `origin` is not — other machines have them.
+
 ## Repo layout
 
 - `home/` — chezmoi source tree; files here are templated/installed into `$HOME`.
