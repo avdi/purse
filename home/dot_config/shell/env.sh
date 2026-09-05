@@ -98,6 +98,13 @@ fi
 # shellcheck disable=SC1091
 [ -f "${HOME}/.config/shell/secrets.sh" ] && . "${HOME}/.config/shell/secrets.sh"
 
+# Secrets tunnelled in from the host by `dcbridge`. A container has no keyring
+# for zv to unlock, so the host resolves them and drops the file here. It sits
+# on tmpfs rather than under ~/.config so it dies with the container instead of
+# persisting in the named volume that holds the rest of the config tree.
+# shellcheck disable=SC1091
+[ -r /dev/shm/purse-secrets.sh ] && . /dev/shm/purse-secrets.sh
+
 # Inside a devcontainer with the devcontainer-bridge (dbr) feature installed,
 # route $BROWSER through dbr-open so URLs opened by container tools land in
 # the host browser. Harmless no-op outside containers / when dbr isn't present.

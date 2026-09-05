@@ -1,27 +1,40 @@
 #!/usr/bin/env bash
-# dcbridge — keep devcontainer-bridge (dbr) actually bridging.
+# dcbridge — keep each running devcontainer wired to the host: its ports
+# bridged, and the host's secrets readable by every shell inside it.
 #
-# dbr forwards a devcontainer's listening ports to the host so `localhost:<port>`
-# opens in a host browser. That takes two daemons: `dbr host-daemon` out here,
-# and `dbr container-daemon` inside each container, connected to the first over
-# a shared auth token. The purse devcontainer shim injects the dbr *feature*,
-# but a feature only lands on a `devcontainer up` that rebuilds — so a container
-# started by VS Code, by `docker compose up`, or before the feature was adopted
-# has no container daemon, and nothing notices. The symptom is a port that
-# listens perfectly well inside the container and refuses connections outside.
+# Ports. dbr forwards a devcontainer's listening ports to the host so
+# `localhost:<port>` opens in a host browser. That takes two daemons: `dbr
+# host-daemon` out here, and `dbr container-daemon` inside each container,
+# connected to the first over a shared auth token. The purse devcontainer shim
+# injects the dbr *feature*, but a feature only lands on a `devcontainer up`
+# that rebuilds — so a container started by VS Code, by `docker compose up`, or
+# before the feature was adopted has no container daemon, and nothing notices.
+# The symptom is a port that listens perfectly well inside the container and
+# refuses connections outside.
 #
-# This reconciles that state: host daemon up, and every running devcontainer
-# holding a container daemon registered with it.
+# Secrets. The same shim forwards the host's resolved vault secrets as
+# --remote-env, which decorates `devcontainer exec` and the lifecycle commands
+# and nothing else. A shell reached any other way — over the container's sshd,
+# which is every `herdr --remote` pane, or through plain `docker exec` — is
+# forked from a daemon the CLI never touched, and inherits none of them. This
+# drops the same values on tmpfs inside each container, where env.sh sources
+# them. tmpfs so they die with the container rather than persisting in the
+# named volume that holds the rest of ~/.config.
 #
-#   dcbridge --install     # run the reconciler as a systemd user service
-#   dcbridge --status      # what is bridged right now
-#   dcbridge               # reconcile once
-#   dcbridge --watch       # reconcile on an interval, in the foreground
-#   dcbridge --uninstall   # stop and remove the service
+# Both halves are one problem: the shim can only decorate containers it creates
+# or execs into, and this reconciles every container that got in another way.
+#
+#   dcbridge --install           # run the reconciler as a systemd user service
+#   dcbridge --status            # what is bridged right now
+#   dcbridge                     # reconcile once
+#   dcbridge --watch             # reconcile on an interval, in the foreground
+#   dcbridge --refresh-secrets   # push secrets now, after `purse-setup-secrets`
+#   dcbridge --uninstall         # stop and remove the service
 #
 # --install is what makes this stop being something to remember.
 #
 # DCBRIDGE_POLL_SECONDS sets the watch interval (default 15).
+# DCBRIDGE_SYNC_SECRETS=0 opts out of the secrets half entirely.
 #
 # Exit status: 1 when --status finds the bridge down, 2 for a bad invocation,
 # 127 when dbr or docker is missing.
@@ -34,8 +47,10 @@ CONTAINER_LOG=/tmp/dbr-container.log
 SERVICE_NAME="dcbridge.service"
 UNIT_PATH="${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user/$SERVICE_NAME"
 LOOKUP_LIB="$HOME/.local/share/purse/lib/devcontainer-lookup.sh"
+HOST_SECRETS_FILE="${PURSE_SECRETS_FILE:-$HOME/.config/shell/secrets.sh}"
+CONTAINER_SECRETS_FILE=/dev/shm/purse-secrets.sh
 
-usage() { sed -n '2,27p' "$0" | sed 's/^# \{0,1\}//'; }
+usage() { sed -n '2,40p' "$0" | sed 's/^# \{0,1\}//'; }
 die() { printf 'dcbridge: %s\n' "$*" >&2; exit "${2:-2}"; }
 log() { printf 'dcbridge: %s\n' "$*"; }
 
@@ -114,21 +129,93 @@ start_container_daemon() { # start_container_daemon ID TOKEN
     "$dbr_path" container-daemon --log-file "$CONTAINER_LOG" 2>/dev/null || return 1
 }
 
+# ── the secrets tunnel ───────────────────────────────────────────────────────
+
+# purse-setup-secrets already writes a self-contained, shell-quoted file, so the
+# payload is that file verbatim with a fingerprint stapled on. Shipping the file
+# rather than re-exporting from our own environment is what lets this run under
+# systemd, which never sources a login profile — and it means a secret *removed*
+# from the vault disappears from containers too, which re-exporting would miss.
+secrets_available() {
+  [[ "${DCBRIDGE_SYNC_SECRETS:-1}" != "0" && -r "$HOST_SECRETS_FILE" ]]
+}
+
+secrets_fingerprint() {
+  sha256sum < "$HOST_SECRETS_FILE" | cut -d' ' -f1
+}
+
+secrets_payload() {
+  printf '# purse-secrets %s\n' "$(secrets_fingerprint)"
+  cat "$HOST_SECRETS_FILE"
+}
+
+container_secrets_fingerprint() {
+  in_container "$1" sed -n '1s/^# purse-secrets //p' "$CONTAINER_SECRETS_FILE" \
+    | tr -d '\r\n' || true
+}
+
+# Values arrive on stdin, never in argv: a `docker exec` command line shows up
+# in `docker inspect` and in every process listing on the host. umask before the
+# redirect, so the file is never briefly world-readable.
+push_secrets() { # push_secrets ID
+  secrets_payload \
+    | docker exec -i "$1" sh -c "umask 077 && cat > '$CONTAINER_SECRETS_FILE'" 2>/dev/null
+}
+
+# Only writes when the fingerprint differs, so a steady state is one cheap read
+# per container per pass rather than a rewrite.
+sync_secrets() { # sync_secrets ID NAME
+  local id="$1" name="$2" existing
+  secrets_available || return 0
+  existing="$(container_secrets_fingerprint "$id")"
+  [[ "$existing" == "$(secrets_fingerprint)" ]] && return 0
+  if push_secrets "$id"; then
+    log "$name: secrets ${existing:+re}synced"
+  else
+    log "$name: could not write $CONTAINER_SECRETS_FILE"
+  fi
+}
+
+# After `purse-setup-secrets`, when waiting out the poll interval is annoying.
+refresh_secrets() {
+  secrets_available || die "no readable secrets at $HOST_SECRETS_FILE — run \`purse-setup-secrets\`" 1
+
+  local id name pushed=0
+  while IFS= read -r id; do
+    [[ -n "$id" ]] || continue
+    name="$(container_name "$id")"
+    if push_secrets "$id"; then
+      log "$name: secrets pushed"
+      pushed=$((pushed + 1))
+    else
+      log "$name: could not write $CONTAINER_SECRETS_FILE"
+    fi
+  done < <(devcontainer_all)
+
+  log "$pushed container(s) updated"
+  log "new shells pick them up; in an existing one: . ~/.config/shell/env.sh"
+}
+
 # ── reconciliation ───────────────────────────────────────────────────────────
 
+# The two halves fail independently on purpose: a dbr that will not start must
+# not also cut off secrets, and an unwritable container must not stop the ports.
 reconcile() {
-  local token id name stray seen=0 bridged=0
+  local token="" id name stray seen=0 bridged=0
 
-  ensure_host_daemon || return 1
-  token="$(host_token)" || {
-    log "no auth token at $TOKEN_FILE — run \`dbr ensure\` once to create it"
-    return 1
-  }
+  if ensure_host_daemon; then
+    token="$(host_token)" ||
+      log "no auth token at $TOKEN_FILE — run \`dbr ensure\` once to create it"
+  fi
 
   while IFS= read -r id; do
     [[ -n "$id" ]] || continue
     seen=$((seen + 1))
     name="$(container_name "$id")"
+
+    sync_secrets "$id" "$name"
+
+    [[ -n "$token" ]] || continue
 
     stray="$(stray_host_daemon_pid "$id")"
     if [[ -n "$stray" ]]; then
@@ -148,7 +235,7 @@ reconcile() {
   done < <(devcontainer_all)
 
   log "$bridged/$seen devcontainer(s) bridged"
-  [[ "$bridged" -eq "$seen" ]]
+  [[ -n "$token" && "$bridged" -eq "$seen" ]]
 }
 
 watch_loop() {
@@ -199,6 +286,15 @@ report_status() {
       printf '%s: container daemon up\n' "$name"
     else
       printf '%s: container daemon DOWN\n' "$name"
+      ok=1
+    fi
+
+    if ! secrets_available; then
+      printf '  secrets:     not tunnelled (no %s)\n' "$HOST_SECRETS_FILE"
+    elif [[ "$(container_secrets_fingerprint "$id")" == "$(secrets_fingerprint)" ]]; then
+      printf '  secrets:     in sync\n'
+    else
+      printf '  secrets:     STALE — run `dcbridge --refresh-secrets`\n'
       ok=1
     fi
 
@@ -271,13 +367,20 @@ for arg in "$@"; do
     --status) action=status ;;
     --install) action=install ;;
     --uninstall) action=uninstall ;;
+    --refresh-secrets) action=refresh-secrets ;;
     -h | --help) usage; exit 0 ;;
     *) die "unknown option: $arg" ;;
   esac
 done
 
 have docker || die "docker not found" 127
-have dbr || die "dbr not found — run \`purse-install-extras\`" 127
+# Only the port half needs dbr; pushing secrets to a container does not, and
+# refusing to do it on a host without dbr installed would be gratuitous.
+case "$action" in
+  reconcile | watch | status)
+    have dbr || die "dbr not found — run \`purse-install-extras\`" 127
+    ;;
+esac
 
 case "$action" in
   reconcile) reconcile ;;
@@ -285,4 +388,5 @@ case "$action" in
   status) report_status || exit 1 ;;
   install) install_service ;;
   uninstall) uninstall_service ;;
+  refresh-secrets) refresh_secrets ;;
 esac
