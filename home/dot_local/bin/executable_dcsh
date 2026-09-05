@@ -26,6 +26,11 @@
 # If no container is running for this worktree, falls back to a container
 # started from any sibling worktree of the same repository (one devcontainer,
 # many worktrees inside), then runs `wt switch <branch>` to land back here.
+#
+# Run from a herdr pane, this also makes the containerised process legible to
+# herdr: it hands the pane's identity to the container, and names the process
+# after the agent so herdr's detector recognises it. See the "herdr" section
+# below. DCSH_HERDR=0 opts out.
 
 set -euo pipefail
 
@@ -112,6 +117,43 @@ if [[ -n "$config_file" ]]; then
 fi
 
 [[ -n "$remote_user" ]] && exec_args+=(--remote-env "LOGNAME=$remote_user")
+
+# ── herdr ────────────────────────────────────────────────────────────────────
+# herdr names the agent in a pane from that pane's foreground process, and
+# reads its state off the terminal. The terminal crosses the container wall by
+# itself; the other two do not, so hand them over.
+#
+# The pane's identity is what the agent's integration hook needs to report its
+# session id back, and $HERDR_SOCKET_PATH is where it looks for somewhere to
+# report it — pointed here at the relay dcbridge maintains. A container without
+# that relay just leaves the hook with a socket that will not connect, which it
+# already treats as "no herdr" and skips.
+herdr_relay_socket=/dev/shm/herdr.sock
+
+if [[ "${DCSH_HERDR:-1}" != "0" && "${HERDR_ENV:-}" = "1" && -n "${HERDR_PANE_ID:-}" ]]; then
+  exec_args+=(
+    --remote-env "HERDR_ENV=1"
+    --remote-env "HERDR_PANE_ID=$HERDR_PANE_ID"
+    --remote-env "HERDR_SOCKET_PATH=$herdr_relay_socket"
+  )
+fi
+
+# Mirrors the kind list from `herdr agent`. Only these get renamed: an
+# unrecognised name buys nothing, and quietly relabelling every process someone
+# runs through dcsh is a surprise waiting to happen. Override with DCSH_ARGV0.
+herdr_agent_kinds="pi claude codex gemini cursor devin agy cline omp mastracode opencode copilot kimi kiro droid amp grok hermes kilo qodercli maki"
+
+herdr_argv0="${DCSH_ARGV0:-}"
+if [[ -z "$herdr_argv0" && "${DCSH_HERDR:-1}" != "0" && ${#extra_cmd[@]} -gt 0 ]]; then
+  case " $herdr_agent_kinds " in
+    *" $(basename "${extra_cmd[0]}") "*) herdr_argv0="$(basename "${extra_cmd[0]}")" ;;
+  esac
+fi
+
+# The rename itself happens in the devcontainer shim, at the exec that actually
+# starts the CLI. Doing it here would not survive: every layer between us and
+# the agent execs something else, and each exec resets argv[0] again.
+[[ -n "$herdr_argv0" ]] && export PURSE_DEVCONTAINER_ARGV0="$herdr_argv0"
 
 # ── build the command to run inside the container ────────────────────────────
 if [[ -n "$switch_branch" ]]; then

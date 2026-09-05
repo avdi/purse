@@ -97,17 +97,51 @@ for name in $forward_env_names; do
   [ -n "$value" ] && remote_env_args+=(--remote-env "$name=$value")
 done
 
+# The interpreter a shebang script would be started through. `exec -a` cannot
+# rename such a script: the kernel rewrites argv[0] to the interpreter, so the
+# name has to be set on an interpreter we run ourselves. `#!/usr/bin/env node`
+# would exec env and reset argv[0] a second time, so resolve what env would
+# have found instead.
+shebang_interpreter() { # shebang_interpreter PATH
+  local line
+  IFS= read -r line < "$1" 2>/dev/null || return 1
+  case "$line" in
+    '#!'*) line="${line#\#!}" ;;
+    *) return 1 ;;
+  esac
+  # shellcheck disable=SC2086
+  set -- $line
+  [ "$#" -gt 0 ] || return 1
+  if [ "$(basename "$1")" = "env" ]; then
+    shift
+    [ "$#" -gt 0 ] || return 1
+    command -v "$1"
+  else
+    printf '%s' "$1"
+  fi
+}
+
 # Pass through anything that isn't `up` or `exec` untouched.
 if [ "${1:-}" != "up" ] && [ "${1:-}" != "exec" ]; then
   exec "$real_devcontainer" "$@"
 fi
 
 # For `exec`, inject the same --remote-env vars (no dotfiles/WSLg/dbr needed).
+#
+# PURSE_DEVCONTAINER_ARGV0 asks for the resulting process to carry a chosen
+# name. herdr identifies the agent in a terminal pane by the foreground
+# process's argv[0], which through `devcontainer exec` is the CLI's own
+# interpreter — so a containerised agent is invisible to it without this.
+# `dcsh` is what normally sets the variable.
 if [ "${1:-}" = "exec" ]; then
   shift  # consume `exec`
-  exec "$real_devcontainer" exec \
-    "${remote_env_args[@]+"${remote_env_args[@]}"}" \
-    "$@"
+  set -- exec "${remote_env_args[@]+"${remote_env_args[@]}"}" "$@"
+  if [ -n "${PURSE_DEVCONTAINER_ARGV0:-}" ] &&
+     interpreter="$(shebang_interpreter "$real_devcontainer")" &&
+     [ -n "$interpreter" ]; then
+    exec -a "$PURSE_DEVCONTAINER_ARGV0" "$interpreter" "$real_devcontainer" "$@"
+  fi
+  exec "$real_devcontainer" "$@"
 fi
 
 # The workspace the CLI will act on: an explicit --workspace-folder, else cwd.

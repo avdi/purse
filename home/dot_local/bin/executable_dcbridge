@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # dcbridge — keep each running devcontainer wired to the host: its ports
-# bridged, and the host's secrets readable by every shell inside it.
+# bridged, the host's secrets readable by every shell inside it, and the host's
+# herdr reachable by the agents running in it.
 #
 # Ports. dbr forwards a devcontainer's listening ports to the host so
 # `localhost:<port>` opens in a host browser. That takes two daemons: `dbr
@@ -21,7 +22,14 @@
 # them. tmpfs so they die with the container rather than persisting in the
 # named volume that holds the rest of ~/.config.
 #
-# Both halves are one problem: the shim can only decorate containers it creates
+# herdr. herdr reads an agent's identity and state straight off the pane's
+# terminal, which a containerised agent supplies as well as a host one does.
+# Its control socket is the part that stops at the container wall, so the
+# agent's integration hook — the thing that reports the native session id — has
+# nothing to talk to. `herdr-bridge` fronts that socket on a loopback port out
+# here; this pushes the matching relay into each container and keeps it up.
+#
+# All three are one problem: the shim can only decorate containers it creates
 # or execs into, and this reconciles every container that got in another way.
 #
 #   dcbridge --install           # run the reconciler as a systemd user service
@@ -35,6 +43,7 @@
 #
 # DCBRIDGE_POLL_SECONDS sets the watch interval (default 15).
 # DCBRIDGE_SYNC_SECRETS=0 opts out of the secrets half entirely.
+# DCBRIDGE_SYNC_HERDR=0 opts out of the herdr tunnel.
 #
 # Exit status: 1 when --status finds the bridge down, 2 for a bad invocation,
 # 127 when dbr or docker is missing.
@@ -49,8 +58,14 @@ UNIT_PATH="${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user/$SERVICE_NAME"
 LOOKUP_LIB="$HOME/.local/share/purse/lib/devcontainer-lookup.sh"
 HOST_SECRETS_FILE="${PURSE_SECRETS_FILE:-$HOME/.config/shell/secrets.sh}"
 CONTAINER_SECRETS_FILE=/dev/shm/purse-secrets.sh
+HERDR_TOKEN_FILE="${HERDR_BRIDGE_AUTH_TOKEN_FILE:-$HOME/.config/herdr-bridge/auth-token}"
+HERDR_RELAY_SOURCE="$HOME/.local/share/purse/lib/herdr-relay.py"
+CONTAINER_HERDR_RELAY=/dev/shm/herdr-relay.py
+CONTAINER_HERDR_TOKEN=/dev/shm/herdr-bridge-token
+CONTAINER_HERDR_SOCKET=/dev/shm/herdr.sock
+CONTAINER_HERDR_LOG=/tmp/herdr-relay.log
 
-usage() { sed -n '2,40p' "$0" | sed 's/^# \{0,1\}//'; }
+usage() { sed -n '2,49p' "$0" | sed 's/^# \{0,1\}//'; }
 die() { printf 'dcbridge: %s\n' "$*" >&2; exit "${2:-2}"; }
 log() { printf 'dcbridge: %s\n' "$*"; }
 
@@ -196,6 +211,98 @@ refresh_secrets() {
   log "new shells pick them up; in an existing one: . ~/.config/shell/env.sh"
 }
 
+# ── the herdr tunnel ─────────────────────────────────────────────────────────
+
+# Nothing here is required for a containerised agent to show up in herdr — the
+# pane's terminal already carries that. This buys the one thing the terminal
+# cannot: the agent's own session id, reported by its integration hook, which is
+# what lets herdr resume the conversation after a server restart.
+herdr_tunnel_available() {
+  [[ "${DCBRIDGE_SYNC_HERDR:-1}" != "0" ]] &&
+    have herdr-bridge &&
+    [[ -r "$HERDR_RELAY_SOURCE" ]]
+}
+
+ensure_herdr_daemon() {
+  herdr-bridge ensure > /dev/null 2>&1 || {
+    log "could not start herdr-bridge; see ~/.config/herdr-bridge/daemon.log"
+    return 1
+  }
+}
+
+herdr_relay_fingerprint() {
+  sha256sum < "$HERDR_RELAY_SOURCE" | cut -d' ' -f1
+}
+
+# The same stamp-and-compare the secrets half uses, so a steady state costs one
+# cheap read per container per pass instead of a rewrite.
+herdr_relay_payload() {
+  printf '# herdr-relay %s\n' "$(herdr_relay_fingerprint)"
+  cat "$HERDR_RELAY_SOURCE"
+}
+
+container_herdr_relay_fingerprint() { # container_herdr_relay_fingerprint ID
+  in_container "$1" sed -n '1s/^# herdr-relay //p' "$CONTAINER_HERDR_RELAY" \
+    | tr -d '\r\n' || true
+}
+
+container_herdr_relay_running() { # container_herdr_relay_running ID
+  in_container "$1" pgrep -f "$CONTAINER_HERDR_RELAY" > /dev/null 2>&1
+}
+
+container_has_python() { # container_has_python ID
+  in_container "$1" sh -c 'command -v python3' > /dev/null 2>&1
+}
+
+# Token on stdin for the same reason the secrets are: a `docker exec` command
+# line is visible in `docker inspect` and in every host process listing.
+push_herdr_relay() { # push_herdr_relay ID
+  herdr_relay_payload \
+    | docker exec -i "$1" sh -c "umask 077 && cat > '$CONTAINER_HERDR_RELAY'" 2>/dev/null || return 1
+  herdr-bridge token \
+    | docker exec -i "$1" sh -c "umask 077 && cat > '$CONTAINER_HERDR_TOKEN'" 2>/dev/null
+}
+
+start_container_herdr_relay() { # start_container_herdr_relay ID
+  docker exec -d "$1" sh -c \
+    "python3 '$CONTAINER_HERDR_RELAY' --socket '$CONTAINER_HERDR_SOCKET' --token-file '$CONTAINER_HERDR_TOKEN' >> '$CONTAINER_HERDR_LOG' 2>&1" \
+    2>/dev/null
+}
+
+# A relay running against a stale copy of the script or a rotated token is
+# worse than none, because it answers. Restart it whenever the push changed.
+sync_herdr_tunnel() { # sync_herdr_tunnel ID NAME
+  local id="$1" name="$2" existing pushed=0
+
+  herdr_tunnel_available || return 0
+  if ! container_has_python "$id"; then
+    return 0
+  fi
+
+  existing="$(container_herdr_relay_fingerprint "$id")"
+  if [[ "$existing" != "$(herdr_relay_fingerprint)" ]]; then
+    if push_herdr_relay "$id"; then
+      pushed=1
+    else
+      log "$name: could not write $CONTAINER_HERDR_RELAY"
+      return 1
+    fi
+  fi
+
+  if [[ "$pushed" -eq 1 ]] && container_herdr_relay_running "$id"; then
+    in_container "$id" pkill -f "$CONTAINER_HERDR_RELAY" || true
+  fi
+
+  container_herdr_relay_running "$id" && return 0
+
+  if start_container_herdr_relay "$id"; then
+    log "$name: herdr relay ${existing:+re}started"
+  else
+    log "$name: could not start the herdr relay"
+    return 1
+  fi
+}
+
 # ── reconciliation ───────────────────────────────────────────────────────────
 
 # The two halves fail independently on purpose: a dbr that will not start must
@@ -208,12 +315,15 @@ reconcile() {
       log "no auth token at $TOKEN_FILE — run \`dbr ensure\` once to create it"
   fi
 
+  herdr_tunnel_available && ensure_herdr_daemon || true
+
   while IFS= read -r id; do
     [[ -n "$id" ]] || continue
     seen=$((seen + 1))
     name="$(container_name "$id")"
 
     sync_secrets "$id" "$name"
+    sync_herdr_tunnel "$id" "$name" || true
 
     [[ -n "$token" ]] || continue
 
@@ -268,6 +378,15 @@ report_status() {
     echo "host daemon:  DOWN"
   fi
 
+  if ! herdr_tunnel_available; then
+    echo "herdr bridge: off"
+  elif herdr-bridge status > /dev/null 2>&1; then
+    echo "herdr bridge: up"
+  else
+    echo "herdr bridge: DOWN"
+    ok=1
+  fi
+
   if have systemctl && [[ -f "$UNIT_PATH" ]]; then
     printf 'service:      %s / %s\n' \
       "$(systemctl --user is-active "$SERVICE_NAME" 2> /dev/null || true)" \
@@ -295,6 +414,17 @@ report_status() {
       printf '  secrets:     in sync\n'
     else
       printf '  secrets:     STALE — run `dcbridge --refresh-secrets`\n'
+      ok=1
+    fi
+
+    if ! herdr_tunnel_available; then
+      printf '  herdr:       off\n'
+    elif ! container_has_python "$id"; then
+      printf '  herdr:       no python3 in this container\n'
+    elif container_herdr_relay_running "$id"; then
+      printf '  herdr:       relay up on %s\n' "$CONTAINER_HERDR_SOCKET"
+    else
+      printf '  herdr:       relay DOWN\n'
       ok=1
     fi
 

@@ -1,0 +1,317 @@
+#!/usr/bin/env python3
+"""herdr-bridge — let an agent inside a devcontainer reach the host's herdr.
+
+herdr names the agent in a pane from that pane's foreground process, and reads
+its state off the terminal. Both survive the container boundary: `dcsh` feeds
+the same bytes through the same pty. What does not cross is herdr's control
+socket, so the agent's integration hook — which reports the native session id
+that `resume_agents_on_restore` needs — has nothing to talk to.
+
+This fronts that unix socket on a loopback TCP port behind a shared token, in
+the shape dbr already uses for its own control channel. `dcbridge` runs this
+out here and pushes the matching relay into each container.
+
+  herdr-bridge ensure     start the daemon unless it is already up
+  herdr-bridge status     whether it is up, and what it is fronting
+  herdr-bridge stop
+  herdr-bridge token      print the shared token, creating it if absent
+  herdr-bridge daemon     run in the foreground
+
+Loopback is not a weaker bind than it looks: Docker Desktop NATs a container's
+outbound connection so it arrives on 127.0.0.1, and a plain Linux daemon needs
+--bind set to the bridge gateway instead.
+
+Whatever holds the token can drive herdr, and herdr can start processes on the
+host. This is a host credential wearing a container's clothes — it is only as
+contained as the containers you hand it to.
+
+HERDR_BRIDGE_SOCKET overrides which herdr socket is fronted, for a named
+session. HERDR_BRIDGE_PORT and HERDR_BRIDGE_BIND override the listener.
+"""
+
+import argparse
+import hmac
+import json
+import os
+import secrets
+import signal
+import socket
+import subprocess
+import sys
+import threading
+from pathlib import Path
+
+HANDSHAKE = "HERDR-BRIDGE/1"
+HANDSHAKE_LIMIT = 512
+HANDSHAKE_TIMEOUT = 5.0
+
+# dbr holds 19285 (control) and 19286 (data); this sits alongside them.
+DEFAULT_PORT = int(os.environ.get("HERDR_BRIDGE_PORT", "19287"))
+DEFAULT_BIND = os.environ.get("HERDR_BRIDGE_BIND", "127.0.0.1")
+
+CONFIG_HOME = Path(os.environ.get("XDG_CONFIG_HOME", Path.home() / ".config"))
+STATE_DIR = CONFIG_HOME / "herdr-bridge"
+TOKEN_FILE = STATE_DIR / "auth-token"
+PID_FILE = STATE_DIR / "daemon.pid"
+LOG_FILE = STATE_DIR / "daemon.log"
+
+
+def default_socket():
+    override = os.environ.get("HERDR_BRIDGE_SOCKET")
+    return Path(override) if override else CONFIG_HOME / "herdr" / "herdr.sock"
+
+
+# ── the shared token ─────────────────────────────────────────────────────────
+
+
+def read_token():
+    """The token both ends must agree on, created on first read.
+
+    Same contract as dbr's: a container that cannot read it is refused, and the
+    refusal is only visible in this daemon's log.
+    """
+    if TOKEN_FILE.exists():
+        existing = TOKEN_FILE.read_text().strip()
+        if existing:
+            return existing
+    STATE_DIR.mkdir(parents=True, exist_ok=True)
+    token = secrets.token_hex(32)
+    # Write through a private temp file so the token is never briefly readable.
+    tmp = TOKEN_FILE.with_suffix(".tmp")
+    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "w") as handle:
+        handle.write(token + "\n")
+    tmp.replace(TOKEN_FILE)
+    return token
+
+
+# ── the proxy ────────────────────────────────────────────────────────────────
+
+
+def pump(src, dst):
+    try:
+        while True:
+            chunk = src.recv(65536)
+            if not chunk:
+                break
+            dst.sendall(chunk)
+    except OSError:
+        pass
+    finally:
+        try:
+            dst.shutdown(socket.SHUT_WR)
+        except OSError:
+            pass
+
+
+def read_handshake(conn):
+    """Read one bounded, newline-terminated greeting.
+
+    Bounded because the peer is unauthenticated until this line parses, and an
+    unbounded read is a free way to make the daemon hold memory.
+    """
+    conn.settimeout(HANDSHAKE_TIMEOUT)
+    buffer = b""
+    while b"\n" not in buffer:
+        if len(buffer) > HANDSHAKE_LIMIT:
+            return None
+        chunk = conn.recv(64)
+        if not chunk:
+            return None
+        buffer += chunk
+    line, _, rest = buffer.partition(b"\n")
+    if rest:
+        return None
+    conn.settimeout(None)
+    return line.decode("utf-8", "replace").strip()
+
+
+def serve(conn, token, socket_path, log):
+    upstream = None
+    try:
+        greeting = read_handshake(conn)
+        if greeting is None:
+            return
+        magic, _, offered = greeting.partition(" ")
+        if magic != HANDSHAKE or not hmac.compare_digest(offered.strip(), token):
+            log("refused a connection: bad token or greeting")
+            conn.sendall(b"ERR unauthorized\n")
+            return
+        upstream = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        try:
+            upstream.connect(str(socket_path))
+        except OSError as error:
+            log(f"cannot reach {socket_path}: {error}")
+            conn.sendall(b"ERR no herdr socket\n")
+            return
+        conn.sendall(b"OK\n")
+        threading.Thread(target=pump, args=(conn, upstream), daemon=True).start()
+        pump(upstream, conn)
+    except OSError:
+        pass
+    finally:
+        for sock in (conn, upstream):
+            if sock is not None:
+                try:
+                    sock.close()
+                except OSError:
+                    pass
+
+
+def run_daemon(bind, port, socket_path):
+    def log(message):
+        print(f"herdr-bridge: {message}", flush=True)
+
+    token = read_token()
+    listener = socket.socket()
+    listener.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    listener.bind((bind, port))
+    listener.listen(16)
+
+    STATE_DIR.mkdir(parents=True, exist_ok=True)
+    PID_FILE.write_text(f"{os.getpid()}\n")
+    # The pid file outlives a kill -9 either way, but clearing it on a clean
+    # exit keeps `status` from reporting a stale pid as a running daemon.
+    for sig in (signal.SIGTERM, signal.SIGINT):
+        signal.signal(sig, lambda *_: sys.exit(0))
+
+    log(f"fronting {socket_path} on {bind}:{port}")
+    try:
+        while True:
+            conn, _ = listener.accept()
+            threading.Thread(
+                target=serve, args=(conn, token, socket_path, log), daemon=True
+            ).start()
+    finally:
+        PID_FILE.unlink(missing_ok=True)
+
+
+# ── lifecycle ────────────────────────────────────────────────────────────────
+
+
+def running_pid():
+    try:
+        pid = int(PID_FILE.read_text().strip())
+    except (OSError, ValueError):
+        return None
+    try:
+        os.kill(pid, 0)
+    except OSError:
+        return None
+    return pid
+
+
+def ensure(bind, port, socket_path):
+    pid = running_pid()
+    if pid:
+        return pid
+    STATE_DIR.mkdir(parents=True, exist_ok=True)
+    log = open(LOG_FILE, "a")
+    child = subprocess.Popen(
+        [
+            sys.executable,
+            os.path.abspath(__file__),
+            "daemon",
+            "--bind",
+            bind,
+            "--port",
+            str(port),
+            "--socket",
+            str(socket_path),
+        ],
+        stdout=log,
+        stderr=subprocess.STDOUT,
+        stdin=subprocess.DEVNULL,
+        start_new_session=True,
+    )
+    # The pid file is written by the child; wait briefly so `ensure` only
+    # returns success once the listener is actually bound.
+    for _ in range(50):
+        if running_pid():
+            return child.pid
+        try:
+            child.wait(timeout=0.1)
+        except subprocess.TimeoutExpired:
+            continue
+        break
+    return None
+
+
+def stop():
+    pid = running_pid()
+    if not pid:
+        return False
+    os.kill(pid, signal.SIGTERM)
+    PID_FILE.unlink(missing_ok=True)
+    return True
+
+
+def status(bind, port, socket_path, as_json):
+    pid = running_pid()
+    reachable = False
+    if pid:
+        probe = socket.socket()
+        probe.settimeout(1.0)
+        try:
+            probe.connect((bind if bind != "0.0.0.0" else "127.0.0.1", port))
+            reachable = True
+        except OSError:
+            pass
+        finally:
+            probe.close()
+
+    report = {
+        "running": bool(pid),
+        "pid": pid,
+        "bind": bind,
+        "port": port,
+        "socket": str(socket_path),
+        "socket_present": socket_path.exists(),
+        "reachable": reachable,
+        "token_file": str(TOKEN_FILE),
+        "log": str(LOG_FILE),
+    }
+    if as_json:
+        print(json.dumps(report))
+    else:
+        print(f"daemon:  {'up (pid ' + str(pid) + ')' if pid else 'DOWN'}")
+        print(f"listen:  {bind}:{port}{'' if reachable or not pid else '  (not accepting)'}")
+        print(f"herdr:   {socket_path}{'' if report['socket_present'] else '  MISSING'}")
+        print(f"token:   {TOKEN_FILE}")
+        print(f"log:     {LOG_FILE}")
+    return 0 if pid and reachable and report["socket_present"] else 1
+
+
+def main():
+    parser = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
+    parser.add_argument(
+        "command", choices=["daemon", "ensure", "stop", "status", "token"]
+    )
+    parser.add_argument("--bind", default=DEFAULT_BIND)
+    parser.add_argument("--port", type=int, default=DEFAULT_PORT)
+    parser.add_argument("--socket", type=Path, default=default_socket())
+    parser.add_argument("--json", action="store_true")
+    args = parser.parse_args()
+
+    if args.command == "daemon":
+        run_daemon(args.bind, args.port, args.socket)
+        return 0
+    if args.command == "ensure":
+        pid = ensure(args.bind, args.port, args.socket)
+        if not pid:
+            print(f"herdr-bridge: daemon did not start; see {LOG_FILE}", file=sys.stderr)
+            return 1
+        return 0
+    if args.command == "stop":
+        print("stopped" if stop() else "not running")
+        return 0
+    if args.command == "token":
+        print(read_token())
+        return 0
+    return status(args.bind, args.port, args.socket, args.json)
+
+
+if __name__ == "__main__":
+    sys.exit(main())
