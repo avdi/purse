@@ -13,7 +13,10 @@
 #     PulseAudio env vars so GUI apps render on the host desktop;
 #   - injects the devcontainer-bridge (dbr) feature via --additional-features
 #     so host-side port forwarding and xdg-open work like in VS Code (requires
-#     `dbr` installed on the host; runs `dbr ensure` opportunistically);
+#     `dbr` installed on the host; runs `dbr ensure` opportunistically, and
+#     forwards the host daemon's auth token so the container daemon can
+#     register). A container the shim did not create gets no feature and no
+#     bridge — `dcbridge` is what covers those;
 #   - auto-injects --config from DEVCONTAINER_CONFIG (set per-project via
 #     direnv) when the caller hasn't already supplied --config;
 #   - refuses `up` from a linked git worktree, since the container and its
@@ -215,6 +218,14 @@ if [ "$forward_dbr" = "1" ]; then
   if command -v dbr >/dev/null 2>&1; then
     # --host 127.0.0.1: see purse-install-extras for why.
     dbr ensure --host 127.0.0.1 >/dev/null 2>&1 || true
+    # The two daemons authenticate to each other with a shared token. Without
+    # this the container generates its own, the host daemon rejects it, and the
+    # only trace is "authentication failed: invalid token" in ~/.config/dbr/
+    # daemon.log — while every forwarded port simply refuses connections.
+    dbr_token_file="${DCBRIDGE_AUTH_TOKEN_FILE:-$HOME/.config/dbr/auth-token}"
+    if [ -r "$dbr_token_file" ]; then
+      remote_env_args+=(--remote-env "DCBRIDGE_AUTH_TOKEN=$(tr -d '[:space:]' < "$dbr_token_file")")
+    fi
   else
     echo "devcontainer shim: dbr not installed — run \`purse-install-extras\` to enable host port-forwarding and xdg-open → host browser" >&2
   fi

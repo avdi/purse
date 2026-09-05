@@ -46,9 +46,19 @@ fi
 # WSL resolves to the Windows LAN IP and stalls long enough to bust the 5s
 # spawn deadline. The daemon still binds 0.0.0.0 so containers reach it via
 # host.docker.internal as normal.
-if command -v dbr >/dev/null 2>&1; then
+#
+# Only on a real host. Inside a container `dbr ensure` finds no Docker, decides
+# it is the host, and starts a *host* daemon in the container's own network
+# namespace — which bridges nothing and squats the ports the container daemon
+# reports on. The container side is `dbr container-daemon`, started by the
+# injected dbr feature or by `dcbridge` out on the host.
+if [ -n "${REMOTE_CONTAINERS:-}${CODESPACES:-}${DEVCONTAINER:-}" ] || [ -f /.dockerenv ]; then
+  echo "→ inside a container — skipping \`dbr ensure\` (the host runs the daemon)"
+elif command -v dbr >/dev/null 2>&1; then
   echo "→ dbr ensure (start/update host daemon)..."
   optional_step "dbr ensure" dbr ensure --host 127.0.0.1
+  echo "→ dcbridge (reconcile container daemons)..."
+  optional_step "dcbridge" dcbridge
 fi
 
 # ---- micro (modern terminal editor; EDITOR fallback) ------------------------

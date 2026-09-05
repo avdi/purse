@@ -50,6 +50,12 @@ restart() {
   printf 'dc: restarting %s (%s)\n' "$container_id" "$container_workspace" >&2
   docker restart "$container_id" >/dev/null || die "docker restart failed"
 
+  # The container-side dbr daemon is a plain background process, not part of the
+  # entrypoint, so a restart takes it — and every forwarded port — with it. The
+  # dcbridge watcher would put it back within its poll interval; do it now so the
+  # ports are up by the time the app is.
+  command -v dcbridge >/dev/null 2>&1 && dcbridge >&2 || true
+
   local -a up_args=(up --workspace-folder "$container_workspace")
   [[ -n "$config" ]] && up_args+=(--config "$config")
   # The shim refuses `up` from a linked worktree, which is about not *creating*

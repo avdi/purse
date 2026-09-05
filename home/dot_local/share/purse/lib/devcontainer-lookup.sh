@@ -1,7 +1,8 @@
 # devcontainer-lookup.sh — find the running devcontainer for a workspace.
 #
-# Sourced by ~/.local/bin/dcsh and ~/.local/bin/dc. Defines functions only, and
-# sets no shell options, so it is safe to source under any caller's flags.
+# Sourced by ~/.local/bin/dcsh, ~/.local/bin/dc and ~/.local/bin/dcbridge.
+# Defines functions only, and sets no shell options, so it is safe to source
+# under any caller's flags.
 #
 # The devcontainer CLI matches containers by deriving a
 # `devcontainer.local_folder` label from --workspace-folder. Two things defeat
@@ -72,6 +73,24 @@ devcontainer_detect_sibling() {
     done
   done
   return 1
+}
+
+# Every running devcontainer on this machine, one id per line.
+#
+# Both labels are consulted because neither is universal: the CLI writes
+# config_file, while some VS Code versions write only local_folder. A container
+# carrying both would otherwise be visited twice.
+devcontainer_all() {
+  {
+    docker ps -q --filter "label=devcontainer.config_file" 2>/dev/null
+    docker ps -q --filter "label=devcontainer.local_folder" 2>/dev/null
+  } | sort -u
+}
+
+# The workspace a container was started from, for display.
+devcontainer_workspace_label() {
+  docker inspect "$1" \
+    --format '{{index .Config.Labels "devcontainer.local_folder"}}' 2>/dev/null
 }
 
 # This workspace's container, else a sibling worktree's.

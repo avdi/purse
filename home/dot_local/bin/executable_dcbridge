@@ -1,0 +1,288 @@
+#!/usr/bin/env bash
+# dcbridge — keep devcontainer-bridge (dbr) actually bridging.
+#
+# dbr forwards a devcontainer's listening ports to the host so `localhost:<port>`
+# opens in a host browser. That takes two daemons: `dbr host-daemon` out here,
+# and `dbr container-daemon` inside each container, connected to the first over
+# a shared auth token. The purse devcontainer shim injects the dbr *feature*,
+# but a feature only lands on a `devcontainer up` that rebuilds — so a container
+# started by VS Code, by `docker compose up`, or before the feature was adopted
+# has no container daemon, and nothing notices. The symptom is a port that
+# listens perfectly well inside the container and refuses connections outside.
+#
+# This reconciles that state: host daemon up, and every running devcontainer
+# holding a container daemon registered with it.
+#
+#   dcbridge --install     # run the reconciler as a systemd user service
+#   dcbridge --status      # what is bridged right now
+#   dcbridge               # reconcile once
+#   dcbridge --watch       # reconcile on an interval, in the foreground
+#   dcbridge --uninstall   # stop and remove the service
+#
+# --install is what makes this stop being something to remember.
+#
+# DCBRIDGE_POLL_SECONDS sets the watch interval (default 15).
+#
+# Exit status: 1 when --status finds the bridge down, 2 for a bad invocation,
+# 127 when dbr or docker is missing.
+
+set -euo pipefail
+
+POLL_SECONDS="${DCBRIDGE_POLL_SECONDS:-15}"
+TOKEN_FILE="${DCBRIDGE_AUTH_TOKEN_FILE:-$HOME/.config/dbr/auth-token}"
+CONTAINER_LOG=/tmp/dbr-container.log
+SERVICE_NAME="dcbridge.service"
+UNIT_PATH="${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user/$SERVICE_NAME"
+LOOKUP_LIB="$HOME/.local/share/purse/lib/devcontainer-lookup.sh"
+
+usage() { sed -n '2,27p' "$0" | sed 's/^# \{0,1\}//'; }
+die() { printf 'dcbridge: %s\n' "$*" >&2; exit "${2:-2}"; }
+log() { printf 'dcbridge: %s\n' "$*"; }
+
+[[ -r "$LOOKUP_LIB" ]] || die "missing $LOOKUP_LIB"
+# shellcheck source=../share/purse/lib/devcontainer-lookup.sh
+. "$LOOKUP_LIB"
+
+have() { command -v "$1" > /dev/null 2>&1; }
+
+# ── the host side ────────────────────────────────────────────────────────────
+
+# The token both daemons must agree on. dbr writes it on first `ensure`; a
+# container that generates its own instead is rejected, which shows up in the
+# host log as "authentication failed: invalid token" and nowhere else.
+host_token() {
+  [[ -r "$TOKEN_FILE" ]] || return 1
+  tr -d '[:space:]' < "$TOKEN_FILE"
+}
+
+host_daemon_running() {
+  pgrep -f 'dbr host-daemon' > /dev/null 2>&1
+}
+
+# --host 127.0.0.1 avoids dbr's default host.docker.internal probe, which on WSL
+# resolves to the Windows LAN IP and stalls past the 5s spawn deadline. The
+# daemon still binds 0.0.0.0, which is how containers reach it.
+ensure_host_daemon() {
+  host_daemon_running && return 0
+  log "starting host daemon"
+  dbr ensure --host 127.0.0.1 > /dev/null 2>&1 || {
+    log "could not start the host daemon; see ~/.config/dbr/daemon.log"
+    return 1
+  }
+}
+
+# ── the container side ───────────────────────────────────────────────────────
+
+container_name() {
+  docker inspect "$1" --format '{{.Name}}' 2>/dev/null | sed 's#^/##'
+}
+
+# `docker exec` with no shell: a login shell here would drag in the container's
+# whole profile, and one broken rc file would take the bridge down with it.
+in_container() { # in_container ID CMD...
+  local id="$1"; shift
+  docker exec "$id" "$@" 2>/dev/null
+}
+
+# `|| true` on these two: pgrep and command -v report "nothing matched" with a
+# non-zero status, which under pipefail would abort the whole reconcile pass on
+# the entirely normal case of a container that has no daemon yet.
+container_dbr_path() {
+  in_container "$1" sh -c 'command -v dbr' | tr -d '\r\n' || true
+}
+
+container_daemon_running() {
+  in_container "$1" pgrep -f 'dbr container-daemon' > /dev/null 2>&1
+}
+
+# A `dbr ensure` run inside a container starts a *host* daemon there — it sees no
+# Docker socket, concludes it is a host, and binds 19285/19286 in the container's
+# own namespace. It bridges nothing, and it occupies the ports the real container
+# daemon reports on. purse-install-extras used to do exactly this.
+stray_host_daemon_pid() {
+  in_container "$1" pgrep -f 'dbr host-daemon' | head -1 | tr -d '\r\n' || true
+}
+
+start_container_daemon() { # start_container_daemon ID TOKEN
+  local id="$1" token="$2" dbr_path
+  dbr_path="$(container_dbr_path "$id")"
+  if [[ -z "$dbr_path" ]]; then
+    log "$(container_name "$id"): no dbr binary inside — recreate it with \`dc up\` to pick up the injected feature"
+    return 1
+  fi
+  docker exec -d -e "DCBRIDGE_AUTH_TOKEN=$token" "$id" \
+    "$dbr_path" container-daemon --log-file "$CONTAINER_LOG" 2>/dev/null || return 1
+}
+
+# ── reconciliation ───────────────────────────────────────────────────────────
+
+reconcile() {
+  local token id name stray seen=0 bridged=0
+
+  ensure_host_daemon || return 1
+  token="$(host_token)" || {
+    log "no auth token at $TOKEN_FILE — run \`dbr ensure\` once to create it"
+    return 1
+  }
+
+  while IFS= read -r id; do
+    [[ -n "$id" ]] || continue
+    seen=$((seen + 1))
+    name="$(container_name "$id")"
+
+    stray="$(stray_host_daemon_pid "$id")"
+    if [[ -n "$stray" ]]; then
+      log "$name: stopping a host daemon that should not be in a container (pid $stray)"
+      in_container "$id" kill "$stray" || true
+    fi
+
+    if container_daemon_running "$id"; then
+      bridged=$((bridged + 1))
+      continue
+    fi
+
+    if start_container_daemon "$id" "$token"; then
+      log "$name: container daemon started"
+      bridged=$((bridged + 1))
+    fi
+  done < <(devcontainer_all)
+
+  log "$bridged/$seen devcontainer(s) bridged"
+  [[ "$bridged" -eq "$seen" ]]
+}
+
+watch_loop() {
+  log "reconciling every ${POLL_SECONDS}s (Ctrl-C to stop)"
+  while true; do
+    reconcile || true
+    sleep "$POLL_SECONDS"
+  done
+}
+
+# ── status ───────────────────────────────────────────────────────────────────
+
+host_listening_ports() {
+  ss -ltnH 2> /dev/null | awk '{ n = split($4, a, ":"); print a[n] }' | sort -nu
+}
+
+# Read the container's own /proc rather than assuming `ss` is installed in it.
+container_listening_ports() {
+  in_container "$1" cat /proc/net/tcp /proc/net/tcp6 \
+    | awk '$4 == "0A" { split($2, a, ":"); print strtonum("0x" a[2]) }' \
+    | sort -nu || true
+}
+
+report_status() {
+  local id name ports host_ports bridged unbridged port ok=0
+
+  if host_daemon_running; then
+    echo "host daemon:  up"
+  else
+    echo "host daemon:  DOWN"
+  fi
+
+  if have systemctl && [[ -f "$UNIT_PATH" ]]; then
+    printf 'service:      %s / %s\n' \
+      "$(systemctl --user is-active "$SERVICE_NAME" 2> /dev/null || true)" \
+      "$(systemctl --user is-enabled "$SERVICE_NAME" 2> /dev/null || true)"
+  else
+    echo "service:      not installed — run 'dcbridge --install'"
+  fi
+
+  host_ports="$(host_listening_ports)"
+
+  while IFS= read -r id; do
+    [[ -n "$id" ]] || continue
+    name="$(container_name "$id")"
+    echo
+    if container_daemon_running "$id"; then
+      printf '%s: container daemon up\n' "$name"
+    else
+      printf '%s: container daemon DOWN\n' "$name"
+      ok=1
+    fi
+
+    ports="$(container_listening_ports "$id")"
+    bridged=""; unbridged=""
+    for port in $ports; do
+      if grep -qx "$port" <<< "$host_ports"; then
+        bridged="${bridged:+$bridged }$port"
+      else
+        unbridged="${unbridged:+$unbridged }$port"
+        ok=1
+      fi
+    done
+    printf '  on host:    %s\n' "${bridged:-none}"
+    printf '  not bridged: %s\n' "${unbridged:-none}"
+  done < <(devcontainer_all)
+
+  return "$ok"
+}
+
+# ── the user service ─────────────────────────────────────────────────────────
+
+install_service() {
+  have systemctl || die "systemctl not found — no systemd user session to install into" 127
+
+  mkdir -p "$(dirname "$UNIT_PATH")"
+  cat > "$UNIT_PATH" << EOF
+# Generated by \`dcbridge --install\`. Regenerate with that command.
+[Unit]
+Description=Keep devcontainer-bridge daemons running for every devcontainer
+After=default.target
+
+[Service]
+ExecStart=%h/.local/bin/dcbridge --watch
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=default.target
+EOF
+
+  systemctl --user daemon-reload
+  systemctl --user enable --now "$SERVICE_NAME"
+
+  # Without lingering the service lives only as long as a login session does,
+  # which puts this back to "works until I close the terminal".
+  if have loginctl; then
+    loginctl enable-linger "$USER" > /dev/null 2>&1 \
+      || echo "note: lingering not enabled; the bridge starts at login rather than at boot" >&2
+  fi
+
+  echo "installed $UNIT_PATH"
+  echo "logs: journalctl --user -u $SERVICE_NAME -f"
+}
+
+uninstall_service() {
+  have systemctl || die "systemctl not found" 127
+  systemctl --user disable --now "$SERVICE_NAME" > /dev/null 2>&1 || true
+  rm -f "$UNIT_PATH"
+  systemctl --user daemon-reload
+  echo "removed $SERVICE_NAME"
+}
+
+# ── dispatch ─────────────────────────────────────────────────────────────────
+
+action=reconcile
+for arg in "$@"; do
+  case "$arg" in
+    --watch) action=watch ;;
+    --status) action=status ;;
+    --install) action=install ;;
+    --uninstall) action=uninstall ;;
+    -h | --help) usage; exit 0 ;;
+    *) die "unknown option: $arg" ;;
+  esac
+done
+
+have docker || die "docker not found" 127
+have dbr || die "dbr not found — run \`purse-install-extras\`" 127
+
+case "$action" in
+  reconcile) reconcile ;;
+  watch) watch_loop ;;
+  status) report_status || exit 1 ;;
+  install) install_service ;;
+  uninstall) uninstall_service ;;
+esac

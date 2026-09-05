@@ -43,6 +43,14 @@ if [ -z "$_git_v" ] || [ "$_git_maj" -lt 2 ] || { [ "$_git_maj" -eq 2 ] && [ "$_
 fi
 [ -n "$note_extras" ] && note_extras="  ← ${note_extras}"
 
+# The bridge is what makes a devcontainer's ports reachable from a host browser,
+# and its absence looks like an application bug rather than a missing daemon.
+note_bridge=""
+if have dcbridge && have systemctl &&
+   ! systemctl --user is-enabled dcbridge.service > /dev/null 2>&1; then
+  note_bridge="  ← service not installed; container ports won't reach the host"
+fi
+
 cat <<EOF
 
 ── purse: manual setup commands (not run by \`chezmoi apply\`) ──
@@ -50,6 +58,7 @@ cat <<EOF
   • purse-install-agents   AI agent CLIs (claude, codex, cursor, devin, auggie, agy, opencode)${note_agents}
   • purse-outfit-agents    MCP servers + agent plugins + GitKraken MCP + codebase-memory-mcp${note_outfit}
   • purse-auth-tools       Verify/remediate logins: gh, gk, auggie, MCP tokens${note_auth}
+  • dcbridge --install     Keep devcontainer ports forwarded to the host${note_bridge}
 
 EOF
 
