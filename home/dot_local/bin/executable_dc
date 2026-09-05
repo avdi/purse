@@ -10,9 +10,57 @@
 # Loads the current directory's direnv environment before delegating, so
 # project-local variables (e.g. DEVCONTAINER_CONFIG) are visible even in
 # non-interactive shells that haven't sourced direnv's hook.
+#
+# Adds one subcommand the real CLI doesn't have:
+#
+#   dc restart    Bounce this workspace's container and re-run its
+#                 postStartCommand. Seconds, and keeps the built image —
+#                 for a from-scratch container use
+#                 `dc up --remove-existing-container`.
+
+set -euo pipefail
+
+die() { printf 'dc: %s\n' "$*" >&2; exit 1; }
 
 if command -v direnv >/dev/null 2>&1; then
   eval "$(direnv export bash 2>/dev/null)" || true
 fi
 
-exec "$HOME/.local/share/purse/shims/devcontainer" "$@"
+shim="$HOME/.local/share/purse/shims/devcontainer"
+
+# `docker restart` starts the container again but runs none of the devcontainer
+# lifecycle, and postStartCommand is where a container gets the state it only
+# holds while running — Xvfb, sshd host keys, volume permissions, PATH wiring.
+# So bounce it, then hand back to `up`, which re-runs postStart on a container
+# that already exists.
+restart() {
+  local workspace resolved container_id container_workspace config
+  local lookup_lib="$HOME/.local/share/purse/lib/devcontainer-lookup.sh"
+  [[ -r "$lookup_lib" ]] || die "missing $lookup_lib"
+  # shellcheck source=../share/purse/lib/devcontainer-lookup.sh
+  . "$lookup_lib"
+
+  workspace="$(devcontainer_find_workspace)"
+  resolved="$(devcontainer_resolve "$workspace")" ||
+    die "no running devcontainer found for workspace: $workspace"
+  container_id="${resolved%%$'\t'*}"
+  container_workspace="${resolved#*$'\t'}"
+  config="$(devcontainer_config_label "$container_id")"
+
+  printf 'dc: restarting %s (%s)\n' "$container_id" "$container_workspace" >&2
+  docker restart "$container_id" >/dev/null || die "docker restart failed"
+
+  local -a up_args=(up --workspace-folder "$container_workspace")
+  [[ -n "$config" ]] && up_args+=(--config "$config")
+  # The shim refuses `up` from a linked worktree, which is about not *creating*
+  # a container pinned to a checkout that may go away. This container already
+  # exists; we are only re-running its lifecycle.
+  PURSE_DEVCONTAINER_ALLOW_WORKTREE=1 exec "$shim" "${up_args[@]}" "$@"
+}
+
+if [[ "${1-}" == restart ]]; then
+  shift
+  restart "$@"
+fi
+
+exec "$shim" "$@"
