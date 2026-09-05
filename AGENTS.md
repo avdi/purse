@@ -8,6 +8,25 @@ Changes here are applied to the live system via `chezmoi apply` (or `purse-pull`
 Frequent commits and pushes are expected and **do not require explicit authorization** from the user.
 Commit after each logical change; push promptly. Rebase on the remote if a push is rejected.
 
+Do not stop to ask. Do not offer to commit and wait for a yes. Do not leave the
+change applied locally and the source tree dirty. Pushing to `origin` here is
+routine work, not an outward-facing publication that needs a second look — the
+repo is public, but its audience is Avdi's other machines.
+
+**A change to this repo is not finished until it is applied, committed, and
+pushed.** All three, in that order, in the same sitting. `chezmoi apply` fixes
+the machine you are sitting at; the push is what fixes the others. An unpushed
+commit means every other machine — the other PC, the Mac, tomorrow's Codespace,
+the next devcontainer that installs these dotfiles — stays broken, and nothing
+will remind anyone.
+
+This holds when you arrive from somewhere else. Working in another project,
+hitting an environment problem, and tracing it back to a file here is the common
+case, not an exception: "fix this for my environment" means fix it everywhere,
+and it is a normal detour, not a scope expansion to check in about. Finish the
+dotfiles change the same way you would if you had started here, then return to
+what you were doing.
+
 ## Repo layout
 
 - `home/` — chezmoi source tree; files here are templated/installed into `$HOME`.

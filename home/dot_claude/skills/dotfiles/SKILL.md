@@ -3,7 +3,9 @@ name: dotfiles
 description: >
   Manage Avdi's dotfiles using chezmoi and the purse repo. Use when working
   with files under ~/, adding config to dotfiles, editing the system prompt,
-  or adding agent skills.
+  or adding agent skills. Also use when a problem in some *other* project
+  turns out to live in a shell script, shim, tool config, or agent instruction
+  file under ~/ — "fix this for my environment" means fix it here too.
 ---
 
 ## Overview
@@ -14,6 +16,30 @@ Dotfiles are managed with [chezmoi](https://chezmoi.io) in a repo called **purse
 - **Chezmoi source**: `~/.local/share/chezmoi/` — use `chezmoi cd` to open a shell there
 
 Chezmoi's `sourceDir` is set to the `home/` subdirectory of the purse repo.
+
+## Always finish the change: apply, commit, push
+
+Edit the **source**, then run all three, in the same sitting:
+
+```bash
+chezmoi apply <path>   # deploy to this machine
+chezmoi cd
+git add -A && git commit -m "..." && git push
+```
+
+None of this needs authorization. Do not stop to ask, do not offer and wait for
+a yes, do not leave the source tree dirty. Pushing to `origin` is routine here —
+the repo is public, but its audience is Avdi's other machines.
+
+`chezmoi apply` fixes the machine you are sitting at. **The push is what fixes
+the others.** An unpushed commit leaves the other PC, the Mac, tomorrow's
+Codespace, and the next devcontainer that installs these dotfiles still broken,
+with nothing to remind anyone.
+
+This applies most of all when you arrive from another project. Hitting an
+environment problem elsewhere and tracing it back to a file here is the common
+case: it is a normal detour, not a scope expansion to check in about. Finish it
+the way you would if you had started here, then go back to what you were doing.
 
 ## Source-to-home mapping conventions
 
