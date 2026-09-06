@@ -13,6 +13,18 @@
 # The symptom is a port that listens perfectly well inside the container and
 # refuses connections outside.
 #
+# Scanning. The container daemon discovers ports to forward by rescanning /proc
+# every --scan-interval milliseconds, and it names each port's owner by walking
+# every /proc/<pid>/fd in the container — one readlink per fd, per port, per
+# scan. A port whose owner it cannot see costs the *entire* walk every cycle,
+# and Docker's embedded DNS resolver on 127.0.0.11 is exactly such a port. Left
+# at its 1000ms default in a container running a real app, the daemon burns most
+# of a core, and a starved daemon opens its reverse data connection so late that
+# the host's 10-second connect timeout has already given up on it. That reads,
+# from a browser, as assets that hang and then reset — worst on a dev server
+# like Vite, which fans a page load out into dozens of parallel requests. So:
+# exclude the resolver, and scan less often.
+#
 # Secrets. The same shim forwards the host's resolved vault secrets as
 # --remote-env, which decorates `devcontainer exec` and the lifecycle commands
 # and nothing else. A shell reached any other way — over the container's sshd,
@@ -44,6 +56,7 @@
 # DCBRIDGE_POLL_SECONDS sets the watch interval (default 15).
 # DCBRIDGE_SYNC_SECRETS=0 opts out of the secrets half entirely.
 # DCBRIDGE_SYNC_HERDR=0 opts out of the herdr tunnel.
+# DCBRIDGE_SCAN_INTERVAL_MS sets the container daemon's scan period (default 5000).
 #
 # Exit status: 1 when --status finds the bridge down, 2 for a bad invocation,
 # 127 when dbr or docker is missing.
@@ -51,6 +64,7 @@
 set -euo pipefail
 
 POLL_SECONDS="${DCBRIDGE_POLL_SECONDS:-15}"
+SCAN_INTERVAL_MS="${DCBRIDGE_SCAN_INTERVAL_MS:-5000}"
 TOKEN_FILE="${DCBRIDGE_AUTH_TOKEN_FILE:-$HOME/.config/dbr/auth-token}"
 CONTAINER_LOG=/tmp/dbr-container.log
 SERVICE_NAME="dcbridge.service"
@@ -65,7 +79,7 @@ CONTAINER_HERDR_TOKEN=/dev/shm/herdr-bridge-token
 CONTAINER_HERDR_SOCKET=/dev/shm/herdr.sock
 CONTAINER_HERDR_LOG=/tmp/herdr-relay.log
 
-usage() { sed -n '2,49p' "$0" | sed 's/^# \{0,1\}//'; }
+usage() { sed -n '2,62p' "$0" | sed 's/^# \{0,1\}//'; }
 die() { printf 'dcbridge: %s\n' "$*" >&2; exit "${2:-2}"; }
 log() { printf 'dcbridge: %s\n' "$*"; }
 
@@ -133,15 +147,54 @@ stray_host_daemon_pid() {
   in_container "$1" pgrep -f 'dbr host-daemon' | head -1 | tr -d '\r\n' || true
 }
 
+container_daemon_pid() {
+  in_container "$1" pgrep -f 'dbr container-daemon' | head -1 | tr -d '\r\n' || true
+}
+
+# Docker's embedded DNS resolver binds 127.0.0.11 — 0B00007F in the little-endian
+# hex /proc/net/tcp speaks — on a per-container random high port, and it belongs
+# to no process the daemon can see into. It is the one unresolvable port we are
+# free to drop; sshd's 2222 is the other, and that one has to stay forwarded.
+container_resolver_ports() {
+  in_container "$1" cat /proc/net/tcp \
+    | awk '$4 == "0A" && $2 ~ /^0B00007F:/ { split($2, a, ":"); print strtonum("0x" a[2]) }' \
+    | sort -nu | paste -sd, - || true
+}
+
+# An older dbr predates --scan-interval, and killing a working daemon we then
+# cannot restart would cost more than the CPU we are trying to save.
+container_dbr_tunable() { # container_dbr_tunable ID DBR_PATH
+  in_container "$1" "$2" container-daemon --help | grep -q -- '--scan-interval'
+}
+
+# Was this daemon started by a dcbridge that knew to tune the scanner? An
+# untuned one never converges on its own, so it earns a single restart; the
+# check passes from then on. Unreadable cmdline counts as tuned — a container we
+# cannot inspect is one we should not be killing processes in.
+container_daemon_tuned() { # container_daemon_tuned ID PID
+  local cmdline
+  cmdline="$(in_container "$1" sh -c "tr '\\0' ' ' < /proc/$2/cmdline")" || return 0
+  [[ -n "$cmdline" ]] || return 0
+  [[ "$cmdline" == *--scan-interval* ]]
+}
+
 start_container_daemon() { # start_container_daemon ID TOKEN
-  local id="$1" token="$2" dbr_path
+  local id="$1" token="$2" dbr_path resolver_ports
   dbr_path="$(container_dbr_path "$id")"
   if [[ -z "$dbr_path" ]]; then
     log "$(container_name "$id"): no dbr binary inside — recreate it with \`dc up\` to pick up the injected feature"
     return 1
   fi
+
+  local -a args=(container-daemon --log-file "$CONTAINER_LOG")
+  if container_dbr_tunable "$id" "$dbr_path"; then
+    args+=(--scan-interval "$SCAN_INTERVAL_MS")
+    resolver_ports="$(container_resolver_ports "$id")"
+    [[ -n "$resolver_ports" ]] && args+=(--exclude-ports "$resolver_ports")
+  fi
+
   docker exec -d -e "DCBRIDGE_AUTH_TOKEN=$token" "$id" \
-    "$dbr_path" container-daemon --log-file "$CONTAINER_LOG" 2>/dev/null || return 1
+    "$dbr_path" "${args[@]}" 2>/dev/null || return 1
 }
 
 # ── the secrets tunnel ───────────────────────────────────────────────────────
@@ -308,7 +361,7 @@ sync_herdr_tunnel() { # sync_herdr_tunnel ID NAME
 # The two halves fail independently on purpose: a dbr that will not start must
 # not also cut off secrets, and an unwritable container must not stop the ports.
 reconcile() {
-  local token="" id name stray seen=0 bridged=0
+  local token="" id name stray pid seen=0 bridged=0
 
   if ensure_host_daemon; then
     token="$(host_token)" ||
@@ -334,8 +387,13 @@ reconcile() {
     fi
 
     if container_daemon_running "$id"; then
-      bridged=$((bridged + 1))
-      continue
+      pid="$(container_daemon_pid "$id")"
+      if [[ -z "$pid" ]] || container_daemon_tuned "$id" "$pid"; then
+        bridged=$((bridged + 1))
+        continue
+      fi
+      log "$name: restarting an untuned container daemon (pid $pid)"
+      in_container "$id" kill "$pid" || true
     fi
 
     if start_container_daemon "$id" "$token"; then
