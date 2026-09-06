@@ -7,6 +7,7 @@ packages:
     - unzip       # needed to unpack the gk (GitKraken CLI) release zip
     - fzf         # fuzzy finder — used by zoxide's zi and standalone
     - pinentry-curses  # inline TTY passphrase prompt for gpg-agent (see ~/.gnupg/gpg-agent.conf)
+    - python3     # herdr's agent hooks and the herdr-bridge relay both need it
   # gk (GitKraken CLI) isn't packaged for apt/brew-on-Linux (brew ships it as a
   # macOS-only cask), so on Unix it's installed from GitHub releases by
   # run_onchange_install-packages.sh. Windows uses winget (below).
@@ -15,7 +16,8 @@ packages:
   # (Linux and macOS) it's installed as a prebuilt binary from GitHub releases
   # by run_onchange_install-worktrunk.sh. Windows uses winget (below).
   # herdr has its own self-updating installer (herdr.dev/install.sh), run by
-  # purse-install-extras — it's an opt-in tool, not part of the core toolset.
+  # run_after_install-herdr.sh on hosts and inside devcontainers alike — the
+  # containers need it for the agent integration hooks, not just for the UI.
   # gh (GitHub CLI) is absent from Debian stable and stale in Ubuntu universe,
   # so on Linux it comes from GitHub releases via run_onchange_install-packages.sh;
   # macOS uses brew and Windows winget (both below).

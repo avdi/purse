@@ -2,6 +2,11 @@
 # Install optional / environment-specific extras that are too slow or too
 # context-sensitive to run inline on every `chezmoi apply`.
 #
+# What stays here needs a TTY (dbr's installer prompts for sudo), root, or
+# minutes of compilation. Anything that can just happen belongs in a
+# run_onchange/run_after script instead — herdr and its agent integrations left
+# for run_after_install-herdr.sh on exactly that grounds.
+#
 # chezmoi installs this to ~/.local/bin/purse-install-extras.
 # Re-running is safe; each section is idempotent.
 
@@ -75,21 +80,6 @@ else
   mkdir -p "$HOME/.local/bin"
   install_micro() { ( cd "$HOME/.local/bin" && curl -fsSL https://getmic.ro | bash ); }
   optional_step "micro install" install_micro
-fi
-
-# ---- herdr (terminal workspace manager for AI coding agents) ----------------
-# A single prebuilt binary from the project's own installer, which also handles
-# its updates from then on (`herdr update` / `herdr channel`). Identical on
-# macOS and Linux, no root required.
-#
-# Project: https://herdr.dev
-
-if command -v herdr >/dev/null 2>&1; then
-  echo "→ herdr already installed ($(herdr --version 2>/dev/null || echo version unknown))"
-else
-  echo "→ Installing herdr..."
-  install_herdr() { curl -fsSL https://herdr.dev/install.sh | sh; }
-  optional_step "herdr install" install_herdr
 fi
 
 # ---- git 2.48+ (for worktree.useRelativePaths) ------------------------------

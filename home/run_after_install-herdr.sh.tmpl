@@ -1,0 +1,109 @@
+{{- if ne .chezmoi.os "windows" -}}
+#!/bin/bash
+# chezmoi run_after: install herdr, keep its agent integrations current, and on
+# a host, keep the devcontainer bridge that serves them running.
+#
+# herdr is a terminal workspace manager for coding agents. It reads an agent's
+# identity from the pane's foreground process and its state off the terminal —
+# both of which work for an agent running inside a devcontainer, given the
+# devcontainer shim's argv[0] rename. The one piece that needs cooperation from
+# inside the container is the agent's own integration hook, which reports the
+# native session id back over `herdr-bridge`.
+#
+# Which is why this runs in containers too, and why it runs on every apply
+# rather than once. The binary updates itself (`herdr update`); what goes stale
+# is the hook file herdr writes into each agent's config. A hook left at an
+# older format version stops reporting and says nothing about it — the symptom
+# is an agent that silently never resumes. `herdr integration status` is the
+# only thing that knows, so ask it every time. It is a local binary call.
+#
+# PURSE_INSTALL_HERDR=0 skips all of it.
+#
+# Project: https://herdr.dev
+
+set -uo pipefail
+
+[ "${PURSE_INSTALL_HERDR:-1}" = "0" ] && exit 0
+
+have() { command -v "$1" > /dev/null 2>&1; }
+
+in_container() {
+  [ -n "${REMOTE_CONTAINERS:-}${CODESPACES:-}${DEVCONTAINER:-}" ] || [ -f /.dockerenv ]
+}
+
+# ---- the binary -------------------------------------------------------------
+# herdr's own installer drops a single prebuilt binary in ~/.local/bin and owns
+# updates from then on, so this only ever has to cover the first time. Network
+# failure here must not fail the apply: every other part of purse is still fine
+# without herdr, and the next apply retries.
+
+if ! have herdr; then
+  echo "→ herdr: installing..."
+  if curl -fsSL https://herdr.dev/install.sh | sh; then
+    hash -r
+  else
+    echo "⚠️  herdr: install failed — rerun \`chezmoi apply\` to retry" >&2
+  fi
+fi
+
+have herdr || exit 0
+
+# ---- the agent integrations -------------------------------------------------
+# The id list comes from herdr rather than from a manifest here, so an
+# integration herdr adds later is picked up without this script changing.
+#
+# An integration is only installed when its agent is actually present: the hook
+# is written into that agent's config tree, and creating one for an agent that
+# was never installed leaves confusing debris.
+
+# herdr's integration ids mostly match the command they hook. These are the ones
+# that don't.
+integration_cli() {
+  case "$1" in
+    cursor)          echo cursor-agent ;;
+    antigravity-cli) echo agy ;;
+    qodercli)        echo qoder ;;
+    *)               echo "$1" ;;
+  esac
+}
+
+refreshed=()
+while IFS= read -r line; do
+  id="${line%%:*}"
+  state="${line#*: }"
+  [ -n "$id" ] || continue
+  have "$(integration_cli "$id")" || continue
+  case "$state" in
+    current*) continue ;;
+  esac
+  if herdr integration install "$id" > /dev/null 2>&1; then
+    refreshed+=("$id")
+  else
+    echo "⚠️  herdr: could not install the $id integration" >&2
+  fi
+done < <(herdr integration status 2> /dev/null)
+
+if [ "${#refreshed[@]}" -gt 0 ]; then
+  echo "→ herdr: integrations installed/refreshed: ${refreshed[*]}"
+fi
+
+# ---- the host side ----------------------------------------------------------
+# Inside a container there is nothing further to do: the relay that carries the
+# hook's reports out to the host is pushed in and supervised from the host.
+#
+# Out here, the supervisor is dcbridge, and it is only useful running. Left to a
+# reminder it stays uninstalled until a container's ports or agents mysteriously
+# fail to reach the host, which is the failure this whole arrangement exists to
+# stop having. Install the service instead of mentioning it.
+
+in_container && exit 0
+have systemctl || exit 0
+have dcbridge || exit 0
+
+if ! systemctl --user is-enabled dcbridge.service > /dev/null 2>&1; then
+  echo "→ dcbridge: installing the user service (devcontainer ports, secrets, herdr)..."
+  dcbridge --install || echo "⚠️  dcbridge: service install failed" >&2
+fi
+
+exit 0
+{{- end -}}
