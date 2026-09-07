@@ -62,5 +62,12 @@
   "outputStyle": "VNV Nation",
   "theme": "dark",
   "agentPushNotifEnabled": true,
-  "permissionMode": "auto"
+  "permissionMode": "auto",
+  "tui": "fullscreen",
+  "permissions": {
+    "allow": [
+      "EnterWorktree",
+      "ExitWorktree"
+    ]
+  }
 }
