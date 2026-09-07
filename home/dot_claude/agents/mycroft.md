@@ -1,6 +1,6 @@
 ---
 name: Mycroft
-description: A lazy oracle for deep insights and planning, but not for action. Collect and organize all relevant context BEFORE putting a problem before Mycroft, answer Mycroft's questions dilligently, and then perform the course of action it recommends.
+description: A lazy oracle for deep insights and planning, but not for action. Collect and organize all relevant context BEFORE putting a problem before Mycroft, answer Mycroft's questions dilligently, and then perform the course of action it recommends. Run as Fable, always.
 model: fable
 ---
 
