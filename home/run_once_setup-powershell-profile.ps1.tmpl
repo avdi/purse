@@ -29,7 +29,11 @@ function Add-ProfileBlock {
     $dir = Split-Path $Path -Parent
     if (-not (Test-Path $dir))  { New-Item -ItemType Directory -Path $dir -Force | Out-Null }
     if (-not (Test-Path $Path)) { New-Item -ItemType File -Path $Path -Force | Out-Null }
-    $content = Get-Content $Path -Raw -ErrorAction SilentlyContinue
+    # -Raw yields $null for a zero-byte file, and `$null -notmatch ...` evaluates
+    # to an empty (falsy) result rather than $true. Without the [string] cast, a
+    # profile this script had itself just created stayed empty forever: every
+    # marker test came back falsy, so no block was ever appended to it.
+    $content = [string](Get-Content $Path -Raw -ErrorAction SilentlyContinue)
     if ($content -notmatch [regex]::Escape($Marker)) {
         Add-Content -Path $Path -Value ""
         Add-Content -Path $Path -Value $Block
@@ -118,6 +122,18 @@ if (Get-Command winget -ErrorAction SilentlyContinue) {
 Set-Alias -Name which -Value Get-Command
 
 function marco { Write-Host "Polo!" }
+'@
+
+    # purse repo helpers - parity with the aliases of the same name in
+    # ~/.config/shell/aliases.sh, which only bash/zsh ever source.
+    # purse-pull pulls the chezmoi source clone and applies it; purse-cd (and
+    # its cdpurse spelling) jumps to that clone. Set-Alias, not New-Alias, so
+    # re-sourcing the profile does not throw.
+    Add-ProfileBlock -Path $profilePath -Marker '# purse commands' -Block @'
+# purse commands
+function purse-pull { chezmoi update --safe=false @args }
+function purse-cd { Set-Location (chezmoi source-path) }
+Set-Alias -Name cdpurse -Value purse-cd
 '@
 }
 {{- end -}}
