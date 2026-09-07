@@ -43,6 +43,93 @@ have_root() {
   [ "$(id -u)" -eq 0 ] || command -v sudo >/dev/null 2>&1
 }
 
+# ---- optional tools from GitHub releases ------------------------------------
+# These four are conveniences, not load-bearing. They come from GitHub releases,
+# which fail for reasons that have nothing to do with this machine: the
+# unauthenticated API allows 60 calls an hour per source address, and a
+# devcontainer shares that budget with its host; asset downloads redirect to a
+# CDN that occasionally 404s under load. Under `set -euo pipefail` either one
+# takes down the whole apply — and with it the shell config, git config, and
+# agent instructions the same run was deploying. So each install is a function
+# invoked through try_install, and a failure leaves a warning behind instead of
+# a half-configured machine.
+
+# The latest release tag for a repo, or empty when it cannot be determined.
+latest_release_tag() {
+  curl -fsSL "https://api.github.com/repos/$1/releases/latest" \
+    | grep '"tag_name"' | cut -d'"' -f4 || true
+}
+
+try_install() {
+  _tool="$1"
+  shift
+  "$@" || echo "⚠️  ${_tool}: install failed — skipping" >&2
+}
+
+install_vscli() {
+  local arch tag
+  case "$(uname -m)" in
+    x86_64)  arch="x86_64-unknown-linux-musl" ;;
+    aarch64) arch="arm-unknown-linux-gnueabihf" ;;
+    *)       echo "⚠️  vscli: unsupported arch $(uname -m) — skipping" >&2; return 0 ;;
+  esac
+  tag="$(latest_release_tag michidk/vscli)"
+  [ -n "$tag" ] || return 1
+  echo "→ vscli: installing from GitHub releases..."
+  curl -fsSL "https://github.com/michidk/vscli/releases/download/${tag}/vscli-${arch}.tar.gz" \
+    | tar -xz --strip-components=1 -C "$HOME/.local/bin" "vscli-${arch}/vscli" || return 1
+  chmod +x "$HOME/.local/bin/vscli"
+}
+
+install_zoxide() {
+  local target version
+  case "$(uname -m)" in
+    x86_64)  target="x86_64-unknown-linux-musl" ;;
+    aarch64) target="aarch64-unknown-linux-musl" ;;
+    armv7*)  target="armv7-unknown-linux-musleabihf" ;;
+    *)       echo "⚠️  zoxide: unsupported arch $(uname -m) — skipping" >&2; return 0 ;;
+  esac
+  version="$(latest_release_tag ajeetdsouza/zoxide | sed 's/^v//')"
+  [ -n "$version" ] || return 1
+  echo "→ zoxide: installing from GitHub releases..."
+  curl -fsSL "https://github.com/ajeetdsouza/zoxide/releases/download/v${version}/zoxide-${version}-${target}.tar.gz" \
+    | tar -xz -C "$HOME/.local/bin" zoxide || return 1
+  chmod +x "$HOME/.local/bin/zoxide"
+}
+
+install_yq() {
+  local arch tag
+  case "$(uname -m)" in
+    x86_64|amd64)  arch="amd64" ;;
+    aarch64|arm64) arch="arm64" ;;
+    armv7*)        arch="arm" ;;
+    *)             echo "⚠️  yq: unsupported arch $(uname -m) — skipping" >&2; return 0 ;;
+  esac
+  tag="$(latest_release_tag mikefarah/yq)"
+  [ -n "$tag" ] || return 1
+  echo "→ yq: installing from GitHub releases..."
+  curl -fsSL -o "$HOME/.local/bin/yq" \
+    "https://github.com/mikefarah/yq/releases/download/${tag}/yq_linux_${arch}" || return 1
+  chmod +x "$HOME/.local/bin/yq"
+}
+
+install_gh() {
+  local arch version release
+  case "$(uname -m)" in
+    x86_64|amd64)  arch="amd64" ;;
+    aarch64|arm64) arch="arm64" ;;
+    armv7*)        arch="armv6" ;;
+    *)             echo "⚠️  gh: unsupported arch $(uname -m) — skipping" >&2; return 0 ;;
+  esac
+  version="$(latest_release_tag cli/cli | sed 's/^v//')"
+  [ -n "$version" ] || return 1
+  release="gh_${version}_linux_${arch}"
+  echo "→ gh: installing GitHub CLI from GitHub releases..."
+  curl -fsSL "https://github.com/cli/cli/releases/download/v${version}/${release}.tar.gz" \
+    | tar -xz --strip-components=2 -C "$HOME/.local/bin" "${release}/bin/gh" || return 1
+  chmod +x "$HOME/.local/bin/gh"
+}
+
 # ---- bootstrap Homebrew (macOS only) ----------------------------------------
 # On Linux we use apt + GitHub releases directly, so we don't auto-install brew.
 # Brew may already be present on Linux (e.g. for a newer git) and that's fine —
@@ -118,88 +205,29 @@ elif command -v apt-get >/dev/null 2>&1 && have_root; then
   fi
 
 
-  # vscli: install binary from GitHub releases
+  # vscli: launches a devcontainer from the command line.
   if ! command -v vscli >/dev/null 2>&1; then
-    echo "→ vscli: installing from GitHub releases..."
-    _arch="$(uname -m)"
-    case "$_arch" in
-      x86_64)  _vscli_arch="x86_64-unknown-linux-musl" ;;
-      aarch64) _vscli_arch="arm-unknown-linux-gnueabihf" ;;
-      *)        echo "⚠️  vscli: unsupported arch $_arch"; _vscli_arch="" ;;
-    esac
-    if [ -n "$_vscli_arch" ]; then
-      _vscli_ver="$(curl -fsSL https://api.github.com/repos/michidk/vscli/releases/latest | grep '"tag_name"' | cut -d'"' -f4)"
-      curl -fsSL "https://github.com/michidk/vscli/releases/download/${_vscli_ver}/vscli-${_vscli_arch}.tar.gz" \
-        | tar -xz --strip-components=1 -C "$HOME/.local/bin" "vscli-${_vscli_arch}/vscli"
-      chmod +x "$HOME/.local/bin/vscli"
-    fi
+    try_install vscli install_vscli
   fi
 
   # zoxide: apt ships a very old version (0.4.3) that lacks bash completion; install
   # the modern release from GitHub into ~/.local/bin (which precedes /usr/bin in PATH).
   if [ ! -f "$HOME/.local/bin/zoxide" ]; then
-    echo "→ zoxide: installing from GitHub releases..."
-    _zoxide_ver="$(curl -fsSL https://api.github.com/repos/ajeetdsouza/zoxide/releases/latest | grep '"tag_name"' | cut -d'"' -f4 | tr -d 'v')"
-    case "$(uname -m)" in
-      x86_64)  _zoxide_target="x86_64-unknown-linux-musl" ;;
-      aarch64) _zoxide_target="aarch64-unknown-linux-musl" ;;
-      armv7*)  _zoxide_target="armv7-unknown-linux-musleabihf" ;;
-      *)       _zoxide_target="" ;;
-    esac
-    if [ -n "$_zoxide_target" ]; then
-      curl -fsSL "https://github.com/ajeetdsouza/zoxide/releases/download/v${_zoxide_ver}/zoxide-${_zoxide_ver}-${_zoxide_target}.tar.gz" \
-        | tar -xz -C "$HOME/.local/bin" zoxide
-      chmod +x "$HOME/.local/bin/zoxide"
-    else
-      echo "⚠️  zoxide: unsupported arch $(uname -m) — skipping" >&2
-    fi
+    try_install zoxide install_zoxide
   fi
 
   # yq (mikefarah): single static YAML processor binary. apt ships kislyuk/yq
   # (a different jq-wrapper) and brew would source-build it in a home-dir prefix,
   # so install the prebuilt release into ~/.local/bin (which precedes /usr/bin).
   if [ ! -f "$HOME/.local/bin/yq" ]; then
-    case "$(uname -m)" in
-      x86_64|amd64)  _yq_arch="amd64" ;;
-      aarch64|arm64) _yq_arch="arm64" ;;
-      armv7*)        _yq_arch="arm" ;;
-      *)             _yq_arch="" ;;
-    esac
-    if [ -n "$_yq_arch" ]; then
-      echo "→ yq: installing from GitHub releases..."
-      _yq_ver="$(curl -fsSL https://api.github.com/repos/mikefarah/yq/releases/latest | grep '"tag_name"' | cut -d'"' -f4)"
-      curl -fsSL -o "$HOME/.local/bin/yq" \
-        "https://github.com/mikefarah/yq/releases/download/${_yq_ver}/yq_linux_${_yq_arch}"
-      chmod +x "$HOME/.local/bin/yq"
-    else
-      echo "⚠️  yq: unsupported arch $(uname -m) — skipping" >&2
-    fi
+    try_install yq install_yq
   fi
 
   # gh (GitHub CLI): git's credential helper for github.com, per ~/.config/git/config.
   # Absent from Debian stable and stale in Ubuntu universe, so take the release
   # binary — same approach as gk/zoxide/yq above.
   if ! command -v gh >/dev/null 2>&1; then
-    case "$(uname -m)" in
-      x86_64|amd64)  _gh_arch="amd64" ;;
-      aarch64|arm64) _gh_arch="arm64" ;;
-      armv7*)        _gh_arch="armv6" ;;
-      *)             _gh_arch="" ;;
-    esac
-    if [ -n "$_gh_arch" ]; then
-      echo "→ gh: installing GitHub CLI from GitHub releases..."
-      _gh_ver="$(curl -fsSL https://api.github.com/repos/cli/cli/releases/latest | grep '"tag_name"' | cut -d'"' -f4 | tr -d 'v')"
-      if [ -z "$_gh_ver" ]; then
-        echo "⚠️  gh: could not determine latest version (GitHub API rate limit?) — skipping" >&2
-      else
-        curl -fsSL "https://github.com/cli/cli/releases/download/v${_gh_ver}/gh_${_gh_ver}_linux_${_gh_arch}.tar.gz" \
-          | tar -xz --strip-components=2 -C "$HOME/.local/bin" "gh_${_gh_ver}_linux_${_gh_arch}/bin/gh" \
-          || echo "⚠️  gh: download failed — skipping" >&2
-        chmod +x "$HOME/.local/bin/gh" 2>/dev/null || true
-      fi
-    else
-      echo "⚠️  gh: unsupported arch $(uname -m) — skipping" >&2
-    fi
+    try_install gh install_gh
   fi
 
   # uv: fast Python package manager and tool runner (not in apt — use the official installer)

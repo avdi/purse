@@ -59,8 +59,8 @@
       }
     }
   },
+  "outputStyle": "VNV Nation",
   "theme": "dark",
   "agentPushNotifEnabled": true,
-  "permissionMode": "auto",
-  "outputStyle": "VNV Nation"
+  "permissionMode": "auto"
 }
