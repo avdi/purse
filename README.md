@@ -44,6 +44,16 @@ home/
   dot_config/shell/env.sh             # → ~/.config/shell/env.sh  (EDITOR, PATH, etc.)
   dot_config/shell/aliases.sh         # → ~/.config/shell/aliases.sh
   dot_local/bin/executable_dc         # → ~/.local/bin/dc  (devcontainer shorthand)
+  dot_local/bin/executable_dcsh       # → ~/.local/bin/dcsh (shell into this project's
+                                      #   devcontainer; makes the containerised agent
+                                      #   legible to herdr — see "herdr" below)
+  dot_local/bin/executable_dcbridge   # → ~/.local/bin/dcbridge (reconciles every running
+                                      #   devcontainer: ports, secrets, herdr relay)
+  dot_local/bin/executable_herdr-bridge   # → ~/.local/bin/herdr-bridge (fronts herdr's
+                                      #   control socket on a loopback port)
+  dot_local/share/purse/lib/herdr-relay.py
+                                      # pushed into each container by dcbridge; the
+                                      #   container half of herdr-bridge
   dot_local/share/purse/shims/executable_devcontainer.tmpl
                                       # → ~/.local/share/purse/shims/devcontainer
                                       #   shim that wraps `devcontainer up`; see
@@ -52,6 +62,8 @@ home/
   run_onchange_install-packages.sh.tmpl   # installs packages on Linux/macOS
   run_onchange_install-packages.ps1.tmpl  # installs packages on Windows (winget)
   run_once_setup-shell.sh             # wires aliases + direnv into rc files (once)
+  run_after_install-herdr.sh.tmpl     # installs herdr + refreshes its agent integration
+                                      #   hooks on every apply (host and container)
   run_once_setup-lenticel.sh.tmpl     # bootstraps lenticel frp tunnel (once)
   AppData/Local/Packages/Microsoft.WindowsTerminal_8wekyb3d8bbwe/LocalState/settings.json
                                       # → Windows Terminal settings (Windows only;
@@ -163,7 +175,102 @@ For every `up` invocation the shim adds:
 
 `dbr` requires a one-time host install (`curl -fsSL https://github.com/bradleybeddoes/devcontainer-bridge/releases/latest/download/install.sh | bash`) and runs a long-lived host daemon. Without it the injected feature is inert — the container daemon just retries silently — so containers still come up cleanly.
 
+A container the shim did not create — started by VS Code, by `docker compose up`, or built without the feature — gets no bridge from the shim at all. `dcbridge` reconciles those: it runs the host dbr daemon, starts a container daemon in anything missing one, drops the host's resolved vault secrets on tmpfs where `env.sh` sources them (`--remote-env` only decorates `devcontainer exec`, so an sshd or `docker exec` shell inherits none of them), and maintains the herdr relay described below. `dcbridge --install` runs it as a systemd user service; `chezmoi apply` installs that service on a host. `dcbridge --status` reports all three.
+
 To make `xdg-open` and `$BROWSER` actually reach the host browser, set `BROWSER=dbr-open` in your container shell rc (already wired into purse dotfiles).
+
+## herdr — one workspace, every container
+
+[herdr](https://herdr.dev) is a terminal workspace manager for coding agents: panes, a
+sidebar listing every agent it can see, and each agent's live state — working, idle,
+waiting on input — read off that pane's terminal.
+
+One herdr runs on the host, and its panes reach into containers with `dcsh` (or the
+`work` shell function that wraps it). Every project's containerised agent lands in that
+one sidebar, and a pane costs a container shell rather than a second herdr server. The
+alternative — `herdr --remote` per project — is one server and one sidebar per repo.
+
+### What herdr needs from a pane, and where each piece comes from
+
+| herdr wants | Source | Crosses the container wall via |
+|---|---|---|
+| the agent's **state** | the pane's terminal, matched against herdr's downloadable rule manifest | nothing — a pty is a pty |
+| the agent's **identity** | the pane's foreground process name | `dcsh` → `PURSE_DEVCONTAINER_ARGV0` → the devcontainer shim, which re-execs the CLI under the agent's name |
+| the agent's **session id** | the agent's own herdr integration hook, inside the container | `$HERDR_SOCKET_PATH` → `herdr-relay` → `herdr-bridge` → the host's `herdr.sock` |
+
+Identity is the load-bearing one: without it herdr sees no agent in the pane and never
+consults the rules that would have matched. With it, detection, state, `herdr agent
+prompt` and `herdr agent wait` all work against a containerised agent. The session id
+buys one further thing — `resume_agents_on_restore`, which needs the agent's *native*
+session id to pick a conversation back up after a herdr restart.
+
+**Identity.** `devcontainer exec` starts the CLI's own node interpreter, so the pane's
+foreground process is `node`. `dcsh` recognises the command it was handed as one of
+herdr's agent kinds and asks the shim to rename it. `exec -a` cannot rename a shebang
+script — the kernel rewrites `argv[0]` to the interpreter — so the shim resolves that
+interpreter and runs it itself under the requested name. The rename happens at the last
+exec, in the shim, because every layer in between resets `argv[0]` again.
+
+**Session id.** `herdr-bridge` fronts the host's `~/.config/herdr/herdr.sock` on
+`127.0.0.1:19287`, behind a shared token at `~/.config/herdr-bridge/auth-token` — the
+same shape dbr uses for its own control channel on 19285/19286. `dcbridge` pushes
+`herdr-relay.py` and a copy of the token into `/dev/shm` of every running devcontainer
+and keeps the relay alive, restarting it whenever the script or the token changes. The
+relay listens on a unix socket at `/dev/shm/herdr.sock` because `AF_UNIX` is the only
+thing herdr's integration hooks know how to open; `dcsh` points `$HERDR_SOCKET_PATH`
+there. A container with no relay leaves the hook with a socket that won't connect, which
+it already treats as "no herdr" and skips.
+
+Loopback is not a weaker bind than it reads as: Docker Desktop NATs the container's
+outbound connection so it arrives on `127.0.0.1`. Plain Linux Docker needs
+`HERDR_BRIDGE_BIND` pointed at the bridge gateway instead. The relay needs `python3` in
+the container (purse installs it); a container without one is skipped silently.
+
+> **The token is a host credential.** Whoever holds it can drive herdr, and herdr can
+> start processes on the host. Handing it to a container is a real trade.
+> `DCBRIDGE_SYNC_HERDR=0` declines it and keeps everything else.
+
+### Using it
+
+```sh
+herdr                          # on the host
+work myproject some-branch     # dc up + dcsh + wt switch, from a herdr pane
+dcsh -- claude                 # or straight into an agent
+```
+
+Nothing is configured per project. `dcsh` forwards the pane's identity only when it is
+actually running in a herdr pane (`HERDR_ENV=1` with a `HERDR_PANE_ID`), and only
+renames commands it recognises as agents — relabelling everything run through `dcsh`
+would be a surprise waiting to happen.
+
+### Checking it
+
+```sh
+dcbridge --status         # herdr bridge up? relay up in each container?
+herdr-bridge status       # daemon, listener, socket, token file, log
+herdr integration status  # whether each agent's hook is current
+```
+
+`~/.config/herdr-bridge/daemon.log` and the container's `/tmp/herdr-relay.log` hold the
+refusals — a bad token is visible nowhere else.
+
+### Setup and knobs
+
+`run_after_install-herdr.sh.tmpl` runs on **every** apply, on hosts and inside containers.
+It installs the herdr binary if it is missing (herdr updates itself after that), then
+asks `herdr integration status` which hooks have fallen behind herdr's current format
+version and reinstalls those — a stale hook stops reporting and says nothing about it.
+Only agents whose CLI is actually present get a hook. On a host it also installs the
+`dcbridge` user service, which is what supervises the relays.
+
+| Knob | Default | Effect |
+|---|---|---|
+| `PURSE_INSTALL_HERDR` | `1` | `0` skips installing herdr and its integrations entirely |
+| `DCBRIDGE_SYNC_HERDR` | `1` | `0` runs no bridge daemon and pushes no relay into containers |
+| `DCSH_HERDR` | `1` | `0` stops `dcsh` forwarding pane identity and renaming the process |
+| `DCSH_ARGV0` | *(derived from the command)* | force the name `dcsh` asks the shim for |
+| `HERDR_BRIDGE_PORT` / `HERDR_BRIDGE_BIND` | `19287` / `127.0.0.1` | move the listener |
+| `HERDR_BRIDGE_SOCKET` | `~/.config/herdr/herdr.sock` | front a different herdr session's socket |
 
 ## Links
 
