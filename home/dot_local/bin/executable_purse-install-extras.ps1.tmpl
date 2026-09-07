@@ -1,0 +1,35 @@
+{{- if eq .chezmoi.os "windows" -}}
+# purse-install-extras has no Windows edition. This file exists so that typing
+# `purse-install-extras` in PowerShell says so.
+#
+# Without it, the name resolved to the extensionless bash script chezmoi also
+# deployed here (CommandType: Application). Windows has no association for an
+# extensionless file, so the shell answered with the "How do you want to open
+# this file?" picker instead of running anything. .chezmoiignore now keeps that
+# script off Windows entirely; this .ps1 is the signpost left in its place, and
+# matches the .ps1 counterparts purse-install-agents and purse-outfit-agents
+# already ship.
+#
+# Everything the Unix script installs is either already covered here or is
+# meaningless here:
+#
+#   dbr (devcontainer-bridge)  Linux/macOS host daemon; the upstream installer
+#                              is a shell script with no Windows build. Run it
+#                              inside WSL if you want the bridge.
+#   micro                      The EDITOR fallback wired up by env.sh, which is
+#                              bash. The PowerShell profile does not use it.
+#   git >= 2.48                Git for Windows is already far newer, and winget
+#                              keeps it current.
+#   Homebrew toolset           winget covers the same list on Windows; see
+#                              .chezmoidata/packages.yaml, installed by
+#                              run_onchange_install-packages.ps1.
+
+Write-Host ""
+Write-Host "purse-install-extras is Unix-only; there is nothing to install on Windows." -ForegroundColor Yellow
+Write-Host "  * winget covers the toolset here, installed by 'chezmoi apply'."
+Write-Host "  * Agent CLIs:      purse-install-agents.ps1"
+Write-Host "  * Outfit agents:   purse-outfit-agents.ps1"
+Write-Host "  * Want dbr / micro / a newer git? Run purse-install-extras inside WSL"
+Write-Host "    or a devcontainer, where those extras apply."
+Write-Host ""
+{{- end -}}

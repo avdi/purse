@@ -17,3 +17,17 @@
 {{ if ne .chezmoi.os "windows" }}
 AppData
 {{ end }}
+
+# purse-install-extras is the Unix-only extras installer (dbr, micro, git from
+# source, Homebrew) -- none of it applies on Windows, where winget covers the
+# toolset. Worse, an extensionless file on PATH resolves as an Application with
+# no shell association, so typing the name in PowerShell popped the "How do you
+# want to open this file?" picker. The .ps1 counterpart is the Windows entry
+# point. Note: an ignored path is dropped from the target state entirely, so
+# .chezmoiremove cannot also delete a copy an earlier apply left behind --
+# chezmoi rejects that pairing as an inconsistent state. Any such leftover is
+# inert: PowerShell resolves the .ps1 ahead of an extensionless Application,
+# so the picker stays gone regardless. Delete it by hand if it bothers you.
+{{ if eq .chezmoi.os "windows" }}
+.local/bin/purse-install-extras
+{{ end }}
