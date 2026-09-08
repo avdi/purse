@@ -41,6 +41,20 @@
 	helper =
 	helper = !gh auth git-credential
 {{/*
+  Containers routinely get a forwarded ssh-agent socket with no keys in it:
+  SSH_AUTH_SOCK is set, `ssh-add -l` reports no identities, and git@github.com
+  remotes fail with "Permission denied (publickey)". gh's token auth is what
+  works there, so rewrite SSH remotes to HTTPS and let the credential helper
+  above serve them. Keyed on /.dockerenv rather than SSH_AUTH_SOCK precisely
+  because the socket is present and useless. Outside a container the SSH keys
+  are the real ones, and the remotes are left as written.
+*/ -}}
+{{- if stat "/.dockerenv" }}
+[url "https://github.com/"]
+	insteadOf = git@github.com:
+	insteadOf = ssh://git@github.com/
+{{- end }}
+{{/*
   Only emit the Git-for-Windows credential helper in *real* WSL2 user-space.
   The kernel osrelease string contains "microsoft" for any Linux running on
   a WSL2 kernel — including containers under Docker Desktop on Windows, which
