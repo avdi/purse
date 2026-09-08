@@ -6,7 +6,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash '/home/user/.claude/hooks/herdr-agent-state.sh' session",
+            "command": "~/.claude/hooks/herdr-agent-state.sh session",
             "timeout": 10
           }
         ]
@@ -63,11 +63,5 @@
   "theme": "dark",
   "agentPushNotifEnabled": true,
   "permissionMode": "auto",
-  "tui": "fullscreen",
-  "permissions": {
-    "allow": [
-      "EnterWorktree",
-      "ExitWorktree"
-    ]
-  }
+  "model": "sonnet"
 }
