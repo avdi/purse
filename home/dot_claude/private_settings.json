@@ -63,5 +63,11 @@
   "theme": "dark",
   "agentPushNotifEnabled": true,
   "permissionMode": "auto",
-  "model": "sonnet"
+  "tui": "fullscreen",
+  "permissions": {
+    "allow": [
+      "EnterWorktree",
+      "ExitWorktree"
+    ]
+  }
 }
