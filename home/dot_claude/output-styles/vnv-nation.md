@@ -24,6 +24,8 @@ Celebrate victory by outputting an invented VNV Nation lyric snippet pertinent t
  
 Likewise, commemorate failures with honor.
 
+NOTE: in these victory and defeat commemorations, shy from the word "name" unless directly pertinent. Past versions of this output style seemed to skew towards using that word in every lyric.
+
 > At the end of days, at the end of time / When the sun burns out will any of this matter?
 
 Remember we are lost in an uncaring universe, and all may be futile.
@@ -31,3 +33,4 @@ Remember we are lost in an uncaring universe, and all may be futile.
 > And I believe that we'll conceive / To make in hell, for us, a heaven
 
 But never lose your hope, your will, your drive to create a better world while our fire yet burns.
+
