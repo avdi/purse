@@ -67,12 +67,14 @@ outfitting_whole_machine() { [ "${#requested_agents[@]}" -eq 0 ]; }
 # Names for the same agent in other tools' vocabularies. gk calls Claude Code
 # `claude-cli` and reserves `claude` for the desktop app; skills.sh has its own
 # spellings again. Empty means that tool has no counterpart for this agent.
+# gk calls Claude Code `claude-cli` and reserves `claude` for the desktop app.
+# cursor, copilot, opencode and antigravity are absent on purpose: chezmoi
+# renders their MCP registries, GitKraken entry included, so gk has nothing to
+# add there.
 gk_platform_for() {
   case "$1" in
     claude) echo claude-cli ;;
-    agy)    echo antigravity ;;
-    cursor-agent) echo cursor ;;
-    codex|copilot|gemini|kiro|opencode) echo "$1" ;;
+    codex|gemini|kiro) echo "$1" ;;
     *) echo "" ;;
   esac
 }
@@ -133,23 +135,6 @@ register_codex() {
   codex mcp add ripgrep -- "$rg_cmd" ${rg_args[@]+"${rg_args[@]}"}
   codex mcp remove codebase-memory-mcp >/dev/null 2>&1 || true
   codex mcp add codebase-memory-mcp -- "$cbm_cmd" ${cbm_args[@]+"${cbm_args[@]}"}
-}
-
-register_copilot() {
-  # copilot CLI does not expand ${VAR} in header values (same limitation as
-  # auggie, see register_auggie below), so the github HTTP MCP cannot be
-  # registered with an env-var token reference — it would send the literal
-  # string and get a 401/400. copilot has its own built-in GitHub connection,
-  # so skip it here rather than register a broken entry.
-  copilot mcp remove github >/dev/null 2>&1 || true
-  copilot mcp remove playwright >/dev/null 2>&1 || true
-  copilot mcp add playwright -- "$pw_cmd" ${pw_args[@]+"${pw_args[@]}"}
-  # Auggie MCP is incompatible with Copilot; remove stale registrations.
-  copilot mcp remove auggie >/dev/null 2>&1 || true
-  copilot mcp remove ripgrep >/dev/null 2>&1 || true
-  copilot mcp add ripgrep -- "$rg_cmd" ${rg_args[@]+"${rg_args[@]}"}
-  copilot mcp remove codebase-memory-mcp >/dev/null 2>&1 || true
-  copilot mcp add codebase-memory-mcp -- "$cbm_cmd" ${cbm_args[@]+"${cbm_args[@]}"}
 }
 
 register_devin() {
@@ -215,74 +200,6 @@ register_vscode() {
   cbm=$(jq -n --arg cmd "$cbm_cmd" --argjson args "$cbm_args_json" \
         '{name:"codebase-memory-mcp", command:$cmd, args:$args}')
   code --add-mcp "$cbm"
-}
-
-register_cursor() {
-  local cfg="$HOME/.cursor/mcp.json" gh pw
-  gh=$(jq -n --arg url "$gh_url" --arg auth "$gh_bearer_envcolon" \
-        '{url:$url, headers:{Authorization:$auth}}')
-  jq_upsert "$cfg" mcpServers github "$gh"
-  pw=$(jq -n --arg cmd "$pw_cmd" --argjson args "$pw_args_json" \
-        '{command:$cmd, args:$args}')
-  jq_upsert "$cfg" mcpServers playwright "$pw"
-  local ag
-  ag=$(jq -n --arg cmd "$ag_cmd" --argjson args "$ag_args_json" \
-        '{command:$cmd, args:$args}')
-  jq_upsert "$cfg" mcpServers auggie "$ag"
-  local rg
-  rg=$(jq -n --arg cmd "$rg_cmd" --argjson args "$rg_args_json" \
-        '{command:$cmd, args:$args}')
-  jq_upsert "$cfg" mcpServers ripgrep "$rg"
-  local cbm
-  cbm=$(jq -n --arg cmd "$cbm_cmd" --argjson args "$cbm_args_json" \
-        '{command:$cmd, args:$args}')
-  jq_upsert "$cfg" mcpServers codebase-memory-mcp "$cbm"
-}
-
-register_opencode() {
-  local cfg="$HOME/.config/opencode/opencode.json" gh pw
-  gh=$(jq -n --arg url "$gh_url" --arg auth "$gh_bearer_brace" \
-        '{type:"remote", url:$url, enabled:true, headers:{Authorization:$auth}}')
-  jq_upsert "$cfg" mcp github "$gh"
-  pw=$(jq -n --arg cmd "$pw_cmd" --argjson args "$pw_args_json" \
-        '{type:"local", enabled:true, command:([$cmd] + $args)}')
-  jq_upsert "$cfg" mcp playwright "$pw"
-  local ag
-  ag=$(jq -n --arg cmd "$ag_cmd" --argjson args "$ag_args_json" \
-        '{type:"local", enabled:true, command:([$cmd] + $args)}')
-  jq_upsert "$cfg" mcp auggie "$ag"
-  local rg
-  rg=$(jq -n --arg cmd "$rg_cmd" --argjson args "$rg_args_json" \
-        '{type:"local", enabled:true, command:([$cmd] + $args)}')
-  jq_upsert "$cfg" mcp ripgrep "$rg"
-  local cbm
-  cbm=$(jq -n --arg cmd "$cbm_cmd" --argjson args "$cbm_args_json" \
-        '{type:"local", enabled:true, command:([$cmd] + $args)}')
-  jq_upsert "$cfg" mcp codebase-memory-mcp "$cbm"
-}
-
-# Antigravity (agy): global config is ~/.gemini/config/mcp_config.json and HTTP
-# servers use `serverUrl` (not `url`).
-register_antigravity() {
-  local cfg="$HOME/.gemini/config/mcp_config.json" gh pw
-  gh=$(jq -n --arg url "$gh_url" --arg auth "$gh_bearer_dollar" \
-        '{serverUrl:$url, headers:{Authorization:$auth}}')
-  jq_upsert "$cfg" mcpServers github "$gh"
-  pw=$(jq -n --arg cmd "$pw_cmd" --argjson args "$pw_args_json" \
-        '{command:$cmd, args:$args}')
-  jq_upsert "$cfg" mcpServers playwright "$pw"
-  local ag
-  ag=$(jq -n --arg cmd "$ag_cmd" --argjson args "$ag_args_json" \
-        '{command:$cmd, args:$args}')
-  jq_upsert "$cfg" mcpServers auggie "$ag"
-  local rg
-  rg=$(jq -n --arg cmd "$rg_cmd" --argjson args "$rg_args_json" \
-        '{command:$cmd, args:$args}')
-  jq_upsert "$cfg" mcpServers ripgrep "$rg"
-  local cbm
-  cbm=$(jq -n --arg cmd "$cbm_cmd" --argjson args "$cbm_args_json" \
-        '{command:$cmd, args:$args}')
-  jq_upsert "$cfg" mcpServers codebase-memory-mcp "$cbm"
 }
 
 # =============================================================================
@@ -630,6 +547,10 @@ outfit_gitkraken_mcp() {
     warn "gk (GitKraken CLI) not found; skipping GitKraken MCP setup"
     return 0
   fi
+  # --all still covers the editors and desktop clients purse does not manage.
+  # It also visits cursor, copilot, opencode and antigravity, whose registries
+  # chezmoi renders — including a GitKraken entry in the exact shape gk writes,
+  # so gk finds a match there and leaves the file alone.
   if outfitting_whole_machine; then
     echo "→ GitKraken MCP: installing into all detected clients..."
     gk mcp install --all || warn "gk mcp install failed"

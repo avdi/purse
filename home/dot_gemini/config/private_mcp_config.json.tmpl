@@ -1,0 +1,27 @@
+{{/* ~/.gemini/config/mcp_config.json — Antigravity (agy) MCP registry.
+
+Rendered from .chezmoidata/mcp-servers.yaml. Antigravity's global config lives
+under ~/.gemini even though the CLI is `agy`, and an HTTP server is keyed
+serverUrl rather than url. Its herdr hooks live beside this file in
+config/hooks.json, written by `herdr integration install` — a different file, so
+the two never contend.
+
+It spells an env-var reference ${VAR} inside a header value.
+
+The GitKraken stanza is what `gk mcp install` writes; gk leaves a matching entry
+untouched, so chezmoi stays the only writer. */ -}}
+{{- $servers := dict -}}
+{{- range $name, $server := .mcpServers -}}
+{{-   if not (has "antigravity" $server.excludeAgents) -}}
+{{-     if eq $server.transport "http" -}}
+{{-       $auth := printf "Bearer ${%s}" (index $server.requiresEnv 0) -}}
+{{-       $_ := set $servers $name (dict "serverUrl" $server.url "headers" (dict "Authorization" $auth)) -}}
+{{-     else -}}
+{{-       $_ := set $servers $name (dict "command" $server.command "args" $server.args) -}}
+{{-     end -}}
+{{-   end -}}
+{{- end -}}
+{{- if lookPath "gk" -}}
+{{-   $_ := set $servers "GitKraken" (dict "type" "stdio" "command" (lookPath "gk") "args" (list "mcp" "--host=antigravity")) -}}
+{{- end -}}
+{{ dict "mcpServers" $servers | toPrettyJson }}

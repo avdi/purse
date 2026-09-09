@@ -1,6 +1,20 @@
-# Declarative MCP server shortlist, registered into every present agent by
-# purse-outfit-agents. Token VALUES are never stored here — only
+# Declarative MCP server shortlist. Token VALUES are never stored here — only
 # env-var reference strings, expanded by each agent at runtime from the shell env.
+#
+# Two kinds of agent read this list, and the difference is who owns the config
+# file at the other end:
+#
+#   Rendered directly. cursor, copilot, opencode and antigravity each keep their
+#   MCP registry in a file nothing but purse writes, so chezmoi renders it whole
+#   from here — see home/dot_cursor/private_mcp.json.tmpl and its three
+#   siblings. A server dropped from this list disappears from those files on the
+#   next apply, which an `mcp add` command could never manage.
+#
+#   Merged by purse-outfit-agents. The agents in mcpAgents below keep their MCP
+#   entries inside a file they also write themselves — Claude's ~/.claude.json
+#   holds its caches and history, auggie's settings.json holds indexed
+#   directories and secrets, devin's holds an org id. Those are merged in place
+#   with the agent's own CLI or with jq, never replaced.
 mcpServers:
   github:
     description: "GitHub MCP (issues, PRs, repos, code search)"
@@ -10,12 +24,16 @@ mcpServers:
       Authorization: "Bearer ${GITHUB_PERSONAL_ACCESS_TOKEN}"
     requiresEnv:
       - GITHUB_PERSONAL_ACCESS_TOKEN
+    # copilot does not expand ${VAR} inside a header value — it would send the
+    # literal string and get a 400. copilot has its own GitHub connection.
+    excludeAgents: [copilot]
   playwright:
     description: "Playwright browser automation MCP"
     transport: stdio
     command: npx
     args: ["-y", "@playwright/mcp@latest"]
     requiresEnv: []
+    excludeAgents: []
   auggie:
     description: "Augment CLI agent as MCP tool server"
     transport: stdio
@@ -29,22 +47,20 @@ mcpServers:
     command: npx
     args: ["-y", "mcp-ripgrep@latest"]
     requiresEnv: []
+    excludeAgents: []
   codebase-memory-mcp:
     description: "Codebase knowledge graph MCP"
     transport: stdio
     command: codebase-memory-mcp
     args: []
     requiresEnv: []
+    excludeAgents: []
 
-# Agents the installer will attempt to configure (only those whose CLI/config is
-# detected on the machine are actually touched).
+# Agents purse-outfit-agents merges into. The four rendered by chezmoi are
+# deliberately absent — listing one here would make two writers of one file.
 mcpAgents:
   - claude
   - codex
-  - antigravity
   - auggie
-  - copilot
-  - cursor
   - vscode
-  - opencode
   - devin

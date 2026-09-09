@@ -1,0 +1,26 @@
+{{/* ~/.config/opencode/opencode.json — opencode's MCP registry.
+
+Rendered from .chezmoidata/mcp-servers.yaml. opencode keys the section "mcp"
+rather than "mcpServers", tags every entry local or remote, and takes a stdio
+server as one flat command array rather than command + args.
+
+It spells an env-var reference {env:VAR} inside a header value — no leading $,
+unlike every other agent here.
+
+The GitKraken stanza is what `gk mcp install` writes; gk leaves a matching entry
+untouched, so chezmoi stays the only writer. */ -}}
+{{- $servers := dict -}}
+{{- range $name, $server := .mcpServers -}}
+{{-   if not (has "opencode" $server.excludeAgents) -}}
+{{-     if eq $server.transport "http" -}}
+{{-       $auth := printf "Bearer {env:%s}" (index $server.requiresEnv 0) -}}
+{{-       $_ := set $servers $name (dict "type" "remote" "enabled" true "url" $server.url "headers" (dict "Authorization" $auth)) -}}
+{{-     else -}}
+{{-       $_ := set $servers $name (dict "type" "local" "enabled" true "command" (prepend $server.args $server.command)) -}}
+{{-     end -}}
+{{-   end -}}
+{{- end -}}
+{{- if lookPath "gk" -}}
+{{-   $_ := set $servers "GitKraken" (dict "type" "local" "enabled" true "command" (list (lookPath "gk") "mcp" "--host=opencode")) -}}
+{{- end -}}
+{{ dict "mcp" $servers | toPrettyJson }}

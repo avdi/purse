@@ -1,0 +1,23 @@
+{{/* ~/.copilot/mcp-config.json — GitHub Copilot CLI's MCP registry.
+
+Rendered from .chezmoidata/mcp-servers.yaml. Copilot's own tokens and plugin
+state live next door in config.json, which stays entirely unmanaged; this file
+holds nothing but the shortlist.
+
+Copilot takes no HTTP servers here: it does not expand ${VAR} inside a header
+value, so the github entry would send the literal string and get a 400. It has
+its own GitHub connection instead. That exclusion is declared in the manifest,
+alongside auggie's — see excludeAgents.
+
+The GitKraken stanza is what `gk mcp install` writes; gk leaves a matching entry
+untouched, so chezmoi stays the only writer. */ -}}
+{{- $servers := dict -}}
+{{- range $name, $server := .mcpServers -}}
+{{-   if not (has "copilot" $server.excludeAgents) -}}
+{{-     $_ := set $servers $name (dict "type" "local" "tools" (list "*") "command" $server.command "args" $server.args) -}}
+{{-   end -}}
+{{- end -}}
+{{- if lookPath "gk" -}}
+{{-   $_ := set $servers "GitKraken" (dict "type" "local" "tools" (list "*") "command" (lookPath "gk") "args" (list "mcp" "--host=copilot")) -}}
+{{- end -}}
+{{ dict "mcpServers" $servers | toPrettyJson }}

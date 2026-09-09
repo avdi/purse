@@ -31,3 +31,19 @@ AppData
 {{ if eq .chezmoi.os "windows" }}
 .local/bin/purse-install-extras
 {{ end }}
+
+# Agent MCP registries are rendered from .chezmoidata/mcp-servers.yaml, but only
+# onto a machine that has the agent. A config file for a CLI that was never
+# installed is debris, and on a container it would be debris in a named volume.
+{{ if not (lookPath "cursor-agent") }}
+.cursor/mcp.json
+{{ end }}
+{{ if not (lookPath "copilot") }}
+.copilot/mcp-config.json
+{{ end }}
+{{ if not (lookPath "opencode") }}
+.config/opencode/opencode.json
+{{ end }}
+{{ if not (lookPath "agy") }}
+.gemini/config/mcp_config.json
+{{ end }}

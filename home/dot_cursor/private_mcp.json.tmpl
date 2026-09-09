@@ -1,0 +1,28 @@
+{{/* ~/.cursor/mcp.json — Cursor CLI's MCP registry.
+
+Rendered from .chezmoidata/mcp-servers.yaml, the one place the shortlist is
+written down. Cursor reads this file and never writes it, so chezmoi owns it
+outright: a server dropped from the manifest disappears here on the next apply.
+`cursor-agent mcp add` could only ever add.
+
+Cursor spells an env-var reference ${env:VAR} inside a header value.
+
+The GitKraken stanza is byte-for-byte what `gk mcp install` writes. gk leaves a
+client alone when its entry already matches, so declaring it here makes chezmoi
+the only writer without having to keep gk away from this file. lookPath means it
+appears only where gk exists. */ -}}
+{{- $servers := dict -}}
+{{- range $name, $server := .mcpServers -}}
+{{-   if not (has "cursor" $server.excludeAgents) -}}
+{{-     if eq $server.transport "http" -}}
+{{-       $auth := printf "Bearer ${env:%s}" (index $server.requiresEnv 0) -}}
+{{-       $_ := set $servers $name (dict "url" $server.url "headers" (dict "Authorization" $auth)) -}}
+{{-     else -}}
+{{-       $_ := set $servers $name (dict "command" $server.command "args" $server.args) -}}
+{{-     end -}}
+{{-   end -}}
+{{- end -}}
+{{- if lookPath "gk" -}}
+{{-   $_ := set $servers "GitKraken" (dict "type" "stdio" "command" (lookPath "gk") "args" (list "mcp" "--host=cursor")) -}}
+{{- end -}}
+{{ dict "mcpServers" $servers | toPrettyJson }}
