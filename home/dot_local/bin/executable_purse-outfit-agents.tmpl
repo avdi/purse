@@ -28,6 +28,12 @@
 # Only env-var REFERENCE strings are written into agent configs (e.g. literal
 # ${GITHUB_PERSONAL_ACCESS_TOKEN}); secret values are never read or stored here.
 #
+# ~/.claude/settings.json is chezmoi's alone, from home/dot_claude/private_settings.json
+# — hooks, permissionMode, enabled plugins and marketplaces all live there. Nothing here
+# may write it. A jq pass that reaches the same result still reorders the keys, and
+# chezmoi reads that as drift: the next `purse-pull` stops to ask, and where there is no
+# TTY it aborts, leaving every file after `.claude/` unapplied.
+#
 # Declarative manifests (rendered inline by chezmoi):
 #   MCP servers   : .chezmoidata/mcp-servers.yaml   (agents: {{ .mcpAgents | join ", " }})
 #   Agent plugins : .chezmoidata/agent-plugins.yaml (agents: {{ .agentPlugins.agents | join ", " }})
@@ -360,25 +366,6 @@ outfit_remove_retired_plugins() {
     {{- end }}
   fi
   {{ end }}
-
-  # context-mode wired a SessionStart hook straight into settings.json instead
-  # of shipping it in the plugin's own hooks.json, so `plugin uninstall` above
-  # doesn't clean it up. Scrub the dangling entry and the hook file itself
-  # (chezmoi already stopped deploying it once removed from the source state).
-  if have jq && [ -f "$HOME/.claude/settings.json" ]; then
-    local cfg="$HOME/.claude/settings.json" tmp
-    tmp=$(mktemp)
-    jq '
-      .hooks.SessionStart = (
-        (.hooks.SessionStart // [])
-        | map(select(
-            [.hooks[]?.command // "" | contains("context-mode-cache-heal")] | any | not
-          ))
-      ) |
-      if (.hooks.SessionStart | length) == 0 then del(.hooks.SessionStart) else . end
-    ' "$cfg" > "$tmp" && mv "$tmp" "$cfg"
-  fi
-  rm -f "$HOME/.claude/hooks/context-mode-cache-heal.mjs"
 }
 
 # =============================================================================
@@ -464,55 +451,7 @@ outfit_worktrunk_workaround() {
 }
 
 # =============================================================================
-# 5. Claude Code hooks — register the cbm-code-discovery-gate hook into
-#    ~/.claude/settings.json. It intercepts Grep/Glob PreToolUse events and
-#    injects graph context from codebase-memory-mcp via hook-augment (in-process,
-#    300 ms timeout, every failure path exits 0 — physically cannot block a call).
-#    Idempotent: removes any existing Grep|Glob entry before re-adding.
-#
-#    Also scrubs the codebase-memory-mcp installer's SessionStart "code
-#    discovery protocol" reminder (cbm-session-reminder), which we don't use —
-#    guidance lives in the shared system prompt instead. The installer is never
-#    run here, but this makes any machine where it was self-heal on re-apply.
-# =============================================================================
-outfit_claude_hooks() {
-  wants claude || return 0
-  if ! have claude || ! have jq; then
-    warn "claude or jq not found; skipping Claude hook registration"
-    return 0
-  fi
-  echo "→ Claude hooks: registering cbm-code-discovery-gate, scrubbing cbm-session-reminder..."
-
-  local cfg="$HOME/.claude/settings.json"
-  mkdir -p "$(dirname "$cfg")"
-  jq -e . "$cfg" >/dev/null 2>&1 || echo '{}' > "$cfg"
-
-  local entry tmp
-  entry=$(jq -cn '{
-    matcher: "Grep|Glob",
-    hooks: [{"type":"command","command":"~/.claude/hooks/cbm-code-discovery-gate","timeout":5}]
-  }')
-  tmp=$(mktemp)
-  jq --argjson entry "$entry" '
-    .permissionMode = "auto" |
-    .hooks.PreToolUse = (
-      ((.hooks.PreToolUse // []) | map(select(.matcher != "Grep|Glob")))
-      + [$entry]
-    ) |
-    .hooks.SessionStart = (
-      (.hooks.SessionStart // [])
-      | map(select(
-          [.hooks[]?.command // "" | contains("cbm-session-reminder")] | any | not
-        ))
-    ) |
-    if (.hooks.SessionStart | length) == 0 then del(.hooks.SessionStart) else . end
-  ' "$cfg" > "$tmp" && mv "$tmp" "$cfg"
-
-  rm -f "$HOME/.claude/hooks/cbm-session-reminder"
-}
-
-# =============================================================================
-# 6. codebase-memory-mcp — download the static binary. MCP registration is
+# 5. codebase-memory-mcp — download the static binary. MCP registration is
 #    handled by outfit_mcp_servers above (declarative manifest), not by the
 #    binary's own `install -y` which has unwanted side-effects (PATH stomping,
 #    opinionated CLAUDE.md injection, hooks). Bump CBM_VERSION to force a
@@ -609,7 +548,7 @@ outfit_codebase_memory_mcp() {
 }
 
 # =============================================================================
-# 7. spec-kit (specify CLI) — Spec-Driven Development toolkit, installed as a
+# 6. spec-kit (specify CLI) — Spec-Driven Development toolkit, installed as a
 #    uv tool. Moved here from run_onchange_install-packages so initial setup
 #    doesn't require uv to be available upfront.
 # =============================================================================
@@ -632,7 +571,7 @@ outfit_spec_kit() {
 }
 
 # =============================================================================
-# 8. skills-ref — reference library for Agent Skills, installed as a uv tool.
+# 7. skills-ref — reference library for Agent Skills, installed as a uv tool.
 #    Provides the `skills-ref` CLI for validating, reading, and generating
 #    <available_skills> XML blocks for agent prompts.
 # =============================================================================
@@ -651,7 +590,7 @@ outfit_skills_ref() {
 }
 
 # =============================================================================
-# 9. Global skills — install the declarative shortlist from
+# 8. Global skills — install the declarative shortlist from
 #    .chezmoidata/global-skills.yaml into every present agent, globally.
 #    Each entry maps to: npx skills add <source> --skill <skill> -g -y
 #    Requires node/npx; skips gracefully if absent.
@@ -681,7 +620,7 @@ outfit_global_skills() {
 }
 
 # =============================================================================
-# 10. GitKraken MCP — gk ships its own multi-client installer. `gk mcp install
+# 9. GitKraken MCP — gk ships its own multi-client installer. `gk mcp install
 #    --all` detects every installed MCP client and writes a stdio entry that
 #    runs `gk mcp`. Authentication (`gk auth login`) is only needed when the
 #    server runs, not to write the config, so this is safe non-interactively.
@@ -722,7 +661,6 @@ outfit_mcp_servers
 outfit_remove_retired_plugins
 outfit_agent_plugins
 outfit_worktrunk_workaround
-outfit_claude_hooks
 outfit_spec_kit
 outfit_skills_ref
 outfit_global_skills
