@@ -32,7 +32,20 @@ alias lt="lenticel"
 # Pull latest from the chezmoi source clone (~/.local/share/chezmoi) and
 # apply. The working clone at ~/projects/avdi/purse is separate, so edits
 # committed/pushed there don't take effect on disk until this runs.
-alias purse-pull="chezmoi update --safe=false"
+#
+# With no terminal — `docker exec` without -t, a provisioning script, CI —
+# chezmoi cannot ask what to do about a file that has changed since it last
+# wrote it, so it stops at the first one. Everything alphabetically after that
+# file goes unapplied and nothing says so. Force there: with nobody present to
+# rule otherwise, the source state is the answer. At a real prompt the question
+# is worth asking, so it still gets asked.
+purse-pull() {
+  if [ -t 0 ]; then
+    chezmoi update --safe=false "$@"
+  else
+    chezmoi update --safe=false --force "$@"
+  fi
+}
 
 # cd to the chezmoi source clone (the purse repo) on this machine.
 purse-cd() { cd "$(chezmoi source-path)"; }

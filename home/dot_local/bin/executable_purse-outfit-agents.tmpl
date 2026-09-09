@@ -79,13 +79,17 @@ gk_platform_for() {
   esac
 }
 
+# skills.sh keeps its own vocabulary again, and rejects the whole install when a
+# name is not in it — `--agent claude` is an error there; Claude Code is
+# `claude-code`. `npx skills add --help` lists every name it accepts.
 skills_target_for() {
   case "$1" in
+    claude)       echo claude-code ;;
     agy)          echo antigravity-cli ;;
     auggie)       echo augment ;;
     copilot)      echo github-copilot ;;
     cursor-agent) echo cursor ;;
-    claude|codex|opencode|devin) echo "$1" ;;
+    codex|opencode|devin) echo "$1" ;;
     *) echo "" ;;
   esac
 }
