@@ -276,8 +276,7 @@ if command -v zoxide >/dev/null 2>&1; then
 fi
 
 # AI agent CLIs — routed through purse-agent, which installs and outfits an
-# agent the first time you reach for it, and, inside a devcontainer, tells the
-# host's herdr which agent is running in this pane. See ~/.local/bin/purse-agent.
+# agent the first time you reach for it. See ~/.local/bin/purse-agent.
 #
 # Interactive shells only. A script that runs `claude` wants the binary, not a
 # provisioning step it never asked for, and non-interactive shells don't source
@@ -300,10 +299,10 @@ case $- in
       unset _purse_agent_cmd
 
       # dc<agent> — from the host, open this project's devcontainer straight
-      # into an agent. Naming the agent up front is the better door: dcsh can
-      # hand herdr the HERDR_AGENT hint, which makes the containerised CLI
-      # detectable natively and leaves state to herdr's own screen manifest,
-      # rather than the container reporting state back over the relay.
+      # into an agent. This is the only door herdr can see through: dcsh hands
+      # it the HERDR_AGENT hint on the host-side process, which is where
+      # detection happens. An agent typed at a container prompt is invisible to
+      # herdr no matter what the container reports back.
       if command -v dcsh > /dev/null 2>&1 && [ ! -f /.dockerenv ]; then
         for _purse_agent_cmd in $(purse_agent_installable_commands); do
           eval "alias dc$(purse_agent_short_name "$_purse_agent_cmd")='dcsh --agent ${_purse_agent_cmd}'"

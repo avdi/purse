@@ -267,12 +267,13 @@ mcp_agent_command() {
 outfit_remove_retired_plugins() {
   echo "→ Retired plugins: uninstalling anything dropped from the shortlist..."
   {{ range $agent := .agentPlugins.agents }}
+  {{- $verbs := index $.agentPlugins.verbs $agent }}
   if wants {{ $agent }} && have {{ $agent }}; then
     : # no-op so the body is never empty when this agent has no retired entries
     {{ range $.agentPlugins.retired.plugins }}
     {{- if has $agent .agents }}
-    echo "→ {{ $agent }} plugin uninstall {{ .name }}@{{ .marketplace }}"
-    {{ $agent }} plugin uninstall "{{ .name }}@{{ .marketplace }}" >/dev/null 2>&1 || true
+    echo "→ {{ $agent }} plugin {{ $verbs.uninstall }} {{ .name }}@{{ .marketplace }}"
+    {{ $agent }} plugin {{ $verbs.uninstall }} "{{ .name }}@{{ .marketplace }}" >/dev/null 2>&1 || true
     {{- end }}
     {{- end }}
     {{ range $.agentPlugins.retired.marketplaces }}
@@ -299,6 +300,7 @@ outfit_remove_retired_plugins() {
 outfit_agent_plugins() {
   echo "→ Agent plugins: registering marketplaces and installing plugins..."
   {{ range $agent := .agentPlugins.agents }}
+  {{- $verbs := index $.agentPlugins.verbs $agent }}
   if wants {{ $agent }} && have {{ $agent }}; then
     {{ range $.agentPlugins.marketplaces }}
     {{- if has $agent .agents }}
@@ -308,8 +310,8 @@ outfit_agent_plugins() {
     {{- end }}
     {{ range $.agentPlugins.plugins }}
     {{- if has $agent .agents }}
-    echo "→ {{ $agent }} plugin {{ if eq $agent "codex" }}add{{ else }}install{{ end }} {{ .name }}@{{ .marketplace }}"
-    {{ $agent }} plugin {{ if eq $agent "codex" }}add{{ else }}install{{ end }} "{{ .name }}@{{ .marketplace }}" || warn "{{ $agent }} plugin install failed: {{ .name }}@{{ .marketplace }}"
+    echo "→ {{ $agent }} plugin {{ $verbs.install }} {{ .name }}@{{ .marketplace }}"
+    {{ $agent }} plugin {{ $verbs.install }} "{{ .name }}@{{ .marketplace }}" || warn "{{ $agent }} plugin install failed: {{ .name }}@{{ .marketplace }}"
     {{- end }}
     {{- end }}
   elif wants {{ $agent }}; then

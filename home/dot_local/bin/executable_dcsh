@@ -172,9 +172,10 @@ fi
 # way, so state comes out exactly as good as it does on the host.
 #
 # It has to be set before the exec below, which is why only `--agent` (or an
-# agent named after --) can use it. Typing the agent's name at a container
-# prompt instead is covered on the other side: `purse-agent` reports the pane
-# over the relay socket. Override with DCSH_AGENT, opt out with DCSH_HERDR=0.
+# agent named after --) can use it — and why an agent typed at a container
+# prompt can never be detected: by then this process exists and its environment
+# is fixed. `purse-agent` says as much when it happens.
+# Override with DCSH_AGENT, opt out with DCSH_HERDR=0.
 herdr_agent="${DCSH_AGENT:-}"
 if [[ -z "$herdr_agent" && "${DCSH_HERDR:-1}" != "0" ]]; then
   if [[ -n "$agent" ]]; then

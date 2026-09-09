@@ -24,6 +24,27 @@ agentPlugins:
     - copilot
     - auggie
 
+  # What each agent calls the two operations. They are not interchangeable:
+  # `codex plugin uninstall` is not a subcommand at all, which is why a plugin
+  # retired here stayed enabled in ~/.codex/config.toml through every outfit
+  # run — the call failed into the `|| true` and left no trace.
+  #
+  # auggie has no removal verb. A plugin there is disabled rather than
+  # uninstalled, and the flag follows the verb.
+  verbs:
+    claude:
+      install: install
+      uninstall: uninstall
+    codex:
+      install: add
+      uninstall: remove
+    copilot:
+      install: install
+      uninstall: uninstall
+    auggie:
+      install: install
+      uninstall: install --disable
+
   # Marketplaces to register, and which agents should register each one.
   # Built-in marketplaces (e.g. claude-plugins-official) are only auto-seeded
   # on an interactive first launch, so we register them explicitly here.

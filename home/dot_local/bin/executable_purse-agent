@@ -1,38 +1,37 @@
 #!/usr/bin/env bash
-# purse-agent — run an AI coding agent CLI, outfitting it on first use and
-# making it visible to herdr when it runs inside a devcontainer.
+# purse-agent — run an AI coding agent CLI, outfitting it the first time you
+# reach for it.
 #
 # Usage:
 #   purse-agent <agent-command> [args...]
 #
-#   purse-agent claude              # same as `claude`, plus the two jobs below
+#   purse-agent claude              # same as `claude`, plus the job below
 #   purse-agent codex --help
 #
 # The shell wrappers in ~/.config/shell/aliases.sh route every known agent
-# command through here, and `dcsh` runs it as the container-side entry point,
-# so both doors — typing `claude` at a container prompt and `dcclaude` from the
-# host — open onto the same room.
-#
-# Two jobs, with different conditions, deliberately kept apart:
+# command through here, and `dcsh --agent` runs it as the container-side entry
+# point.
 #
 # Provisioning, everywhere. An agent missing from PATH that purse has a recipe
-# for is installed at the moment you reach for it, and outfitted after. A
-# container therefore carries only the agents you actually used in it, rather
-# than every agent purse knows, installed at build time against the chance.
+# for is installed at the moment you reach for it, and outfitted after — that
+# agent alone, never every agent the machine happens to hold. A container
+# therefore carries what you actually used in it, rather than everything purse
+# knows, installed at build time against the chance.
 #
-# herdr, only in containers. herdr names the agent in a pane from that pane's
-# foreground process on the host, which for a containerised agent is the
-# `devcontainer` CLI. The agent behind it can still say who it is, over the
-# socket relay dcbridge maintains — see the "herdr" section below. On the host
-# there is nothing to do: herdr sees the real process and reads it better than
-# we could report it.
+# Outfitting repeats when it should. The stamp on tmpfs carries the fingerprint
+# of the outfitting that wrote it, so a new container outfits, a changed
+# manifest outfits, and nothing else does.
 #
-# Every step degrades to running the agent. A failed install, a missing herdr,
-# a socket that will not answer — each warns and falls through, because
-# refusing to start the agent is always the worse failure.
+# Every step degrades to running the agent. A failed install, a missing
+# purse-outfit-agents — each warns and falls through, because refusing to start
+# the agent is always the worse failure.
 #
-# PURSE_AGENT=0 skips both jobs. PURSE_AGENT_HERDR=0 skips the herdr half.
-# PURSE_AGENT_POLL_SECONDS sets the state mirror's interval (default 1).
+# On herdr: a containerised agent is only visible to it when the agent is named
+# on the host before exec, which is `dcsh --agent` / `dcclaude`. Typed at a
+# container prompt it cannot be — see the herdr section below, which says so
+# rather than leaving you to wonder.
+#
+# PURSE_AGENT=0 skips provisioning. PURSE_AGENT_HERDR=0 silences the herdr note.
 
 set -uo pipefail
 
@@ -148,136 +147,35 @@ provision() {
 }
 
 # ── herdr ────────────────────────────────────────────────────────────────────
-# herdr will treat a pane as holding an agent on nothing but a report, with no
-# matching process anywhere — which is the only thing that can work through a
-# container wall. The report carries both identity and lifecycle authority:
-# they cannot be separated, and authority never lapses on its own, so whoever
-# claims the pane owns its state until it explicitly lets go.
+# An agent typed at a container prompt cannot be made visible to herdr, and the
+# limit is herdr's own, not something to work around. Detection happens on the
+# host, from the pane's foreground process or the HERDR_AGENT hint set on it —
+# both settled before a container prompt exists. `pane report-agent` supplies
+# state for an agent herdr has already detected; it cannot create one, and
+# herdr's own Claude integration reflects that, reporting only a session id.
 #
-# So the state has to come from somewhere, and the best source is herdr itself.
-# `herdr agent explain` evaluates the pane's screen against the agent's
-# detection manifest and returns the verdict even while a reporter holds
-# authority. Mirroring that back gives the same state herdr would have reached
-# on its own — including manifests it updates from herdr.dev without a release
-# — for any agent it knows, at the cost of a poll interval's lag.
+# So say so, once, rather than leave the pane quietly unlabelled. `dcclaude`
+# names the agent before exec and gets the real thing: identity, screen-read
+# state, `agent wait` and `agent prompt`.
+warn_herdr_cannot_see_us() {
+  [ "${PURSE_AGENT_HERDR:-1}" = "0" ] && return 0
+  [ "${HERDR_ENV:-}" = "1" ] || return 0
+  [ -n "${HERDR_PANE_ID:-}" ] || return 0
+  in_container || return 0
+  # No point sending you to the other door for an agent herdr cannot name
+  # either way — auggie, for one.
+  [ -n "$(purse_agent_kind "$command")" ] || return 0
 
-herdr_source="purse:agent"
-herdr_kind=""
-herdr_mirror_pid=""
-
-herdr_seq() { date +%s%N; }
-
-# Whether to claim this pane at all. No is the answer on the host (herdr sees
-# the real process), for an agent herdr has no label for, and for a pane that
-# already holds an agent — which covers `dcsh --agent`, whose HERDR_AGENT hint
-# makes the containerised CLI detectable natively, and every agent whose own
-# integration is a full lifecycle authority.
-herdr_should_claim() {
-  [ "${PURSE_AGENT_HERDR:-1}" = "0" ] && return 1
-  [ "${HERDR_ENV:-}" = "1" ] || return 1
-  [ -n "${HERDR_PANE_ID:-}" ] || return 1
-  [ -n "${HERDR_SOCKET_PATH:-}" ] || return 1
-  in_container || return 1
-  have herdr || return 1
-
-  herdr_kind="$(purse_agent_kind "$command")"
-  [ -n "$herdr_kind" ] || return 1
-
-  # A pane herdr already has an agent for is not ours to take.
-  herdr_pane_has_agent && return 1
-  return 0
-}
-
-# Whether herdr already holds an agent label for this pane. Only the pane's own
-# top-level "agent" key counts. `agent_session` is a nested object whose first
-# key is also "agent" — and Claude Code's own integration hook reports exactly
-# that session identity through this relay on startup, so a substring test
-# would see the launching agent's own report and conclude the pane was taken.
-herdr_pane_has_agent() {
-  local pane
-  pane="$(herdr pane get "$HERDR_PANE_ID" 2> /dev/null)" || return 1
-
-  if have jq; then
-    [ -n "$(printf '%s' "$pane" | jq -r '.result.pane.agent // empty' 2> /dev/null)" ]
-    return
-  fi
-
-  # Without jq: drop the innermost objects, which is where every nested "agent"
-  # key lives, and look at what is left. "agent_status" does not match.
-  printf '%s' "$pane" | sed 's/"[a-z_]*":{[^{}]*}//g' | grep -q '"agent":'
-}
-
-herdr_report() {
-  herdr pane report-agent "$HERDR_PANE_ID" \
-    --source "$herdr_source" \
-    --agent "$herdr_kind" \
-    --state "$1" \
-    --seq "$(herdr_seq)" > /dev/null 2>&1
-}
-
-# Read herdr's own screen verdict for this pane. The text output names the
-# state on its own line; parsing that keeps this free of a JSON dependency the
-# container may not have.
-herdr_screen_state() {
-  herdr agent explain "$HERDR_PANE_ID" 2> /dev/null |
-    awk '/^state:/ { print $2; exit }'
-}
-
-herdr_mirror() {
-  local interval="${PURSE_AGENT_POLL_SECONDS:-1}" last="$1" state
-  local parent="$$"
-  while sleep "$interval"; do
-    # Should this script be killed outright, its EXIT trap never runs and
-    # nothing else would ever stop this loop.
-    kill -0 "$parent" 2> /dev/null || exit 0
-    state="$(herdr_screen_state)"
-    case "$state" in
-      idle | working | blocked) ;;
-      *) continue ;;
-    esac
-    [ "$state" = "$last" ] && continue
-    herdr_report "$state" && last="$state"
-  done
-}
-
-herdr_release() {
-  [ -n "$herdr_mirror_pid" ] && kill "$herdr_mirror_pid" 2> /dev/null
-  herdr pane release-agent "$HERDR_PANE_ID" \
-    --source "$herdr_source" \
-    --agent "$herdr_kind" \
-    --seq "$(herdr_seq)" > /dev/null 2>&1
+  local short
+  short="$(purse_agent_short_name "$command")"
+  printf 'purse-agent: herdr cannot detect an agent started from a container prompt.\n' >&2
+  printf '             Start it from the host as `dc%s` to get a labelled pane.\n' "$short" >&2
 }
 
 # ── run ──────────────────────────────────────────────────────────────────────
 
 provision
+warn_herdr_cannot_see_us
 
 export PURSE_AGENT_ACTIVE=1
-
-if ! herdr_should_claim; then
-  exec "$command" "$@"
-fi
-
-# Claiming means we must outlive the agent to let go again, so this is the one
-# path that cannot exec. Release on every way out, including the signals a
-# terminal sends when the pane goes away: a claim left behind is a pane
-# labelled with an agent that stopped running, and herdr will hold it forever.
-# Claim as idle, not working. An agent that is still painting its first screen
-# is not working on anything, and herdr reads a working→idle pair as a turn
-# that finished — which would badge the pane as done on every single launch.
-# The mirror moves it to working the moment the screen says so.
-if ! herdr_report idle; then
-  warn "could not reach herdr through the relay — running $command unlabelled"
-  exec "$command" "$@"
-fi
-
-# Not INT. Ctrl-C reaches the whole foreground process group, and an agent that
-# handles it itself — as Claude Code does, to interrupt a turn — is still
-# running afterwards. Releasing there would unlabel a live agent. EXIT covers
-# the case where the interrupt does end us.
-trap herdr_release EXIT HUP TERM
-
-herdr_mirror idle &
-herdr_mirror_pid=$!
-
-"$command" "$@"
+exec "$command" "$@"

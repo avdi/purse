@@ -195,7 +195,7 @@ alternative — `herdr --remote` per project — is one server and one sidebar p
 | herdr wants | Source | Crosses the container wall via |
 |---|---|---|
 | the agent's **state** | the pane's terminal, matched against herdr's downloadable rule manifest | nothing — a pty is a pty |
-| the agent's **identity** | the pane's foreground process, or a report over the socket API | `dcsh --agent` → `HERDR_AGENT` on the host-side CLI; or `purse-agent` inside the container → the same relay as the session id |
+| the agent's **identity** | the pane's foreground process on the host | `dcsh --agent` → `HERDR_AGENT` on the host-side CLI. Nothing else reaches it. |
 | the agent's **session id** | the agent's own herdr integration hook, inside the container | `$HERDR_SOCKET_PATH` → `herdr-relay` → `herdr-bridge` → the host's `herdr.sock` |
 
 Identity is the load-bearing one: without it herdr sees no agent in the pane and never
@@ -212,26 +212,22 @@ then treats the pane as holding Claude Code and applies the same screen-detectio
 manifest it would use for a host-run one. Nothing has to be reported back, and state is
 as good as it is on the host.
 
-**Identity, when you type the agent's name inside the container.** Nothing on the host
-can know: `HERDR_AGENT` is fixed at exec, long before you reach a container prompt. So
-the agent says so itself. `purse-agent` — which every agent command routes through
-inside a container — reports the pane over the same relay the session id uses. herdr
-accepts a reported agent with no matching process anywhere, which is the only thing that
-can work through a container wall.
+**Identity, when you type the agent's name inside the container.** You cannot have it,
+and the limit is herdr's. Detection runs on the host against the pane's foreground
+process, or against the `HERDR_AGENT` hint set on that process — both fixed at exec,
+before a container prompt exists. herdr's docs put it plainly: the hint "cannot be seen
+if you set it only inside a VM or container."
 
-`purse-agent` first asks whether herdr already holds an agent for the pane, and reads only
-the pane's own top-level `agent` key to decide. The session id below arrives through the
-same relay moments earlier and lands in `agent_session`, a nested object whose first key is
-*also* `agent` — so a test that merely looks for `"agent":` anywhere in the reply sees the
-launching agent's own report and concludes the pane is taken.
+The socket API looks like a way around it and is not. `pane report-agent` supplies
+lifecycle state *for an agent herdr has already detected* — it does not create one. Sent
+against an undetected pane it returns success, sets nothing, and `herdr agent explain`
+still answers `agent_not_found`; the same call fails identically on the host, so it is
+not the container wall. herdr's own Claude integration agrees by construction: it reports
+a session id and never attempts identity. `pane report-metadata --display-agent` does set
+a `display_agent` field, but it is display-only and does not reach the sidebar.
 
-That report carries lifecycle authority along with the name; the two cannot be
-separated, and authority never lapses on its own. So `purse-agent` also owns the state
-while it holds the pane, and takes it from herdr itself: `herdr agent explain` returns
-the screen verdict even while a reporter is authoritative, so the wrapper mirrors that
-back once a second. Same manifests, same answers, one interval late. It releases the
-pane when the agent exits — a claim left behind is a pane labelled with an agent that
-stopped running, and herdr will hold it forever.
+So `purse-agent` says so instead. Inside a container, for an agent herdr has a label for,
+it prints one line pointing at the door that works — `dcclaude` — and gets out of the way.
 
 **Session id.** `herdr-bridge` fronts the host's `~/.config/herdr/herdr.sock` on
 `127.0.0.1:19287`, behind a shared token at `~/.config/herdr-bridge/auth-token` — the
