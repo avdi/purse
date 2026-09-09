@@ -195,7 +195,7 @@ alternative — `herdr --remote` per project — is one server and one sidebar p
 | herdr wants | Source | Crosses the container wall via |
 |---|---|---|
 | the agent's **state** | the pane's terminal, matched against herdr's downloadable rule manifest | nothing — a pty is a pty |
-| the agent's **identity** | the pane's foreground process name | `dcsh` → `PURSE_DEVCONTAINER_ARGV0` → the devcontainer shim, which re-execs the CLI under the agent's name |
+| the agent's **identity** | the pane's foreground process, or a report over the socket API | `dcsh --agent` → `HERDR_AGENT` on the host-side CLI; or `purse-agent` inside the container → the same relay as the session id |
 | the agent's **session id** | the agent's own herdr integration hook, inside the container | `$HERDR_SOCKET_PATH` → `herdr-relay` → `herdr-bridge` → the host's `herdr.sock` |
 
 Identity is the load-bearing one: without it herdr sees no agent in the pane and never
@@ -204,12 +204,28 @@ prompt` and `herdr agent wait` all work against a containerised agent. The sessi
 buys one further thing — `resume_agents_on_restore`, which needs the agent's *native*
 session id to pick a conversation back up after a herdr restart.
 
-**Identity.** `devcontainer exec` starts the CLI's own node interpreter, so the pane's
-foreground process is `node`. `dcsh` recognises the command it was handed as one of
-herdr's agent kinds and asks the shim to rename it. `exec -a` cannot rename a shebang
-script — the kernel rewrites `argv[0]` to the interpreter — so the shim resolves that
-interpreter and runs it itself under the requested name. The rename happens at the last
-exec, in the shim, because every layer in between resets `argv[0]` again.
+**Identity, when the agent is named up front.** `devcontainer exec` starts the CLI's
+own node interpreter, so the pane's foreground process is `node`. `dcsh --agent claude`
+knows the answer before it execs, and sets `HERDR_AGENT=claude` on that process — the
+hint herdr documents for exactly this, wrappers that hide the real agent from it. herdr
+then treats the pane as holding Claude Code and applies the same screen-detection
+manifest it would use for a host-run one. Nothing has to be reported back, and state is
+as good as it is on the host.
+
+**Identity, when you type the agent's name inside the container.** Nothing on the host
+can know: `HERDR_AGENT` is fixed at exec, long before you reach a container prompt. So
+the agent says so itself. `purse-agent` — which every agent command routes through
+inside a container — reports the pane over the same relay the session id uses. herdr
+accepts a reported agent with no matching process anywhere, which is the only thing that
+can work through a container wall.
+
+That report carries lifecycle authority along with the name; the two cannot be
+separated, and authority never lapses on its own. So `purse-agent` also owns the state
+while it holds the pane, and takes it from herdr itself: `herdr agent explain` returns
+the screen verdict even while a reporter is authoritative, so the wrapper mirrors that
+back once a second. Same manifests, same answers, one interval late. It releases the
+pane when the agent exits — a claim left behind is a pane labelled with an agent that
+stopped running, and herdr will hold it forever.
 
 **Session id.** `herdr-bridge` fronts the host's `~/.config/herdr/herdr.sock` on
 `127.0.0.1:19287`, behind a shared token at `~/.config/herdr-bridge/auth-token` — the
@@ -235,13 +251,19 @@ the container (purse installs it); a container without one is skipped silently.
 ```sh
 herdr                          # on the host
 work myproject some-branch     # dc up + dcsh + wt switch, from a herdr pane
-dcsh -- claude                 # or straight into an agent
+dcclaude                       # straight into an agent (alias for dcsh --agent claude)
+dcsh                           # or a plain shell, and type `claude` when you get there
 ```
 
+Both doors work. `dcclaude` is the better one — native detection, herdr's own state
+reading, nothing polling — and `dcsh` then `claude` is the one you take by habit, which
+is why it is covered too.
+
 Nothing is configured per project. `dcsh` forwards the pane's identity only when it is
-actually running in a herdr pane (`HERDR_ENV=1` with a `HERDR_PANE_ID`), and only
-renames commands it recognises as agents — relabelling everything run through `dcsh`
-would be a surprise waiting to happen.
+actually running in a herdr pane (`HERDR_ENV=1` with a `HERDR_PANE_ID`), and only names
+commands it recognises as agents. Inside the container, `purse-agent` stands down
+whenever herdr already sees an agent in the pane — which covers the `--agent` door and
+every agent whose own integration reports its whole lifecycle.
 
 ### Checking it
 
@@ -267,8 +289,11 @@ Only agents whose CLI is actually present get a hook. On a host it also installs
 |---|---|---|
 | `PURSE_INSTALL_HERDR` | `1` | `0` skips installing herdr and its integrations entirely |
 | `DCBRIDGE_SYNC_HERDR` | `1` | `0` runs no bridge daemon and pushes no relay into containers |
-| `DCSH_HERDR` | `1` | `0` stops `dcsh` forwarding pane identity and renaming the process |
-| `DCSH_ARGV0` | *(derived from the command)* | force the name `dcsh` asks the shim for |
+| `DCSH_HERDR` | `1` | `0` stops `dcsh` forwarding pane identity and naming the agent |
+| `DCSH_AGENT` | *(derived from the command)* | force the agent name `dcsh` hands herdr |
+| `PURSE_AGENT` | `1` | `0` makes `purse-agent` a pass-through: no install, no outfit, no herdr |
+| `PURSE_AGENT_HERDR` | `1` | `0` keeps the provisioning half but never claims a pane |
+| `PURSE_AGENT_POLL_SECONDS` | `1` | how often the container mirrors herdr's screen verdict back |
 | `HERDR_BRIDGE_PORT` / `HERDR_BRIDGE_BIND` | `19287` / `127.0.0.1` | move the listener |
 | `HERDR_BRIDGE_SOCKET` | `~/.config/herdr/herdr.sock` | front a different herdr session's socket |
 

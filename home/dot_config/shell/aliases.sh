@@ -275,6 +275,46 @@ if command -v zoxide >/dev/null 2>&1; then
   fi
 fi
 
+# AI agent CLIs — routed through purse-agent, which installs and outfits an
+# agent the first time you reach for it, and, inside a devcontainer, tells the
+# host's herdr which agent is running in this pane. See ~/.local/bin/purse-agent.
+#
+# Interactive shells only. A script that runs `claude` wants the binary, not a
+# provisioning step it never asked for, and non-interactive shells don't source
+# this file anyway on most paths — the guard makes that explicit rather than
+# incidental.
+#
+# Only agents purse can install or that are already here get a wrapper: taking
+# over a name we can neither find nor fetch would replace the shell's own
+# "command not found" with something less useful.
+_purse_agent_lib="${HOME}/.local/share/purse/lib/herdr-agents.sh"
+case $- in
+  *i*)
+    if [ -r "$_purse_agent_lib" ] && command -v purse-agent > /dev/null 2>&1; then
+      # shellcheck source=../../dot_local/share/purse/lib/herdr-agents.sh
+      . "$_purse_agent_lib"
+
+      for _purse_agent_cmd in $(purse_agent_wrappable_commands); do
+        eval "${_purse_agent_cmd}() { purse-agent ${_purse_agent_cmd} \"\$@\"; }"
+      done
+      unset _purse_agent_cmd
+
+      # dc<agent> — from the host, open this project's devcontainer straight
+      # into an agent. Naming the agent up front is the better door: dcsh can
+      # hand herdr the HERDR_AGENT hint, which makes the containerised CLI
+      # detectable natively and leaves state to herdr's own screen manifest,
+      # rather than the container reporting state back over the relay.
+      if command -v dcsh > /dev/null 2>&1 && [ ! -f /.dockerenv ]; then
+        for _purse_agent_cmd in $(purse_agent_installable_commands); do
+          eval "alias dc$(purse_agent_short_name "$_purse_agent_cmd")='dcsh --agent ${_purse_agent_cmd}'"
+        done
+        unset _purse_agent_cmd
+      fi
+    fi
+    ;;
+esac
+unset _purse_agent_lib
+
 # Native two-line prompt — directory + git branch/dirty, no special fonts needed.
 # Works in bash and zsh. Starship overrides this when the opt-in is active.
 _purse_git_info() {

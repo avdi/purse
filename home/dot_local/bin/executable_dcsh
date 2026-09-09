@@ -12,6 +12,8 @@
 #                            container was started with a non-default config,
 #                            e.g. .devcontainer/sidecar/devcontainer.json).
 #   -s, --shell <shell>      Shell to launch (default: bash).
+#   -a, --agent <name>       Launch an AI agent CLI instead of a shell,
+#                            installing it in the container if it isn't there.
 #   -u, --user <user>        Remote user to exec as (passed via --remote-env).
 #   -h, --help               Show this help.
 #
@@ -20,6 +22,7 @@
 # Examples:
 #   dcsh                     # bash in the container for this project
 #   dcsh -s zsh              # zsh instead
+#   dcsh -a claude           # straight into Claude Code (alias: dcclaude)
 #   dcsh -- rails console    # run a specific command
 #   dcsh -w ../other         # target a neighbouring workspace
 #
@@ -28,9 +31,9 @@
 # many worktrees inside), then runs `wt switch <branch>` to land back here.
 #
 # Run from a herdr pane, this also makes the containerised process legible to
-# herdr: it hands the pane's identity to the container, and names the process
-# after the agent so herdr's detector recognises it. See the "herdr" section
-# below. DCSH_HERDR=0 opts out.
+# herdr: it hands the pane's identity to the container, and, when the agent is
+# named up front, tells herdr's detector what to call the process. See the
+# "herdr" section below. DCSH_HERDR=0 opts out.
 
 set -euo pipefail
 
@@ -43,13 +46,14 @@ workspace=""
 config_file=""
 shell_cmd="bash"
 remote_user=""
+agent=""
 extra_cmd=()
 
 # ── argument parsing ─────────────────────────────────────────────────────────
 while [[ $# -gt 0 ]]; do
   case "$1" in
     -h|--help)
-      sed -n '2,20p' "$0" | sed 's/^# \{0,1\}//'
+      sed -n '2,23p' "$0" | sed 's/^# \{0,1\}//'
       exit 0
       ;;
     -w|--workspace)
@@ -58,6 +62,8 @@ while [[ $# -gt 0 ]]; do
       config_file="${2:?--config requires a path}"; shift 2 ;;
     -s|--shell)
       shell_cmd="${2:?--shell requires a shell name}"; shift 2 ;;
+    -a|--agent)
+      agent="${2:?--agent requires an agent name}"; shift 2 ;;
     -u|--user)
       remote_user="${2:?--user requires a username}"; shift 2 ;;
     --)
@@ -74,6 +80,27 @@ lookup_lib="$HOME/.local/share/purse/lib/devcontainer-lookup.sh"
 [[ -r "$lookup_lib" ]] || die "missing $lookup_lib"
 # shellcheck source=../share/purse/lib/devcontainer-lookup.sh
 . "$lookup_lib"
+
+agents_lib="$HOME/.local/share/purse/lib/herdr-agents.sh"
+[[ -r "$agents_lib" ]] || die "missing $agents_lib"
+# shellcheck source=../share/purse/lib/herdr-agents.sh
+. "$agents_lib"
+
+# --agent takes either the command or herdr's short name for it — `cursor-agent`
+# or `cursor`. Resolve to the command, since that is what the container runs.
+if [[ -n "$agent" ]]; then
+  agent_command=""
+  for candidate in $(purse_agent_commands); do
+    if [[ "$candidate" == "$agent" || "$(purse_agent_short_name "$candidate")" == "$agent" ]]; then
+      agent_command="$candidate"
+      break
+    fi
+  done
+  [[ -n "$agent_command" ]] || die "unknown agent: $agent (try one of: $(purse_agent_installable_commands | tr '\n' ' '))"
+  # Through a login shell, so ~/.local/bin is on PATH: `devcontainer exec` runs
+  # the command directly, with none of the environment an interactive shell has.
+  extra_cmd=(bash --login -c 'exec purse-agent "$@"' _ "$agent_command" ${extra_cmd[@]+"${extra_cmd[@]}"})
+fi
 
 if [[ -z "$workspace" ]]; then
   workspace="$(devcontainer_find_workspace)"
@@ -138,22 +165,26 @@ if [[ "${DCSH_HERDR:-1}" != "0" && "${HERDR_ENV:-}" = "1" && -n "${HERDR_PANE_ID
   )
 fi
 
-# Mirrors the kind list from `herdr agent`. Only these get renamed: an
-# unrecognised name buys nothing, and quietly relabelling every process someone
-# runs through dcsh is a surprise waiting to happen. Override with DCSH_ARGV0.
-herdr_agent_kinds="pi claude codex gemini cursor devin agy cline omp mastracode opencode copilot kimi kiro droid amp grok hermes kilo qodercli maki"
-
-herdr_argv0="${DCSH_ARGV0:-}"
-if [[ -z "$herdr_argv0" && "${DCSH_HERDR:-1}" != "0" && ${#extra_cmd[@]} -gt 0 ]]; then
-  case " $herdr_agent_kinds " in
-    *" $(basename "${extra_cmd[0]}") "*) herdr_argv0="$(basename "${extra_cmd[0]}")" ;;
-  esac
+# Naming the agent. herdr reads HERDR_AGENT from the environment of the pane's
+# foreground process — out here, the `devcontainer` CLI — and treats that
+# process as the named agent, applying the same screen-detection manifest it
+# would use for a host-run one. The agent's UI arrives through this pty either
+# way, so state comes out exactly as good as it does on the host.
+#
+# It has to be set before the exec below, which is why only `--agent` (or an
+# agent named after --) can use it. Typing the agent's name at a container
+# prompt instead is covered on the other side: `purse-agent` reports the pane
+# over the relay socket. Override with DCSH_AGENT, opt out with DCSH_HERDR=0.
+herdr_agent="${DCSH_AGENT:-}"
+if [[ -z "$herdr_agent" && "${DCSH_HERDR:-1}" != "0" ]]; then
+  if [[ -n "$agent" ]]; then
+    herdr_agent="$(purse_agent_kind "$agent_command")"
+  elif [[ ${#extra_cmd[@]} -gt 0 ]]; then
+    herdr_agent="$(purse_agent_kind "$(basename "${extra_cmd[0]}")")"
+  fi
 fi
 
-# The rename itself happens in the devcontainer shim, at the exec that actually
-# starts the CLI. Doing it here would not survive: every layer between us and
-# the agent execs something else, and each exec resets argv[0] again.
-[[ -n "$herdr_argv0" ]] && export PURSE_DEVCONTAINER_ARGV0="$herdr_argv0"
+[[ -n "$herdr_agent" ]] && export HERDR_AGENT="$herdr_agent"
 
 # ── build the command to run inside the container ────────────────────────────
 if [[ -n "$switch_branch" ]]; then
