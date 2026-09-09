@@ -101,35 +101,49 @@ install_if_missing() {
   return 0
 }
 
-# Register MCP servers, plugins and hooks for whatever is now installed.
-#
-# purse-outfit-agents guards every step behind `have <agent>`, so running it
-# after a single install outfits that agent and skips the rest. It is the
-# slowest thing here, so it runs only when there is reason to: right after an
-# install, or once per container for an agent the image supplied and purse has
-# never outfitted.
+# Register MCP servers, plugins and hooks — for this agent alone. Named on the
+# command line, purse-outfit-agents touches only the agent asked for, plus the
+# shared tools that agent's config points at. Outfitting every agent a container
+# happens to hold is somebody else's errand.
 outfit() {
   have purse-outfit-agents || return 0
 
   printf 'purse-agent: outfitting %s (MCP servers, plugins, hooks)...\n' "$command" >&2
-  if purse-outfit-agents >&2; then
-    : > "$1" 2> /dev/null || true
+  if purse-outfit-agents "$command" >&2; then
+    printf '%s\n' "$(outfit_fingerprint)" > "$1" 2> /dev/null || true
   else
-    warn "outfitting failed — run \`purse-outfit-agents\` by hand to finish it"
+    warn "outfitting failed — run \`purse-outfit-agents $command\` by hand to finish it"
+  fi
+}
+
+# What this machine's outfitting currently amounts to, in one string. chezmoi
+# renders every manifest — MCP servers, agent plugins, global skills — inline
+# into purse-outfit-agents, so the rendered script's digest is the whole
+# definition. Change any manifest and this changes with it.
+outfit_fingerprint() {
+  local script
+  script="$(command -v purse-outfit-agents 2> /dev/null)" || return 0
+  if have sha256sum; then
+    sha256sum "$script" 2> /dev/null | cut -d' ' -f1
+  elif have shasum; then
+    shasum -a 256 "$script" 2> /dev/null | cut -d' ' -f1
   fi
 }
 
 provision() {
-  # tmpfs, so a rebuilt image outfits again rather than trusting a marker left
-  # in the named volume that carries ~/.config between containers.
-  local marker="/dev/shm/purse-agent-outfitted.$command"
+  # tmpfs, so a rebuilt image outfits again rather than trusting a stamp left
+  # in the named volume that carries ~/.config between containers. It holds the
+  # fingerprint of the outfitting that produced it, so a `purse-pull` that
+  # changes a manifest re-outfits this agent the next time you reach for it,
+  # without waiting for a new container.
+  local stamp="/dev/shm/purse-agent-outfitted.$command"
   local installed=1
   install_if_missing && installed=0
 
   if [ "$installed" = "0" ]; then
-    outfit "$marker"
-  elif in_container && [ ! -e "$marker" ]; then
-    outfit "$marker"
+    outfit "$stamp"
+  elif in_container && [ "$(cat "$stamp" 2> /dev/null)" != "$(outfit_fingerprint)" ]; then
+    outfit "$stamp"
   fi
 }
 
@@ -169,13 +183,28 @@ herdr_should_claim() {
   herdr_kind="$(purse_agent_kind "$command")"
   [ -n "$herdr_kind" ] || return 1
 
-  # A pane herdr already has an agent for is not ours to take. The key is
-  # absent entirely when there is none; agent_status and agent_session are
-  # always present and do not match "agent":.
-  if herdr pane get "$HERDR_PANE_ID" 2> /dev/null | grep -q '"agent":'; then
-    return 1
-  fi
+  # A pane herdr already has an agent for is not ours to take.
+  herdr_pane_has_agent && return 1
   return 0
+}
+
+# Whether herdr already holds an agent label for this pane. Only the pane's own
+# top-level "agent" key counts. `agent_session` is a nested object whose first
+# key is also "agent" — and Claude Code's own integration hook reports exactly
+# that session identity through this relay on startup, so a substring test
+# would see the launching agent's own report and conclude the pane was taken.
+herdr_pane_has_agent() {
+  local pane
+  pane="$(herdr pane get "$HERDR_PANE_ID" 2> /dev/null)" || return 1
+
+  if have jq; then
+    [ -n "$(printf '%s' "$pane" | jq -r '.result.pane.agent // empty' 2> /dev/null)" ]
+    return
+  fi
+
+  # Without jq: drop the innermost objects, which is where every nested "agent"
+  # key lives, and look at what is left. "agent_status" does not match.
+  printf '%s' "$pane" | sed 's/"[a-z_]*":{[^{}]*}//g' | grep -q '"agent":'
 }
 
 herdr_report() {

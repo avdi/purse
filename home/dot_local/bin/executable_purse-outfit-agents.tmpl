@@ -5,6 +5,19 @@
 #
 # chezmoi installs this to ~/.local/bin/purse-outfit-agents.
 #
+# Usage:
+#   purse-outfit-agents                  # every agent present on this machine
+#   purse-outfit-agents claude           # only Claude Code
+#   purse-outfit-agents claude codex     # only those two
+#
+# Named agents are CLI commands, the same names purse-agent and dcsh use:
+# `agy`, not `antigravity`; `cursor-agent`, not `cursor`. Naming one narrows
+# every per-agent step to it, and reduces the shared tools its config points at
+# — codebase-memory-mcp, spec-kit, skills-ref — to a presence check instead of
+# a forced reinstall. That is the door purse-agent uses when it installs an
+# agent on first use: outfitting the other agents a container happens to hold
+# would be somebody else's errand, paid for by whoever launched first.
+#
 # This is a deliberate, manually-invoked step — run it after purse-install-agents:
 #   - It depends on the agent CLIs already being installed (claude, codex,
 #     auggie, cursor-agent, ...), which happens via purse-install-agents.
@@ -25,6 +38,49 @@ mkdir -p "$HOME/.local/bin"
 
 have() { command -v "$1" >/dev/null 2>&1; }
 warn() { echo "⚠️  $*" >&2; }
+
+# --- scope -------------------------------------------------------------------
+# The agent commands this run was asked for; empty means all of them.
+requested_agents=("$@")
+
+# Is <agent-command> in scope for this run? Callers still test `have`, so an
+# agent that was asked for but isn't installed is skipped the way it always was.
+wants() {
+  [ "${#requested_agents[@]}" -eq 0 ] && return 0
+  local requested
+  for requested in "${requested_agents[@]}"; do
+    [ "$requested" = "$1" ] && return 0
+  done
+  return 1
+}
+
+# True when this run is machine-wide. The shared tools use it to choose between
+# upgrading themselves and merely making sure they exist.
+outfitting_whole_machine() { [ "${#requested_agents[@]}" -eq 0 ]; }
+
+# Names for the same agent in other tools' vocabularies. gk calls Claude Code
+# `claude-cli` and reserves `claude` for the desktop app; skills.sh has its own
+# spellings again. Empty means that tool has no counterpart for this agent.
+gk_platform_for() {
+  case "$1" in
+    claude) echo claude-cli ;;
+    agy)    echo antigravity ;;
+    cursor-agent) echo cursor ;;
+    codex|copilot|gemini|kiro|opencode) echo "$1" ;;
+    *) echo "" ;;
+  esac
+}
+
+skills_target_for() {
+  case "$1" in
+    agy)          echo antigravity-cli ;;
+    auggie)       echo augment ;;
+    copilot)      echo github-copilot ;;
+    cursor-agent) echo cursor ;;
+    claude|codex|opencode|devin) echo "$1" ;;
+    *) echo "" ;;
+  esac
+}
 
 # jq upsert by server name into a JSON config file, preserving other entries.
 # args: <cfg> <top-key> <server-name> <server-json>
@@ -256,23 +312,26 @@ outfit_mcp_servers() {
   local gh_bearer_envcolon="Bearer \${env:${gh_token_var}}"  # ${env:VAR}
   local gh_bearer_brace="Bearer {env:${gh_token_var}}"       # {env:VAR}
 
-  # A missing agent is a normal, expected skip; a failed registration warns but
-  # must not abort the run (or later agents get skipped). Hence `if have ...`
-  # guards and per-agent `|| warn`.
-  local agent
+  # An out-of-scope or missing agent is a normal, expected skip; a failed
+  # registration warns but must not abort the run, or every later agent is
+  # skipped too. Hence the `continue` guard and the per-agent `|| warn`.
+  local agent command
   for agent in {{ .mcpAgents | join " " }}; do
-    case "$agent" in
-      claude)      if have claude;       then register_claude      || warn "claude MCP setup failed";      fi ;;
-      codex)       if have codex;        then register_codex       || warn "codex MCP setup failed";       fi ;;
-      antigravity) if have agy;          then register_antigravity || warn "antigravity MCP setup failed"; fi ;;
-      auggie)      if have auggie;       then register_auggie      || warn "auggie MCP setup failed";      fi ;;
-      copilot)     if have copilot;      then register_copilot     || warn "copilot MCP setup failed";     fi ;;
-      cursor)      if have cursor-agent; then register_cursor      || warn "cursor MCP setup failed";      fi ;;
-      vscode)      if have code;         then register_vscode      || warn "vscode MCP setup failed";      fi ;;
-      opencode)    if have opencode;     then register_opencode    || warn "opencode MCP setup failed";    fi ;;
-      devin)       if have devin;        then register_devin       || warn "devin MCP setup failed";       fi ;;
-    esac
+    command="$(mcp_agent_command "$agent")"
+    wants "$command" && have "$command" || continue
+    "register_$agent" || warn "$agent MCP setup failed"
   done
+}
+
+# The CLI command behind a manifest name. Most agents answer to their own name;
+# these three do not.
+mcp_agent_command() {
+  case "$1" in
+    antigravity) echo agy ;;
+    cursor)      echo cursor-agent ;;
+    vscode)      echo code ;;
+    *)           echo "$1" ;;
+  esac
 }
 
 # =============================================================================
@@ -285,7 +344,7 @@ outfit_mcp_servers() {
 outfit_remove_retired_plugins() {
   echo "→ Retired plugins: uninstalling anything dropped from the shortlist..."
   {{ range $agent := .agentPlugins.agents }}
-  if have {{ $agent }}; then
+  if wants {{ $agent }} && have {{ $agent }}; then
     : # no-op so the body is never empty when this agent has no retired entries
     {{ range $.agentPlugins.retired.plugins }}
     {{- if has $agent .agents }}
@@ -336,7 +395,7 @@ outfit_remove_retired_plugins() {
 outfit_agent_plugins() {
   echo "→ Agent plugins: registering marketplaces and installing plugins..."
   {{ range $agent := .agentPlugins.agents }}
-  if have {{ $agent }}; then
+  if wants {{ $agent }} && have {{ $agent }}; then
     {{ range $.agentPlugins.marketplaces }}
     {{- if has $agent .agents }}
     echo "→ {{ $agent }} plugin marketplace add {{ .source }}"
@@ -349,7 +408,7 @@ outfit_agent_plugins() {
     {{ $agent }} plugin {{ if eq $agent "codex" }}add{{ else }}install{{ end }} "{{ .name }}@{{ .marketplace }}" || warn "{{ $agent }} plugin install failed: {{ .name }}@{{ .marketplace }}"
     {{- end }}
     {{- end }}
-  else
+  elif wants {{ $agent }}; then
     warn "{{ $agent }} CLI not found; skipping plugin installation"
   fi
   {{ end }}
@@ -363,7 +422,7 @@ outfit_agent_plugins() {
   local skill_targets=()
   local skill_args=()
   {{ range .agents }}
-  if have {{ .command }}; then
+  if wants {{ .command }} && have {{ .command }}; then
     skill_targets+=("{{ .target }}")
     skill_args+=(--agent "{{ .target }}")
   fi
@@ -384,6 +443,7 @@ outfit_agent_plugins() {
 #    hooks.json → claude-hooks.json in every worktrunk plugin cache directory.
 # =============================================================================
 outfit_worktrunk_workaround() {
+  wants claude || return 0
   local cache_base="$HOME/.claude/plugins/cache/worktrunk/worktrunk"
   if [ ! -d "$cache_base" ]; then
     return 0
@@ -416,6 +476,7 @@ outfit_worktrunk_workaround() {
 #    run here, but this makes any machine where it was self-heal on re-apply.
 # =============================================================================
 outfit_claude_hooks() {
+  wants claude || return 0
   if ! have claude || ! have jq; then
     warn "claude or jq not found; skipping Claude hook registration"
     return 0
@@ -557,6 +618,11 @@ outfit_spec_kit() {
     warn "uv not found; skipping spec-kit install"
     return 0
   fi
+  # An agent-scoped run only needs this to exist. Upgrading it is the
+  # machine-wide door's job, and `uv tool install --force` is not cheap.
+  if ! outfitting_whole_machine && have specify; then
+    return 0
+  fi
   echo "→ spec-kit: installing/upgrading via uv tool..."
   # --link-mode=copy: in devcontainers the uv cache and install target often
   # sit on different filesystems (named Docker volume), so hardlinking fails.
@@ -573,6 +639,9 @@ outfit_spec_kit() {
 outfit_skills_ref() {
   if ! have uv; then
     warn "uv not found; skipping skills-ref install"
+    return 0
+  fi
+  if ! outfitting_whole_machine && have skills-ref; then
     return 0
   fi
   echo "→ skills-ref: installing/upgrading via uv tool..."
@@ -592,10 +661,21 @@ outfit_global_skills() {
     warn "npx not found; skipping global skills installation"
     return 0
   fi
+  # Left to itself, skills.sh seeds every agent directory it can find. Scoped,
+  # name the agents, so launching Claude does not furnish Codex as well.
+  local agent_args=() agent target
+  for agent in ${requested_agents[@]+"${requested_agents[@]}"}; do
+    target="$(skills_target_for "$agent")"
+    [ -n "$target" ] && agent_args+=(--agent "$target")
+  done
+  if ! outfitting_whole_machine && [ "${#agent_args[@]}" -eq 0 ]; then
+    return 0
+  fi
+
   echo "→ global skills: installing shortlist..."
   {{ range .globalSkills -}}
   echo "  • {{ .description }} ({{ .source }}{{ if .skill }} --skill {{ .skill }}{{ end }})"
-  npx --yes skills add "{{ .source }}"{{ if .skill }} --skill "{{ .skill }}"{{ end }} -g -y \
+  npx --yes skills add "{{ .source }}"{{ if .skill }} --skill "{{ .skill }}"{{ end }} -g -y ${agent_args[@]+"${agent_args[@]}"} \
     || warn "skills install failed: {{ .source }}{{ if .skill }} --skill {{ .skill }}{{ end }}"
   {{ end -}}
 }
@@ -611,14 +691,33 @@ outfit_gitkraken_mcp() {
     warn "gk (GitKraken CLI) not found; skipping GitKraken MCP setup"
     return 0
   fi
-  echo "→ GitKraken MCP: installing into all detected clients..."
-  gk mcp install --all || warn "gk mcp install failed"
+  if outfitting_whole_machine; then
+    echo "→ GitKraken MCP: installing into all detected clients..."
+    gk mcp install --all || warn "gk mcp install failed"
+    return 0
+  fi
+
+  local platforms=() agent platform
+  for agent in "${requested_agents[@]}"; do
+    platform="$(gk_platform_for "$agent")"
+    [ -n "$platform" ] && platforms+=("$platform")
+  done
+  [ "${#platforms[@]}" -gt 0 ] || return 0
+
+  echo "→ GitKraken MCP: installing into ${platforms[*]}..."
+  gk mcp install "${platforms[@]}" || warn "gk mcp install failed"
 }
 
 # --- run ---------------------------------------------------------------------
 # MCP servers, agent plugins, and GitKraken MCP are internally resilient
 # (per-item `|| warn`) and run first; codebase-memory-mcp (the heavy binary
 # download) runs last so a network failure there can't block the cheaper steps.
+# Every step below consults `wants`, so naming agents narrows all of them at
+# once rather than each caller remembering which steps belong to whom.
+if ! outfitting_whole_machine; then
+  echo "→ scope: ${requested_agents[*]}"
+fi
+
 outfit_mcp_servers
 outfit_remove_retired_plugins
 outfit_agent_plugins
@@ -636,4 +735,8 @@ outfit_codebase_memory_mcp
 purse-scrub-path-stompers
 
 echo
-echo "✅ Agents outfitted: MCP servers, agent plugins, spec-kit, skills-ref, global skills, GitKraken MCP, codebase-memory-mcp."
+if outfitting_whole_machine; then
+  echo "✅ Agents outfitted: MCP servers, agent plugins, spec-kit, skills-ref, global skills, GitKraken MCP, codebase-memory-mcp."
+else
+  echo "✅ Outfitted ${requested_agents[*]}: MCP servers, agent plugins, global skills, GitKraken MCP, codebase-memory-mcp."
+fi

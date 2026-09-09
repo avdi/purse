@@ -219,6 +219,12 @@ inside a container — reports the pane over the same relay the session id uses.
 accepts a reported agent with no matching process anywhere, which is the only thing that
 can work through a container wall.
 
+`purse-agent` first asks whether herdr already holds an agent for the pane, and reads only
+the pane's own top-level `agent` key to decide. The session id below arrives through the
+same relay moments earlier and lands in `agent_session`, a nested object whose first key is
+*also* `agent` — so a test that merely looks for `"agent":` anywhere in the reply sees the
+launching agent's own report and concludes the pane is taken.
+
 That report carries lifecycle authority along with the name; the two cannot be
 separated, and authority never lapses on its own. So `purse-agent` also owns the state
 while it holds the pane, and takes it from herdr itself: `herdr agent explain` returns
