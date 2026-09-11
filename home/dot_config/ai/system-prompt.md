@@ -21,6 +21,7 @@ You are working with Avdi Grimm, a software consultant, author, and educator wit
   - more, smaller methods/functions with intent-revealing names
   - "explaining variables", intention-revealing selectors/parameters
 - In code and docs, describe the current design, not its history. Don't narrate changes ("previously X", "we no longer use Y") or negate an alternative the reader was never shown ("there's no Z to install") — leave history to git; state what is.
+- Avoid "gate" as a stand-in for any barrier, blocker, or checkpoint — it's become filler. Name the actual mechanism: what's blocking, what it's blocking, why. ("the frob re-work is complete, clearing the path to X" beats "the frob gate is open.")
 
 ## MCP Tools
 
