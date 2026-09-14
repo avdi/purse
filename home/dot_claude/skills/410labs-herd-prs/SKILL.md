@@ -48,6 +48,29 @@ desk isn't that:
 `scripts/herd_prs.rb` (read-only report) and `scripts/herd_prs_apply.rb`
 (mutating actions) handle the mechanical parts of all of this.
 
+## One board item per piece of work
+
+A PR that has an issue is represented on the board **by the issue alone**,
+placed in the column the PR's state calls for. Put the PR itself on the board
+only when no issue can stand in for it. A PR item sitting alongside its own
+issue is a duplicate — remove it, after confirming the issue is open, on the
+board, and in the right column.
+
+- **"Has an issue" is broader than `closingIssuesReferences`.** A draft often
+  names its issue only in its branch (`bugfix/11325-send-displayed-count…`) or
+  mirrors the issue's title, with no formal closing link. The scripts can't
+  see that, so these show up as "not on board" orphans; check the branch name
+  and title before adding the PR. An umbrella issue that many PRs reference
+  (an epic) doesn't stand in for any one of them — add those PRs directly.
+- **Several PRs on one issue:** the issue goes in the column of the least
+  advanced PR (Working before Review before Ready).
+- **Removing an item:** `herd_prs_apply.rb` has no remove subcommand. Use the
+  GraphQL mutation with the project's node id and the PR's item id (both from
+  `projectItems { nodes { id project { number } } }`):
+  ```
+  gh api graphql -f query='mutation { deleteProjectV2Item(input: {projectId: "<project id>", itemId: "<item id>"}) { deletedItemId } }'
+  ```
+
 ## Orphan check: PRs not on the board at all
 
 The rest of this skill is about PRs *on* the board. This check is the
@@ -97,11 +120,15 @@ membership can't: things not on the board.
    - `APPROVED`, no unresolved review threads, CI green, not draft → **Ready**
    - not draft, unreviewed or reviewed-clean, mergeable, not conflicting → **Review**
    - draft, conflicting, or genuinely still being worked → **Working**
-4. **Add it** with `herd_prs_apply.rb add <owner/repo> <number> <StatusName>
-   [--issue]` — `move` errors on anything not already on the board; `add`
-   resolves the content's node id, puts it on project #14, and sets its
+4. **Add it** — the issue if one can represent the PR (see *One board item
+   per piece of work*), otherwise the PR — with `herd_prs_apply.rb add
+   <owner/repo> <number> <StatusName> [--issue]`. If the representing issue is
+   already on the board in the wrong column (an Inbox issue whose PR is now in
+   progress), `move` it instead. `move` errors on anything not already on the
+   board; `add` resolves the content's node id, puts it on project #14, and sets its
    status in one call. Safe to re-run: adding an item already on the board
-   doesn't duplicate it.
+   doesn't duplicate it. Re-read the status afterwards: a freshly added issue
+   has been seen flipping to Working seconds later, overriding the status just set.
 5. **Confirm before bulk-adding.** This can span every repo in the org and
    turn up PRs open for months — some still wanted, some abandoned
    experiments. Separate "opened in the last week or two" (add without much
@@ -257,6 +284,11 @@ sitting in. Correct it:
 Run the report against **Working** as well as **Review** — that's the only
 way to catch an item that quietly became `ready` or reached Verification
 criteria without anyone moving it.
+
+For an issue-linked item, the issue's column follows its PR's state. Check
+the issue's column, not just the PR's: a PR promoted to Review often leaves
+its issue behind in Working or Inbox. Remove any PR item duplicated alongside
+its issue (see *One board item per piece of work*).
 
 Also flag, without necessarily moving:
 
