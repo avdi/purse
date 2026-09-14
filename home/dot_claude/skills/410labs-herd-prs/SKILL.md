@@ -140,10 +140,66 @@ report — run it periodically, not necessarily every pass.
 
 ## Workflow
 
+### 0. Preflight: probe access, and get it fixed before starting
+
+Check every credential the pass will lean on **before** running anything. A
+missing scope discovered halfway through means a half-done pass, or a quiet
+fallback to repo-only work that can't read or move the board. If something
+is missing, stop, give Avdi the exact command, and wait for it.
+
+**GitHub board scopes.** Reading board status needs `read:project`; moving,
+adding, and removing items needs `project`. `GH_TOKEN`/`GITHUB_TOKEN`, when
+set, override `gh`'s stored credential — and in devcontainers the injected
+token typically has only `repo`/`read:org`/`workflow`. The scripts unset those
+variables, so what counts is the **stored** login:
+
+```
+env -u GH_TOKEN -u GITHUB_TOKEN gh auth status
+```
+
+- **Stored login with both scopes** → go on.
+- **Stored login missing a scope** → ask Avdi to run:
+  ```
+  ! env -u GH_TOKEN -u GITHUB_TOKEN gh auth refresh -h github.com -s read:project,project
+  ```
+- **No stored login at all** (`not logged in to any hosts`) → `refresh` has
+  nothing to refresh. Ask for a full login instead:
+  ```
+  ! env -u GH_TOKEN -u GITHUB_TOKEN gh auth login -h github.com -p https -w -s read:project,project
+  ```
+
+Both are interactive device-code flows, so Avdi runs them (`!`-prefixed).
+**If he mentions running it in his own terminal separately** (not the code you
+gave him), that spawns a second, independent device-code flow — don't wait on
+yours; check `gh auth status` for the updated scope once he confirms his
+finished, and kill any `gh auth refresh` process you started yourself so it
+doesn't sit there stuck polling for a code nobody will authorize.
+
+The injected token stays set in the shell afterwards. Any ad-hoc `gh` call
+that reads `projectItems` must unset it too, or `projectItems` comes back
+**silently empty** and every PR looks like an orphan.
+
+**CircleCI.** Probe the tool you'll use to read failures, with one cheap call
+against a real branch. The `circleci-mcp-server` MCP has been seen failing
+every `get_build_failure_logs` / `get_job_test_results` call with a schema
+error (`next_page_token` … `Required`). If it does, check `$CIRCLECI_TOKEN` is
+set and use the REST API instead (header `Circle-Token: $CIRCLECI_TOKEN`):
+
+| Need | Endpoint |
+|---|---|
+| Jobs in a workflow (the workflow id is in `gh pr checks` URLs) | `GET https://circleci.com/api/v2/workflow/<id>/job` |
+| Failed tests for a job | `GET https://circleci.com/api/v2/project/gh/<org>/<repo>/<job#>/tests` |
+| Step output when no tests were recorded (a build step failed) | `GET https://circleci.com/api/v1.1/project/github/<org>/<repo>/<job#>` → each action's `output_url` |
+| Artifacts, e.g. failure screenshots | `GET https://circleci.com/api/v2/project/gh/<org>/<repo>/<job#>/artifacts` |
+| Re-run failed jobs | `POST https://circleci.com/api/v2/workflow/<id>/rerun` with `{"from_failed": true}` |
+
+If neither the MCP nor a token works, say so before starting — CI triage is
+half the pass.
+
 ### 1. Run the report script
 
 ```
-ruby .claude/skills/410labs-herd-prs/scripts/herd_prs.rb [--status Review]
+ruby ~/.claude/skills/410labs-herd-prs/scripts/herd_prs.rb [--status Review]
 ```
 
 Flags: `--org`, `--project`, `--status` (default `Review`), `--repo`
@@ -160,26 +216,8 @@ different repo, and per-PR `classification` — `fresh` / `re_review` /
 plus the raw GraphQL detail (reviews, review-thread resolution, comments, CI
 rollup, mergeable state, assignees) needed to reason about each one.
 
-**Auth precondition the script checks for you:** the token needs the
-`read:project` scope to read board status, and a separate `project` scope
-(full read/write) to move items — `herd_prs_apply.rb move`/`assign` check for
-that one instead. `GH_TOKEN`/`GITHUB_TOKEN` env vars, if set, silently
-override `gh`'s own stored credential, and `gh auth refresh` flat-out refuses
-to run while they're set. Both scripts detect a missing scope and print the
-exact fix:
-
-```
-env -u GH_TOKEN -u GITHUB_TOKEN gh auth refresh -h github.com -s read:project
-env -u GH_TOKEN -u GITHUB_TOKEN gh auth refresh -h github.com -s project
-```
-
-Each needs an interactive browser/device-code prompt — ask Avdi to run it
-himself (`!`-prefixed). **If he mentions running it in his own terminal
-separately** (not the code you gave him), that spawns a second, independent
-device-code flow — don't wait on yours; check `gh auth status` for the
-updated scope once he confirms his finished, and kill any `gh auth refresh`
-process you started yourself so it doesn't sit there stuck polling for a
-code nobody will authorize.
+The scripts need board scopes that a container token usually lacks — run
+the step 0 preflight first.
 
 ### 2. Classify each PR from the script's output
 
@@ -237,7 +275,8 @@ best-effort classification). Judgment calls stay manual:
     didn't design. Move it (see step 3) and comment with the specific
     failure so whoever picks it up doesn't have to re-derive it.
   - For flaky patterns: offer a re-run (`circleci-mcp-server:rerun_workflow`,
-    `fromFailed: true`), don't trigger without confirmation. Re-check status
+    `fromFailed: true`, or the REST rerun endpoint from step 0), don't trigger
+    without confirmation. Re-check status
     afterward — don't assume the re-run passed.
 - **`re_review`** — reviewed, then a newer commit landed after the last
   review activity. Note whether it was `CHANGES_REQUESTED` (stronger signal)
@@ -324,6 +363,14 @@ For every `conflicting` PR:
      already have one per open PR), or create one.
    - `EnterWorktree(path: ...)`, `git fetch origin main`, `git merge
      origin/main --no-edit`.
+   - **If Avdi has asked to herd from one dedicated worktree** instead of
+     hopping between them, work detached there: `git fetch origin`,
+     `git switch --detach origin/<branch>`, merge with an explicit message
+     (`git merge origin/main -m "Merge branch 'main' into <branch>"` — a
+     detached HEAD otherwise records "into HEAD"), and push with
+     `git push origin HEAD:<branch>`. The branch is usually checked out in
+     another worktree, so first confirm that worktree is clean and has no
+     unpushed commits; a plain (non-force) push then can't clobber anything.
    - **Read both sides before resolving — don't blind-pick "ours" or
      "theirs".** Agent-guidance/doc conflicts are usually two independent
      additions in the same spot; keep both, in whatever order reads best.
@@ -338,6 +385,9 @@ For every `conflicting` PR:
      say so plainly rather than claiming a false-confidence pass.
    - `git add`, `git commit --no-edit` (keeps the default merge message),
      `git push`.
+   - `sync-branch` can also fail on a stacked PR with no real conflict, when
+     the PR and its base have **multiple merge bases** (both merged `main` at
+     different times). A local `git merge` usually goes through cleanly.
    - `ExitWorktree(action: "keep")` when done with that worktree.
 
 ### 4. Order the "please review" list

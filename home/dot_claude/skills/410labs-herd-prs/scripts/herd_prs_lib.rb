@@ -53,11 +53,15 @@ module HerdPrs
     return if result && !result["errors"]
 
     warn <<~MSG
-      gh token is missing the #{scope} scope.
+      gh's stored login is missing, or lacks the #{scope} scope.
       Fix (run yourself — needs an interactive browser/device-code prompt;
-      unset GH_TOKEN/GITHUB_TOKEN first or `gh auth refresh` silently no-ops):
+      GH_TOKEN/GITHUB_TOKEN must be unset or gh ignores the stored login):
 
-        env -u GH_TOKEN -u GITHUB_TOKEN gh auth refresh -h github.com -s #{scope}
+        # a stored login exists, but without the scope
+        env -u GH_TOKEN -u GITHUB_TOKEN gh auth refresh -h github.com -s read:project,project
+
+        # no stored login at all ("not logged in to any hosts")
+        env -u GH_TOKEN -u GITHUB_TOKEN gh auth login -h github.com -p https -w -s read:project,project
     MSG
     exit 1
   end
