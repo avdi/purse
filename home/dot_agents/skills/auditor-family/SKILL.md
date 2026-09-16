@@ -20,7 +20,7 @@ short name (`<prefix>-`):
 
 | Kind | Lives in | Role |
 |---|---|---|
-| **Standards skill** | `.claude/skills/<prefix>-<area>-standards/SKILL.md` | *Guidelines.* The concrete rules, with bad/good code pairs. Loaded **before** doing work in that area. |
+| **Standards skill** | `.agents/skills/<prefix>-<area>-standards/SKILL.md` | *Guidelines.* The concrete rules, with bad/good code pairs. Loaded **before** doing work in that area. |
 | **Area auditor** | `.claude/agents/<prefix>-auditor-<area>.md` | *Owner.* A scrupulous subagent that **enforces** the paired skill and the area's intended direction. Read-only. |
 
 Plus meta-agents:

@@ -1,6 +1,6 @@
 # Standards skill template
 
-Path: `.claude/skills/<prefix>-<area>-standards/SKILL.md`
+Path: `.agents/skills/<prefix>-<area>-standards/SKILL.md`
 
 The skill holds **the rules**. Its auditor cites it and never restates it.
 Write this before the auditor.

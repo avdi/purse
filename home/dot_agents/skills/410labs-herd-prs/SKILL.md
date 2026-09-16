@@ -199,7 +199,7 @@ half the pass.
 ### 1. Run the report script
 
 ```
-ruby ~/.claude/skills/410labs-herd-prs/scripts/herd_prs.rb [--status Review]
+ruby ~/.agents/skills/410labs-herd-prs/scripts/herd_prs.rb [--status Review]
 ```
 
 Flags: `--org`, `--project`, `--status` (default `Review`), `--repo`

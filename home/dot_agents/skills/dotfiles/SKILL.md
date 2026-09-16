@@ -151,13 +151,13 @@ replaced the symlink with a plain file and the config silently fell out of VCS.
 
 ```bash
 chezmoi cd
-mkdir -p home/dot_claude/skills/<skill-name>
-# create home/dot_claude/skills/<skill-name>/SKILL.md
+mkdir -p home/dot_agents/skills/<skill-name>
+# create home/dot_agents/skills/<skill-name>/SKILL.md
 chezmoi apply
 ```
 
-Claude Code picks up skills from `~/.claude/skills/`; Augment reads that
-location too (compatible per the agentskills.io standard).
+`~/.agents/skills/` is the canonical location. Claude Code reads it through
+the managed `~/.claude/skills` symlink.
 
 ## Essential chezmoi commands
 
