@@ -288,11 +288,12 @@ scripts:
   exec:     script/clouddev/exec
   shell:    script/clouddev/shell
   path:     script/clouddev/path
+  doctor:   script/clouddev/doctor
   verify:   script/clouddev/verify
 
 services:
-  compose: docker/compose.services.yml
-  env:     docker/clouddev.env          # localhost-topology overrides
+  compose: .devcontainer/compose.services.yml
+  env:     .devcontainer/clouddev.env   # localhost-topology overrides
 
 paths:                                   # omit entirely when they're identical
   host:      /workspace
@@ -316,7 +317,7 @@ rather than failing halfway through a QA pass.
 
 | Value | Means |
 |---|---|
-| `test` | the test suite runs green |
+| `test` | the project's test tooling loads and its test environment reaches its database |
 | `serve` | the app boots and answers HTTP |
 | `browser` | headless (or Xvfb-backed) browser automation works |
 | `jobs` | background workers run and drain a queue |
@@ -332,7 +333,16 @@ rather than failing halfway through a QA pass.
 | `exec` | run its argv in the dev environment; preserve the exit code; pass stdin through byte-exact; allocate a TTY only when `[ -t 0 ]`; rewrite paths by default (see below), with `--raw` to opt out | decide the TTY from the argument count; rewrite stdin; swallow a non-zero status behind a pipe |
 | `shell` | start a login shell in the dev environment, **forwarding its argv** to that shell (`-c '…'`, a script path); **built on `exec`**, never on its own topology logic | duplicate what `exec` knows; force interactivity when stdin is a pipe |
 | `path` | translate a path seen in dev-environment output into one the caller can open; take paths as argv or rewrite a stream on stdin; pass unmapped and relative paths through untouched; exit 0 always; be the **identity function** when the paths are identical | guess, canonicalize, or touch anything outside the declared roots |
-| `verify` | exit non-zero when the environment is broken; **fail loudly**; test one thing per declared capability | mutate the repo or leave state behind |
+| `doctor` | be fast and read-only; report every broken prerequisite it can diagnose (toolchain, dependencies, schema, service reachability); exit non-zero when anything is broken | install, migrate, start services, run the full suite, or stop after the first finding |
+| `verify` | exit non-zero when the environment is broken; **fail loudly**; run one focused smoke check per declared capability | mutate the repo, leave state behind, or run the full project test/CI suite |
+
+`verify` is a startup gate, not CI. Platforms may run it before every agent
+session, so each capability check must finish quickly while still crossing the
+real integration boundary: load the test tooling and boot the test environment
+for `test`, answer HTTP for
+`serve`, launch the browser for `browser`, and enqueue/drain one synthetic job
+for `jobs`. The full suite belongs in the project's ordinary CI workflow and
+pre-commit gate.
 
 `verify`'s loudness is not a style preference. On Copilot a non-zero exit in
 setup **skips the remaining steps and starts the agent anyway** — a silently
@@ -361,7 +371,7 @@ exec "$@"
 ```bash
 # container topology — the dev environment is a container the agent talks to
 [ -t 0 ] || no_tty=-T
-exec docker compose -f docker/compose.services.yml exec ${no_tty:-} app "$@"
+exec docker compose -f .devcontainer/compose.services.yml exec ${no_tty:-} app "$@"
 ```
 
 Decide the TTY from `[ -t 0 ]`, never from the argument count. Without `-T`
@@ -633,6 +643,8 @@ This project uses the clouddev contract (`clouddev.yml`).
 
 - `script/clouddev/boot` — start backing services. **Run this first** if
   Postgres/Redis/CouchDB/Vault aren't up.
+- `script/clouddev/doctor` — diagnose the current environment without changing
+  it.
 - `script/clouddev/verify` — prove the environment works. Run it before
   trusting a green test run.
 - `script/clouddev/exec <cmd>` — run a command in the dev environment.
@@ -684,18 +696,23 @@ Codespaces prebuilds to snapshot.
    `references/platforms.md`. If everything you need is tier 0, stop — point it
    at your machine and you're done.
 1. **Split the compose file.** Extract backing services into
-   `docker/compose.services.yml` with no `app` service. The devcontainer's
+   `.devcontainer/compose.services.yml` with no `app` service. Keeping these
+   artifacts under `.devcontainer/` makes their development-only role explicit;
+   a top-level `docker/` directory too easily reads as production deployment
+   configuration. The devcontainer's
    compose file `include`s it and adds `app`. Verify local dev is unchanged
    before going further.
 2. **Publish the dev image.** Add the CI build/push job and confirm a pull
    works from a clean machine.
-3. **Write the eight scripts** under `script/clouddev/`. Start with `exec` in
+3. **Write the nine scripts** under `script/clouddev/`. Start with `exec` in
    direct form and `path` as the identity function; add the container forms
    only once a platform forces them.
 4. **Write `clouddev.yml`.** Declare capabilities conservatively — claim
    `browser` only after `verify` proves it, on that platform.
-5. **Make `verify` real.** One check per capability, failing loudly. This is
-   the artifact that tells you a platform works.
+5. **Make diagnosis and verification real.** `doctor` reports prerequisites
+   quickly without changing them; `verify` proves one check per capability,
+   failing loudly. These are the artifacts that distinguish a broken box from
+   broken application behavior.
 6. **Document the entrypoints in `AGENTS.md`.** On tier 3 and 4 this is the
    whole adapter.
 7. **Generate adapters** for the platforms you actually use. See
