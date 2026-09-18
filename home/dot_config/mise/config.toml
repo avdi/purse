@@ -2,3 +2,9 @@
 # Honour a project's .ruby-version, so each repo gets the Ruby it pins without a
 # global default fighting it.
 idiomatic_version_file_enable_tools = ["ruby"]
+
+[tools]
+# herdr (https://herdr.dev) — terminal workspace manager for coding agents.
+# Pinned globally here so `mise activate` puts it on PATH the same way as any
+# other mise-managed tool; run_after_install-herdr.sh installs it.
+herdr = "latest"

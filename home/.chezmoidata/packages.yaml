@@ -15,9 +15,12 @@ packages:
   # source-build its whole Rust toolchain in a home-dir prefix, so on all Unix
   # (Linux and macOS) it's installed as a prebuilt binary from GitHub releases
   # by run_onchange_install-worktrunk.sh. Windows uses winget (below).
-  # herdr has its own self-updating installer (herdr.dev/install.sh), run by
-  # run_after_install-herdr.sh on hosts and inside devcontainers alike — the
-  # containers need it for the agent integration hooks, not just for the UI.
+  # herdr is installed via `mise install` wherever mise is present — its
+  # version is pinned in dot_config/mise/config.toml, and run_after_install-
+  # herdr.sh (run on hosts and inside devcontainers alike, since containers
+  # need it for the agent integration hooks, not just for the UI) makes sure
+  # the install actually happened. Only a host with no mise falls back to
+  # herdr's own self-updating installer (herdr.dev/install.sh).
   # gh (GitHub CLI) is absent from Debian stable and stale in Ubuntu universe,
   # so on Linux it comes from GitHub releases via run_onchange_install-packages.sh;
   # macOS uses brew and Windows winget (both below).

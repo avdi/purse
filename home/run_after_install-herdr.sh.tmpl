@@ -11,11 +11,12 @@
 # native session id back over `herdr-bridge`.
 #
 # Which is why this runs in containers too, and why it runs on every apply
-# rather than once. The binary updates itself (`herdr update`); what goes stale
-# is the hook file herdr writes into each agent's config. A hook left at an
-# older format version stops reporting and says nothing about it — the symptom
-# is an agent that silently never resumes. `herdr integration status` is the
-# only thing that knows, so ask it every time. It is a local binary call.
+# rather than once. herdr's version is pinned in dot_config/mise/config.toml
+# and stays current there; what goes stale on this machine is the hook file
+# herdr writes into each agent's config. A hook left at an older format
+# version stops reporting and says nothing about it — the symptom is an agent
+# that silently never resumes. `herdr integration status` is the only thing
+# that knows, so ask it every time. It is a local binary call.
 #
 # PURSE_INSTALL_HERDR=0 skips all of it.
 #
@@ -32,12 +33,40 @@ in_container() {
 }
 
 # ---- the binary -------------------------------------------------------------
-# herdr's own installer drops a single prebuilt binary in ~/.local/bin and owns
-# updates from then on, so this only ever has to cover the first time. Network
-# failure here must not fail the apply: every other part of purse is still fine
-# without herdr, and the next apply retries.
+# mise (installed earlier in the apply, see .chezmoidata/packages.yaml) owns
+# herdr wherever it's present: the version is pinned globally in
+# dot_config/mise/config.toml, and `mise activate` in .bashrc/.zshrc puts the
+# installed binary on PATH for every later shell. This script only has to make
+# sure that install has actually happened, and, on a machine that predates
+# this, retire the old self-installed binary so it can't shadow it on PATH.
+#
+# `mise activate` is eval'd here too, since this script's own shell is neither
+# interactive nor sourced from .bashrc — without it, a herdr installed moments
+# ago by mise wouldn't be visible to the `herdr integration ...` calls below.
+#
+# Only a host with no mise falls back to herdr's own installer, which drops a
+# single prebuilt binary in ~/.local/bin and self-updates from then on. Network
+# failure in either path must not fail the apply: every other part of purse is
+# still fine without herdr, and the next apply retries.
 
-if ! have herdr; then
+if have mise; then
+  eval "$(mise activate bash)"
+
+  if [ -f "$HOME/.local/bin/herdr" ]; then
+    echo "→ herdr: retiring the old self-installed binary in favor of mise"
+    rm -f "$HOME/.local/bin/herdr"
+    hash -r
+  fi
+
+  if ! have herdr; then
+    echo "→ herdr: installing via mise..."
+    if mise install herdr@latest; then
+      eval "$(mise activate bash)"
+    else
+      echo "⚠️  herdr: mise install failed — rerun \`chezmoi apply\` to retry" >&2
+    fi
+  fi
+elif ! have herdr; then
   echo "→ herdr: installing..."
   if curl -fsSL https://herdr.dev/install.sh | sh; then
     hash -r
