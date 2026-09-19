@@ -18,7 +18,10 @@ Tier decides how much the contract costs you. Establish it first.
 | **3** | Their image, no usable per-session hook | Devin (managed), Jules, Factory managed, Codegen |
 | **4** | No contract to target | Codex cloud, Kiro Web, Amazon Q in GitHub, Antigravity, Replit, OpenHands Cloud, Daytona |
 
-Tier 0 costs nothing — your devcontainer runs unmodified. Tier 4 should be
+Tier 0 costs nothing — your devcontainer runs unmodified. (True of the
+*toolchain*. Your own CI is tier 0 and still has real work in it, because
+it never snapshots, so both phases run cold on every run: see
+`github-actions.md`.) Tier 4 should be
 documented as unsupported rather than worked around.
 
 **Tier is adaptation cost, not fitness.** See *Fitness* in `SKILL.md` for the
