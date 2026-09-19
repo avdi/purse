@@ -904,6 +904,14 @@ behind each of its sections.
 - **A native-install fallback for Docker-less platforms.** A second
   environment definition that never runs locally will rot, silently, and you'll
   discover it during a cloud session. Drop the platform instead.
+- **A preflight that stops at the first blocker.** Short-circuiting reads as
+  efficient and hides everything downstream: a standing failure in the first
+  check means the later ones never run, so a second misconfiguration surfaces
+  only after you fix the first — consecutive waits instead of one. When the
+  checks are cheap, run them all, collect the failures, and report them
+  together. Ours sat idle on an empty API account for days while a private
+  plugin credential went entirely unverified, because the gate never reached
+  it.
 - **Persisting only at the end of an unattended run.** One durable moment an
   hour in means every early stop costs everything before it. The work is not
   lost by the thing that stopped the run — it is lost by a design that had
