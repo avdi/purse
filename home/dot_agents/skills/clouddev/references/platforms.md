@@ -21,8 +21,8 @@ Tier decides how much the contract costs you. Establish it first.
 Tier 0 costs nothing — your devcontainer runs unmodified. (True of the
 *toolchain*. Your own CI is tier 0 and still has real work in it, because
 it never snapshots, so both phases run cold on every run: see
-`github-actions.md`.) Tier 4 should be
-documented as unsupported rather than worked around.
+`github-actions.md`.) Tier 4 should be documented as unsupported rather than
+worked around.
 
 **Tier is adaptation cost, not fitness.** See *Fitness* in `SKILL.md` for the
 mission-board and one-box-N-worktrees axes, which sort these very differently.
