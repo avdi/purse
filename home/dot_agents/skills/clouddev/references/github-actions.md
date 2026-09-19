@@ -249,6 +249,50 @@ Two things worth knowing:
   to user scope, and treat your own verification step as a check on setup
   rather than proof about the binary that ultimately runs.
 
+## Fencing an agent that merges without review
+
+An unattended runner that merges its own PR has no human diff review, so the
+line it must not cross is: the agent may change the product, never the things
+that judge the product — CI config, the composite action that provisions and
+grades it, the pre-commit gate, the environment contract, its own
+instructions file.
+
+A caution in the prompt is not a guard. Put it where the agent cannot reach:
+
+- **`GITHUB_TOKEN` is already refused `.github/workflows/**`** — *"refusing to
+  allow a GitHub App to create or update workflow … without `workflows`
+  permission"*. Free, and there is no `workflows:` key in a workflow
+  `permissions:` block, so it cannot be granted by accident.
+- **`.github/actions/**` is wide open by default.** This is the real hole: the
+  composite action that installs the toolchain and runs the gate.
+- **Close it with a push ruleset** (`target: push`, rule
+  `file_path_restriction`). Available on **GitHub Team** for a private repo.
+  Bypass actor `RepositoryRole` **id 5 = admin**; prefer it over
+  `OrganizationAdmin`, since repo admins are often ordinary org members.
+- **It holds because of the trigger.** For `issues`, `schedule`, and
+  `workflow_dispatch` the workflow file is read from the **default branch**, so
+  an agent editing the workflow on its own branch changes nothing about the run
+  policing it.
+
+Two traps, each worth a cycle:
+
+- The pattern must be `.github/**/*`. **`.github/**` matches immediate children
+  only** — and a push of a nested file is then reported as
+  `file_path_restriction → result: "pass"`. The rule evaluates and *approves*,
+  so a ruleset protecting nothing is indistinguishable from one that works.
+- Therefore: **prove a path restriction with a real rejected push.** A throwaway
+  workflow that tries `git push` one file at a time, printing ALLOWED/REFUSED,
+  settles in a minute what the docs will not. Same instinct as `verify` — a
+  capability you have not exercised is a capability you are guessing about.
+
+Inspect evaluations with
+`gh api repos/{owner}/{repo}/rulesets/rule-suites?time_period=hour`, then
+`.../rule-suites/{id}` for the per-rule verdicts.
+
+Still name the paths in the prompt — not as the guard, but so the agent meets
+the boundary while planning rather than in a rejected push an hour of tokens
+later.
+
 ## Concurrency: choose the lane per trigger, not per repo
 
 Two workflows against the same repo wanted opposite models.
