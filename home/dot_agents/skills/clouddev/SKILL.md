@@ -703,6 +703,18 @@ This project uses the clouddev contract (`clouddev.yml`).
 It's instruction, not execution, so it degrades to "the agent probably runs
 it." That is still strictly better than nothing and costs one paragraph.
 
+`AGENTS.md` is the cross-vendor filename, which is why it is the one worth
+writing to — but it may not be the file *your* repo already treats as
+canonical. Claude Code reads `CLAUDE.md`, and plenty of projects have put their
+real guidance there first. Don't maintain two: pick one as the source and make
+the other a symlink, or have the second `@`-include the first. Two hand-edited
+instruction files diverge, and the one that goes stale is the one you weren't
+looking at.
+
+Whichever name you land on, use it consistently — in the prompt's "read this
+first", in the fenced paths, and in anything that tells an agent where the
+rules live.
+
 Amp offers a cleaner variant: `.agents/setup` writes orb-only guidance into
 `~/.config/amp/AGENTS.md`, keeping platform specifics out of the committed file.
 

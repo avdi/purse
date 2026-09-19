@@ -28,22 +28,42 @@ That gives a reliable eight-part skeleton:
 
 ## Template
 
-Substitute your own process skill, gate command, and fenced paths.
+Placeholders in `<angle brackets>` are yours to fill. Two deserve a decision
+rather than a find-and-replace:
+
+**`<guidance file>` — whatever your repo's canonical agent instructions are
+called.** `AGENTS.md` and `CLAUDE.md` are both common, some repos carry both
+(often one symlinked to the other), and some use `.cursorrules` or a docs page.
+Name the real file; pointing an agent at a file that isn't there costs a
+confused tool call and teaches it the prompt is unreliable. The same name then
+has to appear in your fenced paths, or the agent can rewrite its own
+instructions.
+
+**Sections 2 and 3 scale with how stale your queue is.** They are written for
+a backlog that accumulated before the factory existed — tickets that were
+half-worked and dropped, and tickets reality has since overtaken. If your
+runner only ever picks up freshly-filed issues, "look for an existing branch"
+is nearly always a no-op and the validity gate is close to free.
+
+Keep both anyway, but size them to the risk. They are cheap when they find
+nothing and they are the difference between a useful factory and a harmful one
+the first time they find something. A queue also gets staler as soon as the
+factory stops for a weekend, which is exactly when nobody is watching it.
 
 ```markdown
 You are working issue #<N> in <repo>, unattended, in CI.
 
-Read `AGENTS.md` first. Then load the `<your-process-skill>` skill and work it
-end to end. That skill is the process — this prompt only covers what differs
-when nobody is watching. Do not substitute your own shortened version of it:
-the audit rounds and QA are the reason this runs at all.
+Read `<AGENTS.md | CLAUDE.md | your guidance file>` first. Then load the
+`<your-process-skill>` skill and work it end to end. That skill is the process —
+this prompt only covers what differs when nobody is watching. Do not substitute
+your own shortened version of it: the audit rounds and QA are the reason this
+runs at all.
 
 ## Where the work actually is
 
-Many of these tickets have been started and dropped. Before planning anything,
-find out what already exists: read the issue and all its comments, look for an
-open or closed PR referencing it, and check for a remote branch naming it
-(`git branch -r --list '*<N>*'`).
+Before planning anything, find out what already exists: read the issue and all
+its comments, look for an open or closed PR referencing it, and check for a
+remote branch naming it (`git branch -r --list '*<N>*'`).
 
 If there is prior work, resume from where the process actually got to rather
 than starting over. Check out the existing branch, rebase it onto `main`, and
@@ -51,11 +71,10 @@ carry on. Say in a comment what you found and where you resumed.
 
 ## Is the ticket still real?
 
-These tickets are weeks old and `main` has moved under them. Before planning,
-establish that the problem still exists — read the code as it stands now, and
-run whatever reproduces it. **Implementing a fix for something already fixed is
-a worse outcome than not running at all**, because it merges a change nobody
-can motivate.
+Before planning, establish that the problem still exists — read the code as it
+stands now, and run whatever reproduces it. **Implementing a fix for something
+already fixed is a worse outcome than not running at all**, because it merges a
+change nobody can motivate.
 
 A ticket can land in any of these states, and closing one that has genuinely
 expired is a real result — not a shirked run:
@@ -118,8 +137,8 @@ indistinguishable from a ticket that was dropped.
   to keep.
 
   Lessons about the project rather than this ticket go in the notes and the PR
-  as a *proposal*. Do not edit `AGENTS.md` or the skills yourself; what every
-  future run must follow is a human's call.
+  as a *proposal*. Do not edit `<guidance file>` or the skills yourself; what
+  every future run must follow is a human's call.
 - **`gh` is authenticated**; use it for all issue and PR operations. Git is
   configured for committing.
 - **The app runs here.** <services> are up and the app is verified, so QA
@@ -181,7 +200,7 @@ a ticket that is merely hard.
 - Some paths are closed to you, and the push will be rejected by the server if
   you touch them — so decide before you write code, not after a wasted run:
 
-      .github/**    <env scripts>    <gate hook>    AGENTS.md
+      .github/**    <env scripts>    <gate hook>    <guidance file>
 
   These are the CI that grades you, the environment that provisions you, and
   the instructions you are following. You merge without a human reading the
@@ -209,18 +228,21 @@ Without it the model treats the prompt as the complete brief and quietly skips
 the audit rounds, which are the expensive, valuable, easily-dropped part. Name
 the process, say it is not optional, and say *why* it exists.
 
-**"Where the work actually is."** A queue that has been stalled has
-half-worked tickets in it. The default behaviour is to start fresh, silently
-duplicating or reverting earlier work. Resumption has to be an explicit
+**"Where the work actually is."** Any queue that has ever stalled has
+half-worked tickets in it — and one that hasn't yet, will. The default
+behaviour is to start fresh, silently duplicating or reverting earlier work.
+The failure is quiet and the check is nearly free, so it earns its place even
+in a queue where it usually finds nothing. Resumption has to be an explicit
 instruction with a concrete command, or it doesn't happen.
 
 **The validity gate.** The single highest-value section. An agent handed a
-ticket will implement it — that is what it is for — and a stale queue is full
-of tickets reality has already handled. Without this you merge unmotivated
-changes, which is worse than merging nothing. Crucially, **enumerate the
-outcomes and bless the non-working ones**: unless "already fixed" and
-"superseded" are named as *real results*, the model reads closing a ticket as
-failing to do its job, and works it anyway.
+ticket will implement it — that is what it is for — even when reality has
+already handled it. The older the ticket the likelier that is, but a fresh
+queue is not immune: two issues filed the same day can fix each other. Without
+this you merge unmotivated changes, which is worse than merging nothing.
+Crucially, **enumerate the outcomes and bless the non-working ones**: unless
+"already fixed" and "superseded" are named as *real results*, the model reads
+closing a ticket as failing to do its job, and works it anyway.
 
 **"Ambiguity is a question, not a licence to close."** The counterweight. Give
 a model an approved way out and some tickets will take it. Bless the exit and

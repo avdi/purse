@@ -307,7 +307,9 @@ is written even when the push is impossible.
   id: salvage
   if: ${{ always() && steps.agent.outcome != 'skipped' }}
   env:
-    PROTECTED: .github script/ci-gate.sh AGENTS.md   # whatever you fenced
+    PROTECTED: .github script/ci-gate.sh AGENTS.md   # or CLAUDE.md — whatever
+                                                     # your repo's canonical
+                                                     # guidance file is
   run: |
     set -uo pipefail
     note() { echo "$*"; echo "$*" >> "$GITHUB_STEP_SUMMARY"; }
