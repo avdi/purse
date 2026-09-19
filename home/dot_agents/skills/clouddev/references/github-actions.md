@@ -249,6 +249,54 @@ Two things worth knowing:
   to user scope, and treat your own verification step as a check on setup
   rather than proof about the binary that ultimately runs.
 
+## An ephemeral runner needs continuous persistence
+
+A hosted runner's disk is destroyed when the job ends, so any work that has
+not left the box does not exist. The usual shape — work for an hour, push at
+the end — means **anything that stops the run early costs the entire run**.
+Runs stop early often: credit exhaustion, job timeout, cancellation, a model
+that simply halts.
+
+Persist on two channels that fail independently:
+
+- **Code → git.** Push the branch the moment it is created and again at every
+  step. Frame it in the prompt as *a push is a checkpoint, not a publication*,
+  or the model will hold work back waiting for a tidy history.
+- **Knowledge → the issue/PR, via the REST API.** A run also buys findings,
+  decisions, and dead ends that no diff records. Append them to a single
+  rolling comment (read-modify-write; roll over near the 65,536-char cap).
+  Give the model a `note-progress`-style helper rather than the raw API calls.
+
+The second channel is not redundancy — it is the only one that survives a
+**refused push**, which is a real and common failure. Give the model a command
+it can pipe Markdown into and tell it what is worth recording: validity
+verdicts, reasoning, open questions, and above all dead ends, which are the
+most expensive thing for a fresh run to rediscover. Explicitly exclude files
+changed and commands run; git and the run log already have those.
+
+Then add a workflow-level `if: always()` salvage step — in the *workflow*, not
+the prompt, so a run that has stopped thinking still gets it: commit the dirty
+tree, rebase onto the default branch, push, and upload a `git bundle` artifact
+regardless. The bundle is the backstop that does not depend on the push
+succeeding.
+
+### Staleness makes the final push fail
+
+The default branch moves while a long run works. The run's branch then still
+carries the *older* copies of protected paths, and GitHub reads the push as
+changing them — rejecting it for a change the agent never made. Seen in the
+wild: a rejected push plus a dead account destroyed a completed, rebased,
+pushable branch.
+
+`git fetch origin <default> && git rebase origin/<default>` is the fix, since
+the push then contains only the agent's own commits. **Do not "fix" it by
+restoring the protected file from the default branch** — verified by probe,
+`file_path_restriction` is evaluated per commit, not against the net tree, so
+a commit that restores a protected file to byte-identical content is still
+refused, and the branch is then unpushable until that commit is rewritten
+away. Check for offending commits before attempting the push and fall back to
+the artifact, rather than retrying something that cannot succeed.
+
 ## Fencing an agent that merges without review
 
 An unattended runner that merges its own PR has no human diff review, so the
