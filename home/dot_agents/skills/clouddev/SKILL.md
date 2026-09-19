@@ -349,6 +349,51 @@ setup **skips the remaining steps and starts the agent anyway** — a silently
 half-built environment that fails later in ways that look like code bugs.
 `AGENTS.md` must tell the agent to run `verify` before trusting the box.
 
+### Probe the capability; never identify the platform
+
+The scripts are the universal contract and the adapters are the platform-aware
+layer. That only holds if platform knowledge stays out of the scripts — and it
+leaks back in two disguises:
+
+- **A per-platform variant** (`prepare-ga`, `boot-cursor`). This is the
+  native-install fallback anti-pattern wearing a different hat: a second
+  definition that never runs locally, rotting until a cloud session finds it.
+- **A mode env var** (`CLOUDDEV_PLATFORM=github-actions`, then branch on it).
+  Same disease, cheaper to type. Branching on platform *identity* is N×M —
+  every new platform edits every script, and the scripts are wrong on any
+  platform nobody has written a branch for yet.
+
+Ask what is **true of the box**, not which box it is:
+
+```bash
+# Redis may already be up — an Actions services: block, a platform-supplied
+# addon, a colleague's running stack. Ask, don't assume, and don't ask who.
+clouddev_redis_ready && redis_ready=true
+...
+if [[ $redis_ready == true && $mailhog_ready == true ]]; then
+  exit 0                      # somebody else owns these; nothing to do
+fi
+```
+
+That `boot` is correct on platforms that did not exist when it was written,
+because it never had to know about any of them. It also catches a real
+misconfiguration for free: exactly one service up means externally-managed and
+clouddev-managed stacks are being mixed, which is worth refusing rather than
+papering over.
+
+**Env vars are still right — as configuration, not as mode.**
+`CLOUDDEV_REDIS_HOST` says *where the thing is*, which the caller genuinely
+knows and the script cannot infer. `CLOUDDEV_PLATFORM` says *who I am*, which
+the script should never need. Where behaviour genuinely must vary, name the
+condition, not the host: `CLOUDDEV_SERVICES_EXTERNAL`, not `CLOUDDEV_IS_CI`.
+
+**And where a capability differs, declare it.** Something like a browser is not
+a platform variation, it is a `capabilities:` entry — `prepare` installs what
+is declared, `verify` proves it. Wiring a browser into one platform's CI
+config gets that platform a browser; declaring the capability gets every
+platform one, and gets the honest answer recorded for the platforms where it
+does not work.
+
 ### `refresh` is a real third phase
 
 Five platforms independently rebuild a warm snapshot on a timer: Cosmos 12h
@@ -776,7 +821,13 @@ memory-snapshot persistence is usable at all), Docker on **Devin** and
 - **Logic in adapter files.** They're generated. Anything conditional belongs
   in `prepare` or `exec`, where it's testable locally.
 - **Claiming capabilities `verify` doesn't check.** An unverified `browser`
-  capability wastes a whole cloud session discovering it's false.
+  capability wastes a whole cloud session discovering it's false. Generalized:
+  a dependency installing is not evidence it works — only using it is. Drive
+  each one once, in setup, from a step whose failure is loud. A broken
+  environment does not stop an agent, it *redirects* one: it investigates,
+  theorizes, and works around, spending a paid context window on your
+  infrastructure instead of the task. The failure mode is not a failed run but
+  a plausible-looking one.
 - **Baking dev secrets into the published image.** Dev secrets belong in the
   repo (if they're genuinely dev-only fakes) or in platform secret storage.
   An image in a registry outlives the decision to put them there.
@@ -815,3 +866,7 @@ Treat a stale entry as unknown, not as true.
 - `references/platforms.md` — per-platform capability matrix: base image
   control, nested Docker, customization hook, network model.
 - `references/adapters.md` — adapter templates, one per platform.
+- `references/github-actions.md` — running an agent unattended in your own CI:
+  why the phase split stops paying, proving the environment instead of
+  assuming it, browser/MCP provisioning, private marketplace credentials, and
+  the ways headless runs die silently.

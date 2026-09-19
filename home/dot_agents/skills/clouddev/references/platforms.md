@@ -51,6 +51,7 @@ Aider, Cline, OpenCode. These are tier 0 by construction.
 | Factory (managed) | 3 | fixed | **undocumented** | none | `SessionStart` (60s) | you set it |
 | Jules | 3 | fixed Ubuntu 24.04 | binaries present, daemon unverified | one text box | **none** | `/app` (community) |
 | Codegen | 3 | fixed (uv/bookworm) | undocumented | Setup Commands (UI) | **none** | not documented |
+| **GitHub Actions** (own CI) | 0 | **yours** (`container:`/`services:`) | yes | — **no snapshot; both phases run every time** | — | yours |
 | Codex cloud | 4 | fixed `universal` | **no** | setup script | none | — |
 | Daytona | 4 | any image | yes, DinD images | **none** | **none** | configurable |
 | Replit | 4 | Nix, no image | **no** | `packager.afterInstall` | Workflows | not documented |
@@ -615,6 +616,14 @@ exists is **unresolved in the docs**.
 Best available: keep an idempotent entrypoint in the repo and have a human
 paste `bash script/clouddev/prepare && bash script/clouddev/boot` into the box
 once, so the repo stays the source of truth. `AGENTS.md` carries the rest.
+
+### GitHub Actions (your own CI) — tier 0
+
+Full detail in `references/github-actions.md`. The short version: you control
+everything, and the one thing you lose is the snapshot — so `prepare` and
+`boot` both run cold on every run and caching becomes the main lever. Backing
+services come from an Actions `services:` block rather than compose. Shared
+setup belongs in a composite action under `.github/actions/`.
 
 ### Codex cloud — tier 4, unsupported
 <https://developers.openai.com/codex/cloud/environments>
