@@ -8,10 +8,13 @@ description: >
   clouddev.yml manifest and its entrypoint scripts, path mapping between the
   agent's box and the dev environment, publishing a dev image to a registry,
   and splitting docker-compose so backing services (Postgres, Redis, CouchDB,
-  Vault) come up without the app container. Use when porting a project to a
-  cloud agent platform, when a cloud agent can't run tests or boot the app
-  because backing services are missing, when adding a platform adapter, or when
-  deciding whether a platform is worth supporting at all.
+  Vault) come up without the app container. Also covers running agents
+  unattended in your own CI — proving the environment, keeping work when a run
+  stops early, and fencing the paths an agent must not edit. Use when porting a
+  project to a cloud agent platform, when a cloud agent can't run tests or boot
+  the app because backing services are missing, when adding a platform adapter,
+  when building an unattended agent factory, or when deciding whether a
+  platform is worth supporting at all.
 ---
 
 ## The problem
@@ -809,11 +812,99 @@ memory-snapshot persistence is usable at all), Docker on **Devin** and
 **Jules**, and prepare-phase secret visibility on **Cosmos**, **Jules**, and
 **Amp**.
 
+## Running a factory: what unattended adds
+
+Everything above gets an agent a working box. A **factory** — tickets in,
+merged PRs out, nobody watching — needs two more things, and both exist only
+because the human is gone.
+
+An interactive session gets them free. You notice a stalled run and nudge it.
+You see a bad diff before it lands. You remember what the session learned,
+because you were there. Remove yourself and each becomes a mechanism you have
+to build.
+
+### 1. Nothing survives that isn't deliberately saved
+
+A hosted runner's disk is destroyed when the job ends. The default shape —
+work for an hour, push at the end — means **anything that stops the run early
+costs the whole run**, and runs stop early constantly: credit exhaustion, job
+timeouts, cancellation, a model that simply halts.
+
+Persist on **two channels that fail independently**:
+
+- **Code → git.** Push the branch the moment it exists, and again at every
+  step. Tell the model *a push is a checkpoint, not a publication*, or it will
+  hold work back waiting for a history worth showing.
+- **Knowledge → the issue/PR, over the API.** A run buys findings, decisions,
+  and dead ends that no diff records. Append them to one rolling comment.
+
+The second is not redundancy. The failure that taught me this was a **refused
+push** — everything routed through git died with it, and the API channel was
+the only thing that could have survived. Two channels, two failure modes.
+
+Then back both with a **salvage step that runs unconditionally** (`if:
+always()`, or the equivalent trap): commit the dirty tree, rebase, push, and
+upload a bundle artifact regardless. Put it in the *harness*, never the
+prompt — a run that has stopped thinking cannot be asked to save itself. That
+is the whole reason it works.
+
+Budget for the fact that the last push is the fragile one. The default branch
+moves while a long run works, and a stale base can get a push rejected for
+changes the agent never made. Rebase onto the default branch before pushing.
+
+### 2. The agent must not edit what judges it
+
+An agent that merges without review has no diff-reading human, so it must not
+be able to change the things that decide whether its work is good: CI config,
+the setup that provisions and grades it, the commit hook, the environment
+contract, its own instructions file.
+
+**A caution in the prompt is not a guard.** It is advice to the one party with
+a motive to ignore it, evaluated by the same context that is tired and looking
+for a way to make the tests pass. Put the fence where the agent cannot reach:
+a server-side push ruleset, a branch protection, a token that lacks the scope.
+
+The test of a real guard: *could the agent remove it by writing a file?* If
+yes, it is documentation.
+
+Then name the same paths in the prompt anyway — not as the guard, but so the
+agent meets the boundary while planning instead of in a rejected push an hour
+of tokens later.
+
+### The environment is the third leg, not a separate topic
+
+These two combine with `verify` into one idea: **a factory fails silently by
+default**, in all three directions. An unproved environment produces a
+plausible-looking run that spent its context working around your
+infrastructure. An unguarded one produces a merge nobody vetted. An
+unpersisted one produces an issue that looks untouched after an hour of real
+work.
+
+None of the three announces itself. Each needs a mechanism whose failure is
+loud, and none of those mechanisms can live in the prompt.
+
+`references/github-actions.md` has the mechanics for Actions specifically;
+`references/worker-prompt.md` has a complete worker prompt and the reasoning
+behind each of its sections.
+
 ## Anti-patterns
 
 - **A native-install fallback for Docker-less platforms.** A second
   environment definition that never runs locally will rot, silently, and you'll
   discover it during a cloud session. Drop the platform instead.
+- **Persisting only at the end of an unattended run.** One durable moment an
+  hour in means every early stop costs everything before it. The work is not
+  lost by the thing that stopped the run — it is lost by a design that had
+  nowhere to put it.
+- **Guarding a path by asking the agent not to touch it.** See above: if a
+  file can remove the rule, the rule is a comment. Applies equally to "don't
+  skip the tests" and "don't edit CI".
+- **Interactive patterns in a headless run.** Anything that waits — a
+  background task the run intends to check on later, a scheduled wakeup, a
+  question posed to a human — ends the run where it stands, and the run
+  frequently reports *success* on the way out. Forbid the tools rather than
+  discouraging them, and verify afterwards that the run left the trace a real
+  attempt would leave.
 - **Nix / devbox / devenv as the portable source of truth.** Every one of these
   platforms ships Docker; none ships Nix. Adopting Nix makes the project *less*
   portable and discards the devcontainer features ecosystem. Use Nix inside the
@@ -868,5 +959,9 @@ Treat a stale entry as unknown, not as true.
 - `references/adapters.md` — adapter templates, one per platform.
 - `references/github-actions.md` — running an agent unattended in your own CI:
   why the phase split stops paying, proving the environment instead of
-  assuming it, browser/MCP provisioning, private marketplace credentials, and
-  the ways headless runs die silently.
+  assuming it, browser/MCP provisioning, private marketplace credentials, the
+  ways headless runs die silently, keeping work when a run stops early, and
+  fencing the paths an agent must not edit.
+- `references/worker-prompt.md` — a complete annotated worker prompt for an
+  unattended factory, plus what each section defends against and the table of
+  which concerns belong in the harness rather than the prompt.

@@ -297,6 +297,130 @@ refused, and the branch is then unpushable until that commit is rewritten
 away. Check for offending commits before attempting the push and fall back to
 the artifact, rather than retrying something that cannot succeed.
 
+### The salvage step, entire
+
+Ordered so the cheap checks bail before the expensive ones, and so the bundle
+is written even when the push is impossible.
+
+```yaml
+- name: Salvage whatever the run produced
+  id: salvage
+  if: ${{ always() && steps.agent.outcome != 'skipped' }}
+  env:
+    PROTECTED: .github script/ci-gate.sh AGENTS.md   # whatever you fenced
+  run: |
+    set -uo pipefail
+    note() { echo "$*"; echo "$*" >> "$GITHUB_STEP_SUMMARY"; }
+
+    branch=$(git rev-parse --abbrev-ref HEAD)
+    case "$branch" in HEAD|main) note "No branch to salvage."; exit 0;; esac
+    echo "branch=$branch" >> "$GITHUB_OUTPUT"
+
+    git config user.name  "agent"
+    git config user.email "agent@users.noreply.github.com"
+
+    # --no-verify on purpose: the commit gate is a bar for work being
+    # offered, not a reason to drop work on the floor. This is labelled WIP
+    # and merges nothing.
+    if [ -n "$(git status --porcelain)" ]; then
+      git add -A
+      git commit -q --no-verify -m "WIP: salvaged from run ${GITHUB_RUN_ID}" || true
+    fi
+
+    git fetch origin main --quiet || true
+    [ -n "$(git log origin/main..HEAD --oneline)" ] || { note "No commits."; exit 0; }
+
+    git rebase origin/main >/dev/null 2>&1 || git rebase --abort >/dev/null 2>&1 || true
+
+    # Refuse to attempt a push that the ruleset will reject anyway.
+    hits=$(git log origin/main..HEAD --name-only --pretty=format: -- $PROTECTED \
+           | sort -u | grep -v '^$' || true)
+    if [ -n "$hits" ]; then
+      note "Commits touch fenced paths; cannot push:"; note "$hits"
+    elif git push --force-with-lease -u origin "$branch" >/dev/null 2>&1; then
+      note "Work is safe on \`$branch\`."
+      echo "pushed=true" >> "$GITHUB_OUTPUT"
+    else
+      note "Push failed; the bundle artifact is the only copy."
+    fi
+
+    git bundle create "${RUNNER_TEMP}/salvage.bundle" HEAD --not origin/main >/dev/null 2>&1 \
+      || git bundle create "${RUNNER_TEMP}/salvage.bundle" HEAD >/dev/null 2>&1 || true
+
+- name: Keep the salvaged work
+  if: ${{ always() && steps.agent.outcome != 'skipped' }}
+  uses: actions/upload-artifact@v4
+  with:
+    name: salvage-${{ github.run_id }}
+    path: ${{ runner.temp }}/salvage.bundle
+    if-no-files-found: ignore
+```
+
+Recover with `git clone salvage.bundle` or `git fetch ../salvage.bundle`.
+
+### The notebook, entire
+
+Created *before* the model starts, so the agent has somewhere to write from
+its first step. Give it a command rather than the API calls: a model asked to
+hand-roll read-modify-write and a size ceiling will eventually drop a note.
+
+```yaml
+- run: |
+    set -euo pipefail
+    printf '%s\n' "🤖 Run in progress." "" "## Working notes" > "${RUNNER_TEMP}/nb.md"
+    gh api "repos/${GITHUB_REPOSITORY}/issues/${ISSUE}/comments" \
+      -F body=@"${RUNNER_TEMP}/nb.md" --jq .id > "${RUNNER_TEMP}/nb-id"
+
+    mkdir -p "${RUNNER_TEMP}/bin"
+    cat > "${RUNNER_TEMP}/bin/note-progress" <<'SH'
+    #!/usr/bin/env bash
+    set -euo pipefail
+    state="${RUNNER_TEMP}/nb-id"; id=$(cat "$state")
+    incoming=$(cat); [ -n "$incoming" ] || exit 0
+    # A single note over the ceiling is rejected outright and lost — the one
+    # outcome this mechanism exists to prevent. Truncate rather than drop.
+    # An `if`, not `[ ] && x=`: under `set -e` a false test would exit here.
+    if [ ${#incoming} -gt 50000 ]; then
+      incoming="${incoming:0:50000}
+    _(note truncated)_"
+    fi
+    current=$(gh api "repos/${GITHUB_REPOSITORY}/issues/comments/${id}" --jq .body)
+    # A comment caps at 65536 chars; roll over early rather than lose the append.
+    if [ $(( ${#current} + ${#incoming} )) -gt 60000 ]; then
+      printf '%s\n\n%s\n' "## Working notes (continued)" "$incoming" > "${RUNNER_TEMP}/nb-next.md"
+      gh api "repos/${GITHUB_REPOSITORY}/issues/${ISSUE}/comments" \
+        -F body=@"${RUNNER_TEMP}/nb-next.md" --jq .id > "$state"
+      exit 0
+    fi
+    printf '%s\n\n%s\n' "$current" "$incoming" > "${RUNNER_TEMP}/nb-next.md"
+    gh api "repos/${GITHUB_REPOSITORY}/issues/comments/${id}" -X PATCH \
+      -F body=@"${RUNNER_TEMP}/nb-next.md" --jq .id > /dev/null
+    SH
+    chmod +x "${RUNNER_TEMP}/bin/note-progress"
+    echo "${RUNNER_TEMP}/bin" >> "$GITHUB_PATH"
+```
+
+`-F body=@file` rather than `--body "$str"`: note bodies contain backticks,
+`$`, and newlines, and passing them as shell strings eventually mangles one.
+
+Then, in the prompt — be specific, or it narrates:
+
+> Append to the notebook at the end of every step:
+> `printf '%s\n' "### Step 4 — dead end" "..." | note-progress`
+> Record the verdict and its evidence, decisions and *why*, open questions,
+> and above all **dead ends** — what you tried, what happened, why you
+> abandoned it. Not files changed or commands run; git and the run log have
+> those, and a wall of transcript buries the thinking it exists to keep.
+
+Dead ends are the highest value per line: a fresh run's first instinct is to
+retry exactly what already failed. One rolling comment, not one per
+checkpoint — a chatty agent across thirty tickets is a thread nobody reads.
+
+Lessons about the *project* rather than the ticket are a **proposal**, not an
+edit. The instructions file is a fenced path (below), so the agent writes the
+suggestion into the notes and the PR and a human promotes it. What every
+future run must obey is not a call a single ticket gets to make.
+
 ## Fencing an agent that merges without review
 
 An unattended runner that merges its own PR has no human diff review, so the
@@ -370,3 +494,13 @@ It is the Actions equivalent of the clouddev entrypoints, and it is where the
 environment work above belongs — services, toolchain, browser, credentials,
 plugins, commit gate — with `inputs:` for the parts a caller varies (whether to
 run the slow gate, which token, which plugin).
+
+## The prompt itself
+
+Everything above is harness. The worker prompt is the other half and the more
+expensive one to get wrong, because its weaknesses surface as plausible-looking
+runs rather than failures.
+
+See `worker-prompt.md` for a complete annotated template — the eight-part
+skeleton, what each section defends against, and the table of which concerns
+must live in the harness because a prompt cannot enforce them.
