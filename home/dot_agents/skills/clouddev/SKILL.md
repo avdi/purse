@@ -827,13 +827,13 @@ memory-snapshot persistence is usable at all), Docker on **Devin** and
 ## Running a factory: what unattended adds
 
 Everything above gets an agent a working box. A **factory** — tickets in,
-merged PRs out, nobody watching — needs two more things, and both exist only
-because the human is gone.
+merged PRs out, nobody watching — needs three more things, and all of them
+exist only because the human is gone.
 
 An interactive session gets them free. You notice a stalled run and nudge it.
 You see a bad diff before it lands. You remember what the session learned,
-because you were there. Remove yourself and each becomes a mechanism you have
-to build.
+because you were there — and you have a rough feel for what it cost. Remove
+yourself and each becomes a mechanism you have to build.
 
 ### 1. Nothing survives that isn't deliberately saved
 
@@ -883,16 +883,57 @@ Then name the same paths in the prompt anyway — not as the guard, but so the
 agent meets the boundary while planning instead of in a rejected push an hour
 of tokens later.
 
+### 3. Nobody can budget for work they can only price per run
+
+The moment a factory works, someone asks what it costs per ticket. The number
+you have is cost per *run*, and the two diverge exactly where it matters.
+
+A run is an accident of where a ticket happened to stop. One issue can be
+picked up, killed by an empty account, resumed, blocked on a question,
+unblocked days later, and finished on a third attempt — several bills, one
+ticket. Dividing total spend by run count reports work as **cheapest in the
+periods it went worst**, because going badly is what produces the extra runs
+to divide by.
+
+So account per *issue*, and make each run append to a ledger the issue owns:
+
+- **Take the authoritative figure from the run's own report.** Claude Code's
+  result entry carries `total_cost_usd`, a per-model split, turns, duration
+  and a session id — and it is written *even when the run ends in an error*,
+  which is how you learn what an abandoned attempt cost.
+- **Cost the runs that died before reporting, too.** Fall back to summing
+  per-message token usage against a price table, and mark it estimated. A run
+  that spent money and reported nothing is the one a budget most needs.
+- **Store the ledger where a dying run can still write it** — the issue, over
+  the API. Same reasoning as knowledge: a bundle in the workspace dies with a
+  refused push, and artifacts expire long before a quarter is reviewed.
+- **Record the session id and deduplicate on it.** A resumed session
+  re-reports the whole session's cost; summing rows bills its early turns
+  twice. Per session, keep the largest figure. Likewise make a re-run of the
+  same attempt *replace* its row, or re-running a job for a readable log
+  invents spend.
+- **Give each writing workflow its own ledger marker.** Two workflows that can
+  run at once on one issue will clobber each other's read-modify-write.
+
+Report the **median** per finished issue, not the mean — at these counts one
+runaway ticket drags the mean a long way, and the 90th percentile is what a
+bad month looks like. Report unfinished spend separately; money parked on a
+blocked ticket is spent but has not become anything.
+
+Then fence the accounting like everything else in §2. Code that reports what
+the agent cost is code the agent has an interest in.
+
 ### The environment is the third leg, not a separate topic
 
-These two combine with `verify` into one idea: **a factory fails silently by
-default**, in all three directions. An unproved environment produces a
+These combine with `verify` into one idea: **a factory fails silently by
+default**, in every direction. An unproved environment produces a
 plausible-looking run that spent its context working around your
 infrastructure. An unguarded one produces a merge nobody vetted. An
 unpersisted one produces an issue that looks untouched after an hour of real
-work.
+work. An unaccounted one produces a number that flatters the weeks it should
+have warned you about.
 
-None of the three announces itself. Each needs a mechanism whose failure is
+None of them announces itself. Each needs a mechanism whose failure is
 loud, and none of those mechanisms can live in the prompt.
 
 `references/github-actions.md` has the mechanics for Actions specifically;
@@ -904,6 +945,13 @@ behind each of its sections.
 - **A native-install fallback for Docker-less platforms.** A second
   environment definition that never runs locally will rot, silently, and you'll
   discover it during a cloud session. Drop the platform instead.
+- **Letting a Rails-aware linter autocorrect a bare-runner script.** CI helper
+  scripts run with the standard library and nothing else, but they sit in a
+  repo whose lint config assumes the framework. RuboCop's Rails department
+  rewrote a `map` into `pluck` and a `to_h` into `index_with` — both passed
+  lint and raised at run time on the runner. Exclude the whole department for
+  those paths rather than one cop per outage, and make sure the scripts are
+  linted *and* exercised: a lint pass is not a run.
 - **A preflight that stops at the first blocker.** Short-circuiting reads as
   efficient and hides everything downstream: a standing failure in the first
   check means the later ones never run, so a second misconfiguration surfaces
