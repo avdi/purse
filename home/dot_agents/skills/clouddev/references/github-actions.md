@@ -66,31 +66,40 @@ spent its budget on your infrastructure instead of the task.
 
 Two rules follow.
 
-### Prove the commit gate green before the agent starts
+### Prove the environment, not the code, before the agent starts
 
-Run the project's own pre-commit gate as a setup step:
+The tempting version is to run the project's own commit gate as a setup step.
+Don't: it answers a question setup isn't asking. Build a fast task that proves
+the *box* — see "Prove the box, not the code" in SKILL.md for why the two
+questions have different owners and different costs.
 
 ```yaml
-- name: Prove the commit gate is green before the agent starts
-  run: bundle exec rake ci    # or: npm test && npm run lint
+- name: Prove the environment can run the suite before the agent starts
+  run: bundle exec rake smoke    # not `rake ci`
 ```
+
+Select it for coverage of the moving parts: boot the app, serve one request,
+render one view, exercise each external adapter once, run your own CI helper
+scripts, and ask each linter for its version (a *missing* linter is an
+environment fault; a lint *offense* is a code verdict that isn't yours to
+render here). Ours: 42 seconds, against several minutes for the full gate.
 
 Two things this buys:
 
-1. **Attribution.** If the gate is already red when the agent arrives, the
-   agent cannot commit *correct* work either — and everything it then does
-   looks like the ticket failing. Running the gate up front converts an hour of
-   misattributed flailing into a ten-second verdict that blames nobody's
-   ticket.
-2. **A statement you can put in the prompt.** "`rake ci` was green before you
-   started" lets you then say: *a failure you hit is a consequence of your own
-   change; treat it as yours to fix rather than as a broken environment to work
-   around.* Without the check, that instruction is a lie and the agent is right
-   to distrust it.
+1. **Attribution.** A machine that cannot run the suite redirects the agent
+   into debugging your infrastructure, and everything it then does looks like
+   the ticket failing. Proving the box up front converts an hour of
+   misattributed flailing into a fast verdict that blames nobody's ticket.
+2. **A statement you can put in the prompt.** "The environment was proved
+   working before you started" lets you then say: *a failure you hit is a
+   consequence of your own change.* But say precisely what was proved — if you
+   skipped the full suite and the linters, tell the agent so, and tell it what
+   to do when it meets a failure that predates it. An overclaim here is worse
+   than no claim: the agent either wastes the run owning someone else's break
+   or learns to distrust the whole preamble.
 
-The cost is real — a full gate can be 5–10 minutes. Make it an input so a
-latency-sensitive workflow (answering a human's question in a thread) can opt
-out while the long unattended one keeps it.
+Make it an input so a latency-sensitive workflow (answering a human's question
+in a thread) can skip it while the long unattended one keeps it.
 
 ### Install-and-prove, never install-and-hope
 
@@ -206,6 +215,50 @@ branch, and left no comment. Assert on the artifact instead:
   arguments or results.
 - Add an explicit check that the run reached a real **ending**: a pushed
   branch, a closure, or a blocked-for-human label. A posted plan is not work.
+
+### Watching a run in flight, without publishing its contents
+
+`show_full_output: true` is the documented answer and the wrong one. In
+`claude-code-action` it is literally binary:
+
+```ts
+if (showFullOutput) return JSON.stringify(message, null, 2);
+// otherwise: only `init` and a sanitized `result` survive
+```
+
+So it publishes every tool result — file contents, command output, anything
+the run minted — into a log your whole org can read. Actions redacts only
+registered secrets by exact match, so a token the workflow created for itself
+is not covered.
+
+Tail the session file instead. Claude Code appends as it works, before the
+action writes `execution_file`:
+
+```
+~/.claude/projects/<cwd-slug>/<session-id>.jsonl
+~/.claude/projects/<cwd-slug>/<session-id>/subagents/*.jsonl
+```
+
+Pipe it through the same content-free filter the post-run trace uses:
+
+```bash
+jq -r --unbuffered '
+  select(.type == "assistant")
+  | .message.content[]?
+  | if .type == "tool_use" then "  tool  \(.name)"
+    elif .type == "text" and (.text | length) > 0 then
+      "  say   \(.text | split("\n")[0] | .[0:160])"
+    else empty end'
+```
+
+Three practical notes: the session id isn't known until the `init` message, so
+glob-and-wait rather than hardcode a path; `jq` needs `--unbuffered` or you'll
+see nothing for minutes; and a backgrounded tail interleaves messily into the
+agent step's own log, so run it as a concurrent step and reap it after.
+
+The subagent files matter more than the top-level one — fan-out work (audit
+rounds, reviews) is the most opaque part of a run and the part you're least
+sure is happening.
 
 ### Two small ones that cost real time
 

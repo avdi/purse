@@ -827,13 +827,14 @@ memory-snapshot persistence is usable at all), Docker on **Devin** and
 ## Running a factory: what unattended adds
 
 Everything above gets an agent a working box. A **factory** — tickets in,
-merged PRs out, nobody watching — needs three more things, and all of them
+merged PRs out, nobody watching — needs four more things, and all of them
 exist only because the human is gone.
 
 An interactive session gets them free. You notice a stalled run and nudge it.
 You see a bad diff before it lands. You remember what the session learned,
-because you were there — and you have a rough feel for what it cost. Remove
-yourself and each becomes a mechanism you have to build.
+because you were there — you can watch what it is doing right now, and you
+have a rough feel for what it cost. Remove yourself and each becomes a
+mechanism you have to build.
 
 ### 1. Nothing survives that isn't deliberately saved
 
@@ -923,15 +924,60 @@ blocked ticket is spent but has not become anything.
 Then fence the accounting like everything else in §2. Code that reports what
 the agent cost is code the agent has an interest in.
 
-### The environment is the third leg, not a separate topic
+### 4. A run you cannot watch is a run you cannot stop
+
+Unattended does not mean unobserved. The two get conflated because nobody is
+*required* to watch, and then the first time a run goes wrong you discover you
+could not have watched even if you wanted to.
+
+Expect the harness to hide the agent's output by default, for real reasons:
+tool results carry file contents, command output, and anything the run
+minted, and Actions logs redact only *registered* secrets by exact match, so a
+token the run created itself passes straight through. A private repo does not
+make logs private — everyone in the org reads them, and artifacts get
+downloaded.
+
+The trap is that this leaves you with two bad options presented as the only
+ones: full output, or nothing. **A run that does nothing and a run that works
+perfectly look identical from outside**, for however long it lasts.
+
+Build the middle instead — and note it's the same filter in both places:
+
+- **Trace names, not payloads.** The agent's own prose and the *names* of the
+  tools it called are nearly all the diagnostic value, and carry almost none
+  of the risk. Tool arguments and tool results are where repository content
+  and credentials live. Emit the first, drop the second — one `jq` filter over
+  the transcript.
+- **Tail it live, don't wait for the file.** The obvious version parses the
+  transcript after the agent exits, which leaves a two-hour run opaque for two
+  hours and shows nothing at all for a run that was killed — the exact run you
+  most needed to see. Claude Code appends its session to
+  `~/.claude/projects/<cwd-slug>/<session-id>.jsonl` *while it works*, and
+  subagents to `<session-id>/subagents/*.jsonl`. Tail those through the same
+  filter. Two wrinkles: the session id isn't known until the `init` message,
+  so glob-and-wait rather than hardcode a path; and a background tail
+  interleaves messily into a step's log, so a concurrent step reads better.
+- **Cover the subagents.** Anything that fans out — audit rounds, reviews,
+  parallel exploration — is the most opaque part of a run and usually the part
+  you are least sure is happening at all.
+- **Keep the transcript as an artifact regardless.** Live trace is for
+  watching; the artifact is for the postmortem, and for the accounting in §3
+  to bill from.
+
+The test for whether you've built enough: *can you tell, right now, whether
+the run is working or stuck?* If the honest answer is "I'll know in two
+hours," you have a batch job, not a factory.
+
+### The environment is the last leg, not a separate topic
 
 These combine with `verify` into one idea: **a factory fails silently by
 default**, in every direction. An unproved environment produces a
 plausible-looking run that spent its context working around your
 infrastructure. An unguarded one produces a merge nobody vetted. An
 unpersisted one produces an issue that looks untouched after an hour of real
-work. An unaccounted one produces a number that flatters the weeks it should
-have warned you about.
+work. An unobserved one produces a run you cannot distinguish from a working
+one until it ends. An unaccounted one produces a number that flatters the
+weeks it should have warned you about.
 
 None of them announces itself. Each needs a mechanism whose failure is
 loud, and none of those mechanisms can live in the prompt.
@@ -980,6 +1026,12 @@ behind each of its sections.
 
 ## Anti-patterns
 
+- **Reaching for the harness's `show_full_output` (or equivalent) to see what
+  a run is doing.** It's all-or-nothing by construction — Claude Code's action
+  either `JSON.stringify`s every message or suppresses everything but `init`
+  and the final result — so the price of watching the run is publishing every
+  tool result to a log your whole org can read. Build the name-level trace in
+  §4 instead; it answers the same question and leaks nothing.
 - **Using the full CI suite as an environment probe.** It conflates "can this
   machine run the suite?" with "is this code correct?" — see *Prove the box,
   not the code* above. Slow, and it reports code failures at the moment
