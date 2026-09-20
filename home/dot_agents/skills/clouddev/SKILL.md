@@ -827,14 +827,15 @@ memory-snapshot persistence is usable at all), Docker on **Devin** and
 ## Running a factory: what unattended adds
 
 Everything above gets an agent a working box. A **factory** — tickets in,
-merged PRs out, nobody watching — needs four more things, and all of them
+merged PRs out, nobody watching — needs five more things, and all of them
 exist only because the human is gone.
 
 An interactive session gets them free. You notice a stalled run and nudge it.
 You see a bad diff before it lands. You remember what the session learned,
 because you were there — you can watch what it is doing right now, and you
-have a rough feel for what it cost. Remove yourself and each becomes a
-mechanism you have to build.
+have a rough feel for what it cost. And when a run stops half-finished, you
+are the continuity: you remember what was left. Remove yourself and each
+becomes a mechanism you have to build.
 
 ### 1. Nothing survives that isn't deliberately saved
 
@@ -861,6 +862,21 @@ upload a bundle artifact regardless. Put it in the *harness*, never the
 prompt — a run that has stopped thinking cannot be asked to save itself. That
 is the whole reason it works.
 
+**Make the salvage look at what it staged.** `git add -A` in a workspace that
+has been built in will sweep the build. Mine took 186M of `vendor/bundle`,
+browser-automation debug output and a QA report tree onto a branch a human had
+already reviewed, and force-pushed it. Count the staged files; past any
+plausible threshold for hand-written work, fall back to tracked edits only
+(`git add -u`) and report the untracked paths instead of committing them.
+
+The root cause generalises past salvage, and is worth checking on any repo you
+point a factory at: **an ignore that lives in `.git/info/exclude` does not
+exist.** It is local-only and never committed, so every workstation has it and
+no fresh clone does. On a runner those paths are untracked *and* unignored,
+and every tool that means "everything" takes them. Grep `info/exclude` on each
+working copy you can find and move anything real into `.gitignore` before the
+first unattended run, not after.
+
 Budget for the fact that the last push is the fragile one. The default branch
 moves while a long run works, and a stale base can get a push rejected for
 changes the agent never made. Rebase onto the default branch before pushing.
@@ -883,6 +899,35 @@ yes, it is documentation.
 Then name the same paths in the prompt anyway — not as the guard, but so the
 agent meets the boundary while planning instead of in a rejected push an hour
 of tokens later.
+
+**Keep every copy of the fence list in step, mechanically.** Mine ended up
+written down three times — the server ruleset that actually stops a push, a
+pathspec in the salvage step, and a block in the prompt — with no shared
+source and nothing comparing them. A path can be added to one and missed in
+the other two, which is how the directory holding the agent's *own tool
+permissions* stayed unfenced. A test that reads the list and asserts the other
+copies cover it costs very little and is the only thing that notices.
+
+### The judge has to live somewhere the agent cannot reach
+
+The same argument goes one step further than config. A factory that opens its
+own PRs, runs its own review and merges them needs at least one check running
+**outside the box the agent works in**.
+
+I found this repo had none. Its entire quality gate was a pre-commit hook
+inside the agent's own container: skippable with `--no-verify`, producing
+output nobody else ever saw, and — when the hook process itself errored —
+taking the whole shell down with it. A self-merging automation whose only
+correctness check runs on the honour system of the thing being checked is not
+checked. Run the suite in CI as well, on a machine the session cannot touch,
+and put the verdict where a human reads it.
+
+**And remember that an approval describes a tree, not a branch.** A review
+round — human or agent — passed judgement on the exact commits it read.
+Anything that lands afterwards, including a rebase, a fixup, or the salvage
+commit from §1, silently voids it, and nothing downstream will notice because
+there is no second reader. Either re-run the round on whatever is actually
+about to merge, or refuse to merge a tree no round has seen.
 
 ### 3. Nobody can budget for work they can only price per run
 
@@ -915,6 +960,14 @@ So account per *issue*, and make each run append to a ledger the issue owns:
   invents spend.
 - **Give each writing workflow its own ledger marker.** Two workflows that can
   run at once on one issue will clobber each other's read-modify-write.
+- **Then add the number the split just destroyed.** Per-workflow ledgers leave
+  the ticket showing several true partial figures and never its own — mine
+  said `$8.53` and `$0.76` and never once `$9.29`, which is the only number a
+  budget is set in. Write one more comment holding the rollup, recomputed from
+  the ledgers on every write and storing no records of its own. Being purely
+  derived is what makes the concurrent case *harmless* rather than merely
+  unlikely: the worst a lost race costs is a briefly stale total that the next
+  run repairs from source.
 
 Report the **median** per finished issue, not the mean — at these counts one
 runaway ticket drags the mean a long way, and the 90th percentile is what a
@@ -968,6 +1021,44 @@ The test for whether you've built enough: *can you tell, right now, whether
 the run is working or stuck?* If the honest answer is "I'll know in two
 hours," you have a batch job, not a factory.
 
+### 5. Every run that stops is a handoff to a run that wasn't there
+
+A factory that can block — on a question only a person can answer, on an empty
+account, on a timeout — is a factory where **most tickets get finished by a
+process that did not start them**. The resuming run has the branch, the
+comments and nothing else. It was not there.
+
+Mine got an answer to its blocking question and went straight to merge,
+skipping the second audit round entirely, and nothing noticed until a human
+read the thread days later. Two things cause that, and both are fixable in the
+prompt:
+
+- **A resumed run reads its input as a new assignment.** It receives an
+  answer, infers the job is "apply this answer", and does it — efficiently and
+  wrongly. Frame resumption explicitly as *steering inside one long session*:
+  an answer unblocks the step that was stuck, it does not cancel the steps
+  after it. Getting unstuck is not permission to skip to the end.
+- **A blocked run knows what's left and takes it to the grave.** Require it to
+  write the remaining workflow steps down, as a checklist, on the ticket,
+  before it stops. Then the resuming run has an agenda instead of an
+  impression. This is the cheapest of all these mechanisms and the one that
+  does the most work.
+
+**And be precise about which object each action targets.** A conversation
+happens on a thread; the work belongs to a ticket; they are often not the same
+number. Answering on the PR cleared my `needs-decision` label from the *PR* —
+leaving the issue still labelled and therefore permanently invisible to the
+queue that would have picked it up. Replies go to the thread the person is
+looking at. Labels, assignees and accounting go to the ticket, resolved
+deliberately and with a fallback, because the link between the two is not
+always populated.
+
+That last point has a sharper general form: **do not build on an inference the
+platform makes silently.** `Fixes #120` did not close the issue, and the
+linked-reference field the auto-close relies on came back empty on a merged PR
+whose body plainly said so. Whatever the cause, nothing was watching. If a
+step matters, do it explicitly and check it.
+
 ### The environment is the last leg, not a separate topic
 
 These combine with `verify` into one idea: **a factory fails silently by
@@ -977,7 +1068,8 @@ infrastructure. An unguarded one produces a merge nobody vetted. An
 unpersisted one produces an issue that looks untouched after an hour of real
 work. An unobserved one produces a run you cannot distinguish from a working
 one until it ends. An unaccounted one produces a number that flatters the
-weeks it should have warned you about.
+weeks it should have warned you about. An uninterrupted-handoff one produces a
+ticket that gets merged with half its process skipped, and reads as a success.
 
 None of them announces itself. Each needs a mechanism whose failure is
 loud, and none of those mechanisms can live in the prompt.
@@ -995,11 +1087,17 @@ that follows, because the agent reads infrastructure breakage as its own and
 spends the ticket chasing it. Catching it at setup makes it a fast verdict
 attributable to nobody's ticket.
 
-The second belongs to the agent, and its own commit hook already delivers it
-on every commit it makes, against its own changes. Running the whole suite at
-setup buys a slow restatement of something you'll learn anyway, and it reports
+The second belongs to the agent, and its own commit hook delivers it on every
+commit it makes, against its own changes. Running the whole suite at setup
+buys a slow restatement of something you'll learn anyway, and it reports
 pre-existing code failures at exactly the moment they're most likely to be
 misread as the ticket's.
+
+**But do not mistake that hook for the project's only gate**, which is the
+mistake I made here. It runs inside the agent's box, so it is exactly the
+check §2 says cannot be the one that counts. Keep it — a fast verdict at
+commit time is worth having, and it is the agent's own feedback loop — and
+run the same suite again in CI, where the agent cannot reach it.
 
 So build a separate fast task — `rake smoke`, `npm run smoke`, whatever your
 idiom — and select it for **coverage of the moving parts, not coverage of the
@@ -1051,9 +1149,26 @@ behind each of its sections.
   scripts run with the standard library and nothing else, but they sit in a
   repo whose lint config assumes the framework. RuboCop's Rails department
   rewrote a `map` into `pluck` and a `to_h` into `index_with` — both passed
-  lint and raised at run time on the runner. Exclude the whole department for
-  those paths rather than one cop per outage, and make sure the scripts are
-  linted *and* exercised: a lint pass is not a run.
+  lint and raised at run time on the runner. It happened a third time with
+  `Time.parse` → `Time.zone.parse`, and that one was worse: the call sat
+  inside a `rescue` that fell back to the raw string, so nothing raised, no
+  test failed, and every ledger the factory wrote rendered ISO timestamps for
+  weeks until someone read one. Exclude the whole department for those paths
+  rather than one cop per outage, and make sure the scripts are linted *and*
+  exercised: a lint pass is not a run. Treat a broad `rescue` around anything
+  a linter might rewrite as a place this will happen invisibly.
+- **A hook that fails closed when the hook itself errors.** A pre-command gate
+  is usually written to fail *open* — anything it cannot positively identify
+  as the dangerous case passes through. That is a property of the script, and
+  it does not survive the harness: if the hook process errors rather than
+  returning a verdict, the agent runtime has no verdict to honour and denies
+  the call. A gate meant to check `git commit` then blocks every command
+  including `echo`, and the session has no shell at all. Worse, hook config is
+  typically read once at startup, so the session cannot repair itself by
+  fixing the file — and subagents inherit the same broken state. Keep hooks
+  tiny and total, exit zero on every path you did not mean to block, and if
+  you rely on one for a quality gate, make sure the gate also exists somewhere
+  the hook's health cannot take down.
 - **A preflight that stops at the first blocker.** Short-circuiting reads as
   efficient and hides everything downstream: a standing failure in the first
   check means the later ones never run, so a second misconfiguration surfaces
