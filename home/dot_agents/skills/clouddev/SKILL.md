@@ -936,12 +936,62 @@ have warned you about.
 None of them announces itself. Each needs a mechanism whose failure is
 loud, and none of those mechanisms can live in the prompt.
 
+#### Prove the box, not the code
+
+The obvious way to prove an environment is to run the project's full test
+suite at setup time. It is the wrong tool, and the reason is worth
+internalising: **"can this machine run the suite?" and "is this code correct?"
+are different questions with different costs and different owners.**
+
+The first belongs to the runner. A wrong answer — no database, an
+uninstalled gem, a browser that never launched — contaminates every minute
+that follows, because the agent reads infrastructure breakage as its own and
+spends the ticket chasing it. Catching it at setup makes it a fast verdict
+attributable to nobody's ticket.
+
+The second belongs to the agent, and its own commit hook already delivers it
+on every commit it makes, against its own changes. Running the whole suite at
+setup buys a slow restatement of something you'll learn anyway, and it reports
+pre-existing code failures at exactly the moment they're most likely to be
+misread as the ticket's.
+
+So build a separate fast task — `rake smoke`, `npm run smoke`, whatever your
+idiom — and select it for **coverage of the moving parts, not coverage of the
+code**: boot the app, serve one request, render one view, exercise each
+external adapter once, run your own CI helper scripts. Ours went from several
+minutes to forty seconds.
+
+Linters are the interesting edge. A *missing* linter is an environment fault
+and belongs in the smoke task; a lint *offense* is a code verdict and does
+not. Ask each one to state its version — that proves the gem resolves, the
+binary is on PATH, and it can start, while rendering no opinion on the
+source. Distinguish tools whose absence would fail the commit hook (hard
+failure) from ones it would merely skip (warning).
+
+Then make the prompt tell the agent **exactly what was proved and what was
+not**. "The environment was green when you started, so a failure is yours"
+only earns its authority if it's true; if you skipped the full suite and the
+linters, say so, and tell the agent what to do when it meets a failure that
+predates it.
+
 `references/github-actions.md` has the mechanics for Actions specifically;
 `references/worker-prompt.md` has a complete worker prompt and the reasoning
 behind each of its sections.
 
 ## Anti-patterns
 
+- **Using the full CI suite as an environment probe.** It conflates "can this
+  machine run the suite?" with "is this code correct?" — see *Prove the box,
+  not the code* above. Slow, and it reports code failures at the moment
+  they're most likely to be charged to the wrong ticket.
+- **A suite that only passes on machines carrying a gitignored `.env`.** Every
+  workstation has one and no fresh clone does, so the break surfaces first in
+  your cloud environment and looks like the cloud environment's fault. Ours
+  took a day to trace: replayed HTTP fixtures reach no provider, but the
+  client still refused to *construct* without an API key, so cassette-backed
+  tests failed anyway. Put placeholder credentials in the test harness itself,
+  and pin any value a fixture was recorded against. Test the fix by moving
+  `.env` aside — that one command reproduces the whole class.
 - **A native-install fallback for Docker-less platforms.** A second
   environment definition that never runs locally will rot, silently, and you'll
   discover it during a cloud session. Drop the platform instead.
