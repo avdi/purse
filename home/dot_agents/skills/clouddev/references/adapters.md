@@ -4,6 +4,10 @@ Adapters are **generated from `clouddev.yml`, not written**. Each is a few lines
 calling the manifest's scripts. Anything conditional belongs in `prepare` or
 `exec`, where it can be exercised locally.
 
+Where the lifecycle permits, adapters run `doctor` after `boot` and before
+`verify`, so setup failures produce a compact diagnosis before capability checks
+start.
+
 Adapter files are the one artifact class whose location is **forced** — each
 platform dictates its own path, and several have no repo file at all. That's why
 the manifest exists: the single anchor every scattered adapter points back at.
@@ -66,7 +70,7 @@ boundary:
 
 ```json
 {
-  "dockerComposeFile": ["../docker/compose.services.yml", "docker-compose.yml"],
+  "dockerComposeFile": ["compose.services.yml", "docker-compose.yml"],
   "service": "app",
   "workspaceFolder": "/workspaces/myproject",
   "updateContentCommand": "script/clouddev/prepare",
@@ -182,10 +186,19 @@ in a repo `SessionStart` hook:
 }
 ```
 
+Also set in that same environment UI, alongside any registry credential: a
+persistent environment variable `CLOUDDEV_TOPOLOGY=container`. This is what
+tells `boot`/`exec` to pull and route through the app container instead of
+running natively — see *Topology is a platform-injected persistent env var*
+in `SKILL.md`. The `SessionStart` hook body above never mentions topology at
+all; it's the same bare `script/clouddev/boot` every platform gets.
+
 Network access `Trusted` at minimum (Docker Hub is in the defaults); add a
 `Custom` allowlist entry for a private registry host. Registry credentials go in
 the environment's variables — visible to anyone who can use the environment, so
-use a read-only pull token.
+use a read-only pull token. A **public** package needs no token at all — only
+the `Custom` allowlist entry for the registry host, since egress control and
+the package's own auth are independent.
 
 ---
 
@@ -305,6 +318,7 @@ jobs:
       - uses: actions/checkout@v4
       - run: script/clouddev/prepare
       - run: script/clouddev/boot
+      - run: script/clouddev/doctor
       - run: script/clouddev/verify
 ```
 
@@ -483,7 +497,7 @@ preinstalled; 20GB disk.
 ```yaml
 # .devcontainer/docker-compose.yml
 include:
-  - ../docker/compose.services.yml
+  - compose.services.yml
 
 services:
   app:

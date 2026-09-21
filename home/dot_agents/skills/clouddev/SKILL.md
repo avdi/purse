@@ -200,6 +200,54 @@ Four modes. A project's adapter picks one per platform.
 Self-install is a real requirement on `boot`, not a footnote: it has to work as
 a service unit, not only as a script something calls.
 
+### Topology is a platform-injected persistent env var, never a hook-local decision
+
+`exec` (below) branches on topology — direct or container. That decision gets
+made once, during `prepare`/the setup-script phase, but it has to be known by
+every later, *separate-process* invocation of `boot`/`exec`/`shell` — including
+ad hoc commands the agent runs directly, never through a hook at all. A shell
+`export` inside a setup script dies with that script's process. It cannot be
+the mechanism, and neither can a stamp file written to disk: that just moves
+the same problem to "did `prepare` remember to write it, and is it still true."
+
+**The fix: `CLOUDDEV_TOPOLOGY` (`direct` | `container`, default `direct`) is
+never set by any `clouddev` script.** It is configured exactly once, per
+platform *environment* — not per project, not per session — as a **persistent
+environment variable** in that platform's own environment configuration:
+Cursor's `environment.json` `env` block, Amp orb secrets, Claude Code cloud's
+environment variables UI (the same place a private-registry pull token
+already lives — see *Publishing the dev image* below). Every platform with an
+environment concept at tier 1–3 already has this primitive, because it's more
+basic than a services slot or a compose reader. Because the platform
+re-injects it into *every* process it starts — hook, setup script, and the
+agent's own shell calls alike — it survives process boundaries for free, with
+nothing to write, forget to write, or go stale.
+
+It cannot live in `clouddev.yml` either: one project can legitimately run
+direct on Copilot and container on Claude Code cloud at the same time, so
+topology is inherently a fact of the environment, not of the repo.
+
+This is what keeps the adapter surface from accumulating warts as platforms
+get added:
+
+- **The committed per-session hook body never changes, on any platform,
+  ever.** It is always a bare call to `boot` — Claude Code's `SessionStart`,
+  Cursor's `start`, Amp's `.agents/resume`, Cosmos's `on_startup.sh` are all
+  just `script/clouddev/boot`. `boot` itself reads `CLOUDDEV_TOPOLOGY`. A new
+  platform's adapter costs exactly one line in *that platform's own config*
+  (point its hook at `boot`) plus, only if it needs container topology, one
+  environment-variable setting in that platform's UI — never a new branch in
+  `common`, `boot`, or `exec`.
+- **Only `boot` (and anything that routes through `exec`) takes invasive
+  action** — pulling an image, starting an app container. `exec`/`shell`
+  never independently escalate; they resolve the same `CLOUDDEV_TOPOLOGY` and
+  either run the command directly or hand it to `docker compose exec`. A bare
+  human terminal, with the var unset, gets exactly `boot`'s direct-topology
+  behavior — idempotent, already proven safe — whether or not that repo also
+  happens to be committed-hooked into some cloud platform's session lifecycle.
+  A committed hook is therefore safe to register **unconditionally**, on every
+  platform, including ones a given developer never uses.
+
 ### Supervised service slots are a separate primitive
 
 Three platforms offer a slot for long-running processes that is **not** a
@@ -410,6 +458,9 @@ changes.
 ## `exec` is the seam
 
 `exec` is the only script that knows the topology. Nothing else branches.
+Both templates below key off `CLOUDDEV_TOPOLOGY` (see *Topology is a
+platform-injected persistent env var*, above) — never a platform name, never
+a stamp file it wrote itself.
 
 ```bash
 # direct topology — the agent's box IS the dev environment
