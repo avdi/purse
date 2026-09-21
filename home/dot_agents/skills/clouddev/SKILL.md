@@ -877,6 +877,17 @@ and every tool that means "everything" takes them. Grep `info/exclude` on each
 working copy you can find and move anything real into `.gitignore` before the
 first unattended run, not after.
 
+**Salvage deserves a test that actually runs it.** It is the one step that
+only ever executes when the run has already gone wrong — which is the worst
+possible moment to discover it is wrong too, and the reason its faults hide
+for months. Mine has now been wrong three times: the 186M sweep, a false
+"the run never opened a branch" on a branch that existed and had an open PR,
+and the fence collision below. **Reading the YAML would not have caught any of
+them.** Extract the step's shell and run it against a throwaway repo with a
+bare remote — dirty tree, flood of untracked files, nothing to save, a real
+violation. It is half an hour of work and it is the only thing standing
+between a bad run and a lost one.
+
 Budget for the fact that the last push is the fragile one. The default branch
 moves while a long run works, and a stale base can get a push rejected for
 changes the agent never made. Rebase onto the default branch before pushing.
@@ -908,6 +919,19 @@ the other two, which is how the directory holding the agent's *own tool
 permissions* stayed unfenced. A test that reads the list and asserts the other
 copies cover it costs very little and is the only thing that notices.
 
+**Then expect the fence to catch a file the agent cannot avoid touching.**
+Fencing that permissions directory was right, and it immediately cost a run
+everything it had done. The agent's tooling writes its own state there *while
+it works* — so a fenced path is dirty in essentially every run, the salvage
+step's `git add -A` stages it, and an all-or-nothing pre-push check then
+refuses the entire branch over a file nobody chose to modify. A whole ticket's
+work, thrown away to protect a settings file from an edit it made by existing.
+
+The fix is granularity, and it is worth designing in from the start:
+**exclude fenced paths from the commits your harness makes, and refuse the
+push only for commits the agent made itself.** A side effect of running is not
+a violation. A deliberate edit still is, and still must not reach the remote.
+
 ### The judge has to live somewhere the agent cannot reach
 
 The same argument goes one step further than config. A factory that opens its
@@ -921,6 +945,18 @@ taking the whole shell down with it. A self-merging automation whose only
 correctness check runs on the honour system of the thing being checked is not
 checked. Run the suite in CI as well, on a machine the session cannot touch,
 and put the verdict where a human reads it.
+
+**Make the local check fast and the remote check authoritative.** Once the CI
+job exists, the pre-commit hook's job changes, and mine had not noticed: it
+was still running the full suite — 2m17s in front of *every* commit of every
+run — because when it was written it was the only check there was. That is a
+check people learn to skip and a factory pays for on every commit. Leave the
+hook the class of mistake it is uniquely good at, which is the offence in a
+file the author is still looking at: linters, seconds. Correctness belongs on
+the machine the session cannot reach. Then go and fix the prose, because the
+prompt that told my agent *"the commit hook runs the suite for you"* was true
+when written and had quietly become a lie that excused it from ever running
+the suite itself.
 
 **And remember that an approval describes a tree, not a branch.** A review
 round — human or agent — passed judgement on the exact commits it read.
@@ -950,6 +986,22 @@ So account per *issue*, and make each run append to a ledger the issue owns:
 - **Cost the runs that died before reporting, too.** Fall back to summing
   per-message token usage against a price table, and mark it estimated. A run
   that spent money and reported nothing is the one a budget most needs.
+- **Bill while the run is still running, not only when it ends.** The
+  end-of-run accounting step is the obvious place and it is not enough:
+  `if: always()` does not cover a cancelled job or one killed at the
+  `timeout-minutes` ceiling, and — the part that actually bit me — on
+  cancellation the action never publishes its transcript path at all, so the
+  step *ran*, found an empty variable, and recorded nothing. Forty-five
+  minutes of Sonnet, unrecoverable, on precisely the run whose cost was most
+  worth knowing. Beat every ten minutes instead, reading the transcript the
+  agent is still appending to. This costs almost nothing to add if the ledger
+  is already idempotent — find the comment by marker, merge rows on
+  `(run, attempt)`, and every beat rewrites one row in one comment while the
+  end-of-run step overwrites the estimate with the real figure. A tool-use
+  hook is the natural clock; throttle on a timestamp file, stamp it *before*
+  posting so a hang cannot storm, and make every path exit zero, because a
+  hook that fails is a hook that can stop the run it was only supposed to
+  measure.
 - **Store the ledger where a dying run can still write it** — the issue, over
   the API. Same reasoning as knowledge: a bundle in the workspace dies with a
   refused push, and artifacts expire long before a quarter is reviewed.
@@ -1021,6 +1073,32 @@ The test for whether you've built enough: *can you tell, right now, whether
 the run is working or stuck?* If the honest answer is "I'll know in two
 hours," you have a batch job, not a factory.
 
+**Watch out for silence that is fully compliant.** Live trace tells you the
+process is alive; it does not tell you what stage it thinks it is at. For that
+you need the agent to narrate, and the instruction is easy to get subtly
+wrong. Mine said *write a note at the end of every workflow step* — perfectly
+reasonable, until you notice that "run the audit rounds" is **one step
+containing seven subagents**, run one at a time because a backgrounded one
+would end the run. So a model could obey the rule exactly and say nothing for
+half an hour. It did, and from outside I diagnosed it as wedged and killed it;
+it had in fact pushed a branch, opened a PR, gone green on CI and passed QA,
+and was most of the way through the rounds.
+
+Two corrections, both cheap:
+
+- **Instrument the fan-out, not the step.** A line before each subagent is
+  dispatched (which one, why) and a line after it returns (verdict). That is
+  where the time goes and where the silence is longest.
+- **Ask for a note before the work, not only after it.** A note that arrives
+  only on success is not visibility — it is a receipt. The run that needs
+  watching is the one that never gets to post it.
+
+And check what your progress channel *looks like* from outside before trusting
+your own read of it. Mine appends notes into the body of the run's opening
+comment, which is good design and meant the ticket showed **one comment** for
+a run that had written pages. I counted comments instead of reading them and
+concluded it had done nothing.
+
 ### 5. Every run that stops is a handoff to a run that wasn't there
 
 A factory that can block — on a question only a person can answer, on an empty
@@ -1058,6 +1136,36 @@ platform makes silently.** `Fixes #120` did not close the issue, and the
 linked-reference field the auto-close relies on came back empty on a merged PR
 whose body plainly said so. Whatever the cause, nothing was watching. If a
 step matters, do it explicitly and check it.
+
+### A fix is not live until a run starts from it
+
+Worth knowing before you spend an evening shipping fixes to a factory that is
+still running: **a scheduled workflow resolves the commit it will run at
+trigger time, not at start time.** Mine fired at 01:44, queued behind an
+in-flight run under a concurrency group, started at 01:47 — and checked out
+the code as of 01:44, five minutes before the fixes merged. It then worked a
+ticket with the old prompts and no spend accounting, looking for all the world
+like a run that had them.
+
+So after merging anything that changes how runs behave, *dispatch* the next
+one rather than waiting for the cron, and check the head SHA of any run
+already in flight before you read its behaviour as evidence about your fix. A
+manual dispatch resolves at dispatch time; a queued schedule is a message from
+the past.
+
+Two smaller ones from the same evening, both of which cost more time than they
+should have:
+
+- **A queued run is not a stopped run.** Cancelling the run you can see
+  releases the one waiting behind it, which starts immediately — on stale
+  code, on the ticket you just freed up. If you are stopping the factory,
+  disable the workflow; cancelling a run only advances the queue.
+- **Deleting a base branch on merge closes the PRs stacked on it.** GitHub
+  retargets a stacked PR to the new base in the ordinary case, but not when
+  the base disappears in the same operation. The PR lands in `CLOSED`, cannot
+  be reopened, and cannot have its base changed because it is closed — the
+  branch survives, so the only way out is a fresh PR from the same branch.
+  Merge stacks bottom-up *without* `--delete-branch`, then clean up.
 
 ### The environment is the last leg, not a separate topic
 
