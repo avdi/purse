@@ -173,32 +173,83 @@ set -euo pipefail
 script/clouddev/prepare
 ```
 
+The setup script has a real budget — *"keep the script's total runtime under
+roughly five minutes so the environment cache can build"* — so `prepare`'s
+`docker compose pull`/`build` earns its keep here specifically: the docs
+recommend exactly this (*"add `docker compose pull` or `docker compose
+build` to your setup script"*), and the resulting cache keeps the pulled
+image on disk for every session that boots from that snapshot, same as
+`bundle install`'s gems. If a project's pull+install genuinely can't fit five
+minutes, that's a real constraint to design around (background it and poll
+from `boot`), not a corner to round off.
+(<https://code.claude.com/docs/en/cloud-environments#setup-scripts>)
+
 Because the snapshot preserves disk but **not running processes**, `boot` goes
-in a repo `SessionStart` hook:
+in a repo `SessionStart` hook — and it must anchor to the absolute path the
+harness gives it, never a relative one. A relative command resolves against
+whatever cwd the harness happens to use for hooks, which is not guaranteed to
+be the repo root; get it wrong and an errored hook denies every tool call for
+the rest of the session, unrecoverably, since hook config is read once at
+startup (see *Topology is a platform-injected persistent env var*'s sibling
+lesson on this in `SKILL.md`'s anti-patterns, and the real incident behind
+it). `$CLAUDE_PROJECT_DIR` is the documented fix — *"resolves to the
+repository root, so the hook finds the script regardless of the session's
+working directory"* — and it's the canonical shape straight from the docs,
+`matcher` included:
 
 ```json
 {
   "hooks": {
     "SessionStart": [
-      { "hooks": [{ "type": "command", "command": "script/clouddev/boot" }] }
+      {
+        "matcher": "startup|resume",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"$CLAUDE_PROJECT_DIR\"/script/clouddev/boot"
+          }
+        ]
+      }
     ]
   }
 }
 ```
 
-Also set in that same environment UI, alongside any registry credential: a
-persistent environment variable `CLOUDDEV_TOPOLOGY=container`. This is what
-tells `boot`/`exec` to pull and route through the app container instead of
-running natively — see *Topology is a platform-injected persistent env var*
-in `SKILL.md`. The `SessionStart` hook body above never mentions topology at
-all; it's the same bare `script/clouddev/boot` every platform gets.
+(<https://code.claude.com/docs/en/cloud-environments#install-dependencies-with-a-sessionstart-hook>)
+This is a project-committed `.claude/settings.json`, not a user-level one —
+user-level `SessionStart` hooks are explicitly documented as local-only and
+never reach the cloud. SessionStart hooks otherwise run identically in cloud
+and local sessions; the docs' own worked example gates cloud-only behavior on
+`$CLAUDE_CODE_REMOTE == "true"`, but `boot` doesn't need that gate — its
+`CLOUDDEV_TOPOLOGY` branch already resolves the same question more precisely
+(container topology only when a platform set it, direct otherwise, whether
+that platform is this one or none at all).
+
+Also set in that same environment UI: a persistent environment variable
+`CLOUDDEV_TOPOLOGY=container`. This is what tells `boot`/`exec` to pull and
+route through the app container instead of running natively — see *Topology
+is a platform-injected persistent env var* above. The `SessionStart` hook
+body never mentions topology at all; it's the same bare call to `boot` every
+platform gets.
 
 Network access `Trusted` at minimum (Docker Hub is in the defaults); add a
-`Custom` allowlist entry for a private registry host. Registry credentials go in
-the environment's variables — visible to anyone who can use the environment, so
-use a read-only pull token. A **public** package needs no token at all — only
-the `Custom` allowlist entry for the registry host, since egress control and
-the package's own auth are independent.
+`Custom` allowlist entry for the registry host. A **public** package needs
+nothing else. A **private** one is a real cost, not a formality: the
+environment dialog's own note under **Environment variables** *"warns against
+putting secrets there,"* because *"anyone who uses the environment can read
+[them]"* — and the documented alternative, an **API credential** the agent
+proxy attaches without the session ever seeing it, is Pro/Max-only (not
+available on Team or Enterprise, where a shared org environment usually
+lives) and is Bearer-header injection for a request host, not proven to speak
+a registry's actual pull/auth handshake.
+(<https://code.claude.com/docs/en/cloud-environments#set-environment-variables>,
+<https://code.claude.com/docs/en/cloud-environments#add-api-credentials>)
+So: prefer public. If a project's registry can't go public and the org
+account has no route to one either, a scoped read-only pull token in the
+environment's variables is a real, working fallback (`prepare` should make it
+conditional — a no-op when unset, so nothing changes the day the package does
+go public) — but it's a deliberate tradeoff against the platform's own
+guidance, worth a second look before reaching for it, not a default.
 
 ---
 
