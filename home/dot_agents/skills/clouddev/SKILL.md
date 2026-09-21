@@ -1165,10 +1165,23 @@ behind each of its sections.
   the call. A gate meant to check `git commit` then blocks every command
   including `echo`, and the session has no shell at all. Worse, hook config is
   typically read once at startup, so the session cannot repair itself by
-  fixing the file — and subagents inherit the same broken state. Keep hooks
-  tiny and total, exit zero on every path you did not mean to block, and if
-  you rely on one for a quality gate, make sure the gate also exists somewhere
-  the hook's health cannot take down.
+  fixing the file — and subagents inherit the same broken state.
+
+  Mine was one word long: the hook ran `bash script/pre-command-ci-gate.sh`, a
+  **relative path**. A hook's working directory is the harness's business, not
+  yours, and the moment it was anything but the repo root the file did not
+  exist, bash exited non-zero, and every command in the session was refused.
+  Anchor hook commands to the absolute path the harness gives you
+  (`${CLAUDE_PROJECT_DIR}` and equivalents) — a relative path in a hook is a
+  latent, total outage. Then keep them tiny and total, exit zero on every path
+  you did not mean to block, and make sure any quality gate you hang off one
+  also exists somewhere the hook's health cannot take down.
+
+  Worth knowing for the day it happens anyway: **extensions load mid-session
+  where hooks and MCP servers do not.** A twelve-line extension exposing
+  `execFile("bash", ["-lc", cmd])` restored a shell inside a session that had
+  lost one, which is what made it possible to run the suite and find two real
+  lint failures in work that would otherwise have been pushed unverified.
 - **A preflight that stops at the first blocker.** Short-circuiting reads as
   efficient and hides everything downstream: a standing failure in the first
   check means the later ones never run, so a second misconfiguration surfaces
