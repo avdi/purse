@@ -105,6 +105,24 @@ These dotfiles are applied across several distinct contexts; keep all of them in
   - **`~/.local/bin` shadows system commands.** Don't install a Linux
     compatibility wrapper whose name collides with a real macOS tool (`open`).
 
+- **Locked-down shared-hosting accounts (e.g. Cloudways app-specific SSH)** —
+  a login that does not own its home directory. `$HOME` itself is root-owned
+  with no write bit for the account's user *or* any of its groups (confirmed
+  via `getfacl`: `group::r-x`, `other::r-x`, plus an explicit deny ACL entry
+  for a shared group) — so creating anything new directly under `$HOME`
+  (`~/.local`, `~/.config`, `~/.bashrc`, ...) fails outright, which is exactly
+  what chezmoi's default state dirs and every dotfile target need. Only a
+  couple of app-specific subdirectories are actually writable (Cloudways:
+  `public_html`, `private_html`, `tmp` — owned by the account, not root); of
+  those, only `private_html`/`tmp` are safe for state, since `public_html` is
+  served to the web. The login shell itself is commonly a restricted one
+  (`mysecureshell`) or `nologin` for the panel-provisioned identity, with no
+  passwordless `sudo` even though `apt`/`sudo` binaries are present on the
+  box — package-manager guards that check `have_root` correctly stay closed
+  here. `install.sh` refuses early with a diagnosis and a `$HOME`-redirect
+  recipe (see README's "Locked-down accounts" section) rather than letting
+  chezmoi's own `mkdir: permission denied` be the only clue.
+
 Scripts that are platform-specific should guard themselves or be named/templated clearly. When adding a new tool or path assumption, consider whether it holds across all of the above.
 
 ## MCP servers

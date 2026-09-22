@@ -34,6 +34,30 @@ iex "&{$(irm 'https://get.chezmoi.io/ps1')}"
 
 Windows packages (winget + npm + Cursor agent CLI) are installed by `run_onchange_install-packages.ps1.tmpl` on first apply.
 
+### Locked-down accounts (shared hosting, Cloudways app-specific SSH, etc.)
+
+Some SSH accounts hand you a login without a home directory you actually own —
+`$HOME` itself is root-owned with no write bit for you, and only specific
+subdirectories (e.g. Cloudways' `public_html`, `private_html`) are writable.
+`chezmoi init --apply` needs to create files directly under `$HOME` (its own
+state dirs, plus every dotfile target), so on an account like this it fails
+immediately with `mkdir ~/.local: permission denied`.
+
+`install.sh` detects this and refuses with a clear diagnosis rather than
+letting that crash be the first anyone hears of it. The fix is to redirect
+`$HOME` to a writable, **non-web-served** directory before bootstrapping:
+
+```sh
+export HOME="$HOME/private_html/home"
+mkdir -p "$HOME"
+sh -c "$(curl -fsLS get.chezmoi.io)" -- init --apply avdi/purse
+```
+
+Never point this at `public_html` — anything under it is served to the web.
+The account's real login shell can't be taught to export this automatically
+(the real `$HOME/.bashrc` is root-owned and unwritable), so re-export `HOME`
+at the start of every session that needs these dotfiles.
+
 ## Repo structure
 
 ```
