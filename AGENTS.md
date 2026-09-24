@@ -137,8 +137,7 @@ agent present on the machine.
   — the installer. It's a **manually-invoked** step (not run on `chezmoi apply`),
   run after `purse-install-agents`, because alongside MCP registration it also
   installs agent plugins, registers the **GitKraken MCP** server (`gk mcp install
-  --all`), and downloads the `codebase-memory-mcp` binary — together too slow
-  to run inline. It only touches agents whose CLI/config is actually detected, and
+  --all`) — together too slow to run inline. It only touches agents whose CLI/config is actually detected, and
   is idempotent (safe to re-run). The end-of-apply reminder (`run_after_show-setup-reminders`)
   nudges you to run it.
 

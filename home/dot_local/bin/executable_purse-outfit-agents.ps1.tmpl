@@ -1,6 +1,6 @@
 {{- if eq .chezmoi.os "windows" -}}
 # Outfit the installed AI agents (Windows): install native plugins and Agent
-# Skills packages, register GitKraken MCP, and download codebase-memory-mcp.
+# Skills packages, and register GitKraken MCP.
 #
 # chezmoi installs this to ~/.local/bin/purse-outfit-agents.ps1.
 #
@@ -8,21 +8,11 @@
 # shortlist registration (as done in the Unix purse-outfit-agents) is not yet
 # wired up on Windows.
 #
-# codebase-memory-mcp is registered as an MCP server by the declarative manifest
-# (mcp-servers.yaml), not by its own `install -y` which has unwanted side-effects
-# (PATH stomping, opinionated CLAUDE.md injection).
-#
-# Bump $CbmVersion to force a reinstall. Re-running is safe (idempotent).
+# Re-running is safe (idempotent).
 
 $ErrorActionPreference = 'Stop'
 [Net.ServicePointManager]::SecurityProtocol = `
     [Net.SecurityProtocolType]::Tls12 -bor [Net.SecurityProtocolType]::Tls13
-
-$Repo       = 'DeusData/codebase-memory-mcp'
-$CbmVersion = '0.8.1'
-$InstallDir = "$env:LOCALAPPDATA\Programs\codebase-memory-mcp"
-$BinName    = 'codebase-memory-mcp.exe'
-$Dest       = Join-Path $InstallDir $BinName
 
 function Test-Command($Name) {
     return [bool](Get-Command $Name -ErrorAction SilentlyContinue)
@@ -109,72 +99,21 @@ if (Test-Command 'npx') {
     Write-Warning "npx not found; skipping skills.sh package installation."
 }
 
-function Get-InstalledVersion {
-    if (-not (Test-Path $Dest)) { return 'none' }
-    try {
-        $out = & $Dest --version 2>$null
-        if ($out -match '([0-9]+\.[0-9]+\.[0-9]+)') { return $Matches[1] }
-    } catch {}
-    return 'unknown'
+# codebase-memory-mcp is retired. Remove the binary this script used to
+# install, the user-PATH entry it added, and any Claude Code registration left
+# by the tool's own installer; each step is a no-op once done.
+$CbmDir = "$env:LOCALAPPDATA\Programs\codebase-memory-mcp"
+if (Test-Path $CbmDir) {
+    Write-Host "-> codebase-memory-mcp (retired): removing $CbmDir" -ForegroundColor Cyan
+    Remove-Item -Recurse -Force $CbmDir -ErrorAction SilentlyContinue
 }
-
-New-Item -ItemType Directory -Path $InstallDir -Force | Out-Null
-
-if ((Get-InstalledVersion) -ne $CbmVersion) {
-    Write-Host "-> codebase-memory-mcp: installing v$CbmVersion..." -ForegroundColor Cyan
-
-    $Archive = 'codebase-memory-mcp-windows-amd64.zip'
-    $Base    = "https://github.com/$Repo/releases/download/v$CbmVersion"
-    $TmpDir  = Join-Path ([System.IO.Path]::GetTempPath()) "cbm-$(Get-Random)"
-    New-Item -ItemType Directory -Path $TmpDir -Force | Out-Null
-
-    try {
-        Invoke-WebRequest -Uri "$Base/$Archive" -OutFile "$TmpDir\$Archive" -UseBasicParsing
-
-        # Verify checksum when reachable (non-fatal otherwise).
-        try {
-            Invoke-WebRequest -Uri "$Base/checksums.txt" -OutFile "$TmpDir\checksums.txt" -UseBasicParsing
-            $line = Get-Content "$TmpDir\checksums.txt" | Where-Object { $_ -like "*$Archive*" }
-            if ($line) {
-                $expected = ($line -split '\s+')[0]
-                $actual   = (Get-FileHash -Path "$TmpDir\$Archive" -Algorithm SHA256).Hash.ToLower()
-                if ($expected -ne $actual) {
-                    throw "checksum mismatch (expected $expected, got $actual)"
-                }
-            }
-        } catch {
-            Write-Warning "codebase-memory-mcp: could not verify checksum: $_"
-        }
-
-        Expand-Archive -Path "$TmpDir\$Archive" -DestinationPath $TmpDir -Force
-        $DlBin = Join-Path $TmpDir $BinName
-        if (-not (Test-Path $DlBin)) { throw "binary not found after extraction" }
-
-        # Rename-aside if the existing binary is locked (server running).
-        if (Test-Path $Dest) {
-            Remove-Item "$Dest.old" -Force -ErrorAction SilentlyContinue
-            Rename-Item $Dest "$Dest.old" -ErrorAction SilentlyContinue
-        }
-        Copy-Item $DlBin $Dest -Force
-
-        $ver = & $Dest --version 2>&1
-        Write-Host "-> codebase-memory-mcp: $ver"
-    } finally {
-        Remove-Item -Recurse -Force $TmpDir -ErrorAction SilentlyContinue
-    }
-} else {
-    Write-Host "-> codebase-memory-mcp: v$CbmVersion already installed"
-}
-
-Write-Host "-> codebase-memory-mcp: enabling auto-index..."
-& $Dest config set auto_index true
-
-# Ensure the install dir is on the user PATH.
 $UserPath = [Environment]::GetEnvironmentVariable('PATH', 'User')
-if ($UserPath -notlike "*$InstallDir*") {
-    [Environment]::SetEnvironmentVariable('PATH', "$UserPath;$InstallDir", 'User')
-    $env:PATH = "$env:PATH;$InstallDir"
-    Write-Host "-> codebase-memory-mcp: added $InstallDir to user PATH"
+if ($UserPath -and $UserPath -like "*$CbmDir*") {
+    $Kept = ($UserPath -split ';' | Where-Object { $_ -and $_ -ne $CbmDir }) -join ';'
+    [Environment]::SetEnvironmentVariable('PATH', $Kept, 'User')
+}
+if (Test-Command 'claude') {
+    claude mcp remove codebase-memory-mcp -s user *> $null
 }
 
 # GitKraken MCP -- gk ships its own multi-client installer. `gk mcp install
@@ -193,5 +132,5 @@ if (Get-Command gk -ErrorAction SilentlyContinue) {
 }
 
 Write-Host ""
-Write-Host "Agents outfitted: plugins, skills, GitKraken MCP, codebase-memory-mcp." -ForegroundColor Green
+Write-Host "Agents outfitted: plugins, skills, GitKraken MCP." -ForegroundColor Green
 {{- end -}}

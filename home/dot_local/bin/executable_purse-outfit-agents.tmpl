@@ -1,7 +1,6 @@
 #!/bin/bash
 # Outfit the installed AI agents: register MCP servers, install native plugins
-# and Agent Skills packages, register GitKraken MCP, and set up
-# codebase-memory-mcp.
+# and Agent Skills packages, and register GitKraken MCP.
 #
 # chezmoi installs this to ~/.local/bin/purse-outfit-agents.
 #
@@ -13,7 +12,7 @@
 # Named agents are CLI commands, the same names purse-agent and dcsh use:
 # `agy`, not `antigravity`; `cursor-agent`, not `cursor`. Naming one narrows
 # every per-agent step to it, and reduces the shared tools its config points at
-# — codebase-memory-mcp, spec-kit, skills-ref — to a presence check instead of
+# — spec-kit, skills-ref — to a presence check instead of
 # a forced reinstall. That is the door purse-agent uses when it installs an
 # agent on first use: outfitting the other agents a container happens to hold
 # would be somebody else's errand, paid for by whoever launched first.
@@ -21,9 +20,8 @@
 # This is a deliberate, manually-invoked step — run it after purse-install-agents:
 #   - It depends on the agent CLIs already being installed (claude, codex,
 #     auggie, cursor-agent, ...), which happens via purse-install-agents.
-#   - codebase-memory-mcp downloads a static binary and re-configures every
-#     detected agent; together these are too slow to run inline on every
-#     `chezmoi apply`.
+#   - Registering servers and installing plugins across every detected agent
+#     is too slow to run inline on every `chezmoi apply`.
 #
 # Only env-var REFERENCE strings are written into agent configs (e.g. literal
 # ${GITHUB_PERSONAL_ACCESS_TOKEN}); secret values are never read or stored here.
@@ -106,14 +104,24 @@ jq_upsert() {
      "$cfg" > "$tmp" && mv "$tmp" "$cfg"
 }
 
+# jq delete by server name from a JSON config file, leaving a file that never
+# held it untouched: a rewrite reorders keys even when it removes nothing.
+# args: <cfg> <top-key> <server-name>
+jq_delete() {
+  local cfg="$1" key="$2" name="$3" tmp
+  jq -e --arg k "$key" --arg name "$name" ".[\$k] | has(\$name)" "$cfg" >/dev/null 2>&1 || return 0
+  tmp=$(mktemp)
+  jq --arg k "$key" --arg name "$name" "del(.[\$k][\$name])" "$cfg" > "$tmp" && mv "$tmp" "$cfg"
+}
+
 # --- per-agent MCP registration (each guarded by `have` in the driver) -------
 # These rely on the manifest values declared as locals in outfit_mcp_servers
 # (bash dynamic scoping makes them visible here).
 #
 # Args arrays expand as ${arr[@]+"${arr[@]}"} rather than "${arr[@]}": macOS
 # ships bash 3.2, where an empty array under `set -u` is an unbound-variable
-# error instead of zero words. codebase-memory-mcp declares `args: []`, so the
-# plain form aborted the whole run there.
+# error instead of zero words. A server declaring `args: []` aborted the whole
+# run there under the plain form.
 register_claude() {
   claude mcp remove github -s user >/dev/null 2>&1 || true
   claude mcp add --transport http github -s user "$gh_url" \
@@ -124,8 +132,6 @@ register_claude() {
   claude mcp add auggie -s user -- "$ag_cmd" ${ag_args[@]+"${ag_args[@]}"}
   claude mcp remove ripgrep -s user >/dev/null 2>&1 || true
   claude mcp add ripgrep -s user -- "$rg_cmd" ${rg_args[@]+"${rg_args[@]}"}
-  claude mcp remove codebase-memory-mcp -s user >/dev/null 2>&1 || true
-  claude mcp add codebase-memory-mcp -s user -- "$cbm_cmd" ${cbm_args[@]+"${cbm_args[@]}"}
 }
 
 register_codex() {
@@ -137,8 +143,6 @@ register_codex() {
   codex mcp add auggie -- "$ag_cmd" ${ag_args[@]+"${ag_args[@]}"}
   codex mcp remove ripgrep >/dev/null 2>&1 || true
   codex mcp add ripgrep -- "$rg_cmd" ${rg_args[@]+"${rg_args[@]}"}
-  codex mcp remove codebase-memory-mcp >/dev/null 2>&1 || true
-  codex mcp add codebase-memory-mcp -- "$cbm_cmd" ${cbm_args[@]+"${cbm_args[@]}"}
 }
 
 register_devin() {
@@ -159,10 +163,6 @@ register_devin() {
   rg=$(jq -n --arg cmd "$rg_cmd" --argjson args "$rg_args_json" \
         '{command:$cmd, args:$args}')
   jq_upsert "$cfg" mcpServers ripgrep "$rg"
-  local cbm
-  cbm=$(jq -n --arg cmd "$cbm_cmd" --argjson args "$cbm_args_json" \
-        '{command:$cmd, args:$args}')
-  jq_upsert "$cfg" mcpServers codebase-memory-mcp "$cbm"
 }
 
 register_auggie() {
@@ -178,10 +178,6 @@ register_auggie() {
   rg=$(jq -cn --arg cmd "$rg_cmd" --argjson args "$rg_args_json" \
         '{command:$cmd, args:$args}')
   auggie mcp add-json --replace -- ripgrep "$rg"
-  local cbm
-  cbm=$(jq -cn --arg cmd "$cbm_cmd" --argjson args "$cbm_args_json" \
-        '{command:$cmd, args:$args}')
-  auggie mcp add-json --replace -- codebase-memory-mcp "$cbm"
 }
 
 register_vscode() {
@@ -200,10 +196,22 @@ register_vscode() {
   rg=$(jq -n --arg cmd "$rg_cmd" --argjson args "$rg_args_json" \
         '{name:"ripgrep", command:$cmd, args:$args}')
   code --add-mcp "$rg"
-  local cbm
-  cbm=$(jq -n --arg cmd "$cbm_cmd" --argjson args "$cbm_args_json" \
-        '{name:"codebase-memory-mcp", command:$cmd, args:$args}')
-  code --add-mcp "$cbm"
+}
+
+# --- per-agent MCP removal of a retired server (args: <server-name>) ---------
+unregister_claude() { claude mcp remove "$1" -s user >/dev/null 2>&1 || true; }
+unregister_codex()  { codex mcp remove "$1" >/dev/null 2>&1 || true; }
+unregister_auggie() { auggie mcp remove "$1" >/dev/null 2>&1 || true; }
+unregister_devin()  { jq_delete "$HOME/.config/devin/config.json" mcpServers "$1"; }
+
+# `code --add-mcp` has no removing twin, so the user-profile registry is edited
+# directly wherever this machine keeps one.
+unregister_vscode() {
+  local cfg
+  for cfg in "$HOME/.config/Code/User/mcp.json" \
+             "$HOME/Library/Application Support/Code/User/mcp.json"; do
+    jq_delete "$cfg" servers "$1"
+  done
 }
 
 # =============================================================================
@@ -229,9 +237,6 @@ outfit_mcp_servers() {
   local rg_cmd='{{ (index .mcpServers "ripgrep").command }}'
   local rg_args=({{ range (index .mcpServers "ripgrep").args }}'{{ . }}' {{ end }})
   local rg_args_json='{{ (index .mcpServers "ripgrep").args | toJson }}'
-  local cbm_cmd='{{ (index .mcpServers "codebase-memory-mcp").command }}'
-  local cbm_args=({{ range (index .mcpServers "codebase-memory-mcp").args }}'{{ . }}' {{ end }})
-  local cbm_args_json='{{ (index .mcpServers "codebase-memory-mcp").args | toJson }}'
 
   # Literal env-var reference strings (NOT expanded here — each agent expands
   # them at runtime). Syntax differs per agent.
@@ -242,12 +247,15 @@ outfit_mcp_servers() {
   # An out-of-scope or missing agent is a normal, expected skip; a failed
   # registration warns but must not abort the run, or every later agent is
   # skipped too. Hence the `continue` guard and the per-agent `|| warn`.
-  local agent command
+  local agent command retired
   for agent in {{ .mcpAgents | join " " }}; do
     command="$(mcp_agent_command "$agent")"
     wants "$command" && have "$command" || continue
-    "register_$agent" || warn "$agent MCP setup failed"
+  "register_$agent" || warn "$agent MCP setup failed"
+  for retired in {{ .retiredMcpServers | join " " }}; do
+    "unregister_$agent" "$retired" || warn "$agent: removing retired MCP server $retired failed"
   done
+done
 }
 
 # The CLI command behind a manifest name. Most agents answer to their own name;
@@ -374,104 +382,7 @@ outfit_worktrunk_workaround() {
 }
 
 # =============================================================================
-# 5. codebase-memory-mcp — download the static binary. MCP registration is
-#    handled by outfit_mcp_servers above (declarative manifest), not by the
-#    binary's own `install -y` which has unwanted side-effects (PATH stomping,
-#    opinionated CLAUDE.md injection, hooks). Bump CBM_VERSION to force a
-#    reinstall of the binary.
-#
-#    Linux uses the fully-static "-portable" asset; the standard linux build
-#    dynamically links glibc 2.38+ and breaks on older distros. macOS has no
-#    portable variant.
-# =============================================================================
-outfit_codebase_memory_mcp() {
-  local REPO="DeusData/codebase-memory-mcp"
-  local CBM_VERSION="0.8.1"
-  local INSTALL_DIR="$HOME/.local/bin"
-  local BINARY="$INSTALL_DIR/codebase-memory-mcp"
-  mkdir -p "$INSTALL_DIR"
-
-  local _cur="none"
-  if have codebase-memory-mcp; then
-    _cur="$(codebase-memory-mcp --version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1)"
-  fi
-
-  if [ "$_cur" != "$CBM_VERSION" ]; then
-    echo "→ codebase-memory-mcp: installing v${CBM_VERSION}..."
-
-    local _os _arch _cbm_arch _portable _asset _base _tmpdir
-    case "$(uname -s)" in
-      Darwin) _os="darwin" ;;
-      Linux)  _os="linux"  ;;
-      *) warn "codebase-memory-mcp: unsupported OS $(uname -s) — skipping"; return 0 ;;
-    esac
-
-    _arch="$(uname -m)"
-    case "$_arch" in
-      arm64|aarch64) _cbm_arch="arm64" ;;
-      x86_64|amd64)
-        # macOS reports x86_64 under Rosetta even on Apple Silicon.
-        if [ "$_os" = "darwin" ] && sysctl -n machdep.cpu.brand_string 2>/dev/null | grep -qi apple; then
-          _cbm_arch="arm64"
-        else
-          _cbm_arch="amd64"
-        fi
-        ;;
-      *) warn "codebase-memory-mcp: unsupported arch $_arch — skipping"; return 0 ;;
-    esac
-
-    _portable=""
-    [ "$_os" = "linux" ] && _portable="-portable"
-
-    _asset="codebase-memory-mcp-${_os}-${_cbm_arch}${_portable}.tar.gz"
-    _base="https://github.com/${REPO}/releases/download/v${CBM_VERSION}"
-
-    _tmpdir="$(mktemp -d)"
-    # RETURN trap fires while this function's locals are still in scope.
-    trap 'rm -rf "$_tmpdir"' RETURN
-
-    curl -fsSL -o "$_tmpdir/$_asset" "${_base}/${_asset}"
-
-    # Verify checksum when the list is reachable (non-fatal if it isn't).
-    if curl -fsSL -o "$_tmpdir/checksums.txt" "${_base}/checksums.txt" 2>/dev/null; then
-      local _expected _actual
-      _expected="$(grep "$_asset" "$_tmpdir/checksums.txt" 2>/dev/null | awk '{print $1}')" || true
-      if [ -n "${_expected:-}" ]; then
-        if command -v sha256sum >/dev/null 2>&1; then
-          _actual="$(sha256sum "$_tmpdir/$_asset" | awk '{print $1}')"
-        elif command -v shasum >/dev/null 2>&1; then
-          _actual="$(shasum -a 256 "$_tmpdir/$_asset" | awk '{print $1}')"
-        else
-          _actual=""
-        fi
-        if [ -n "$_actual" ] && [ "$_expected" != "$_actual" ]; then
-          warn "codebase-memory-mcp: checksum mismatch — aborting install"
-          echo "    expected: $_expected" >&2
-          echo "    actual:   $_actual" >&2
-          return 1
-        fi
-      fi
-    fi
-
-    tar -xzf "$_tmpdir/$_asset" -C "$_tmpdir"
-    install -m755 "$_tmpdir/codebase-memory-mcp" "$BINARY"
-
-    if [ "$_os" = "darwin" ]; then
-      xattr -d com.apple.quarantine "$BINARY" 2>/dev/null || true
-      codesign --sign - --force "$BINARY" 2>/dev/null || true
-    fi
-
-    echo "→ codebase-memory-mcp: $("$BINARY" --version 2>&1)"
-  else
-    echo "→ codebase-memory-mcp: v${CBM_VERSION} already installed"
-  fi
-
-  echo "→ codebase-memory-mcp: enabling auto-index..."
-  "$BINARY" config set auto_index true
-}
-
-# =============================================================================
-# 6. spec-kit (specify CLI) — Spec-Driven Development toolkit, installed as a
+# 5. spec-kit (specify CLI) — Spec-Driven Development toolkit, installed as a
 #    uv tool. Moved here from run_onchange_install-packages so initial setup
 #    doesn't require uv to be available upfront.
 # =============================================================================
@@ -494,7 +405,7 @@ outfit_spec_kit() {
 }
 
 # =============================================================================
-# 7. skills-ref — reference library for Agent Skills, installed as a uv tool.
+# 6. skills-ref — reference library for Agent Skills, installed as a uv tool.
 #    Provides the `skills-ref` CLI for validating, reading, and generating
 #    <available_skills> XML blocks for agent prompts.
 # =============================================================================
@@ -513,7 +424,7 @@ outfit_skills_ref() {
 }
 
 # =============================================================================
-# 8. Global skills — install the declarative shortlist from
+# 7. Global skills — install the declarative shortlist from
 #    .chezmoidata/global-skills.yaml into every present agent, globally.
 #    Each entry maps to: npx skills add <source> --skill <skill> -g -y
 #    Requires node/npx; skips gracefully if absent.
@@ -543,7 +454,7 @@ outfit_global_skills() {
 }
 
 # =============================================================================
-# 9. GitKraken MCP — gk ships its own multi-client installer. `gk mcp install
+# 8. GitKraken MCP — gk ships its own multi-client installer. `gk mcp install
 #    --all` detects every installed MCP client and writes a stdio entry that
 #    runs `gk mcp`. Authentication (`gk auth login`) is only needed when the
 #    server runs, not to write the config, so this is safe non-interactively.
@@ -576,8 +487,7 @@ outfit_gitkraken_mcp() {
 
 # --- run ---------------------------------------------------------------------
 # MCP servers, agent plugins, and GitKraken MCP are internally resilient
-# (per-item `|| warn`) and run first; codebase-memory-mcp (the heavy binary
-# download) runs last so a network failure there can't block the cheaper steps.
+# (per-item `|| warn`) and run first.
 # Every step below consults `wants`, so naming agents narrows all of them at
 # once rather than each caller remembering which steps belong to whom.
 if ! outfitting_whole_machine; then
@@ -592,7 +502,6 @@ outfit_spec_kit
 outfit_skills_ref
 outfit_global_skills
 outfit_gitkraken_mcp
-outfit_codebase_memory_mcp
 
 # Scrub any PATH lines injected into ~/.bashrc / ~/.profile by tool installers
 # (known offenders: antigravity CLI). env.sh owns PATH setup; duplicates here
@@ -601,7 +510,7 @@ purse-scrub-path-stompers
 
 echo
 if outfitting_whole_machine; then
-  echo "✅ Agents outfitted: MCP servers, agent plugins, spec-kit, skills-ref, global skills, GitKraken MCP, codebase-memory-mcp."
+  echo "✅ Agents outfitted: MCP servers, agent plugins, spec-kit, skills-ref, global skills, GitKraken MCP."
 else
-  echo "✅ Outfitted ${requested_agents[*]}: MCP servers, agent plugins, global skills, GitKraken MCP, codebase-memory-mcp."
+  echo "✅ Outfitted ${requested_agents[*]}: MCP servers, agent plugins, global skills, GitKraken MCP."
 fi

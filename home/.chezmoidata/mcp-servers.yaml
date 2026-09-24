@@ -48,13 +48,14 @@ mcpServers:
     args: ["-y", "mcp-ripgrep@latest"]
     requiresEnv: []
     excludeAgents: []
-  codebase-memory-mcp:
-    description: "Codebase knowledge graph MCP"
-    transport: stdio
-    command: codebase-memory-mcp
-    args: []
-    requiresEnv: []
-    excludeAgents: []
+
+# Servers dropped from the shortlist. The rendered registries lose them on the
+# next apply by themselves; the merged ones in mcpAgents keep a server until
+# something removes it, so purse-outfit-agents removes each name listed here
+# from every merged agent. Add a name here (not in the script) when retiring
+# a server; the entry can go once every machine has been outfitted since.
+retiredMcpServers:
+  - codebase-memory-mcp
 
 # Agents purse-outfit-agents merges into. The four rendered by chezmoi are
 # deliberately absent — listing one here would make two writers of one file.

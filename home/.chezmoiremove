@@ -13,3 +13,11 @@
 .local/bin/upgrade-git
 
 
+
+# Retired codebase-memory-mcp: its binary, its index cache, and the skill and
+# hook purse deployed for it. Its MCP registrations are removed by
+# purse-outfit-agents (retiredMcpServers in .chezmoidata/mcp-servers.yaml).
+.local/bin/codebase-memory-mcp
+.cache/codebase-memory-mcp
+.claude/hooks/cbm-code-discovery-gate
+.agents/skills/codebase-memory

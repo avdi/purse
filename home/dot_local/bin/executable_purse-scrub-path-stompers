@@ -3,11 +3,10 @@
 # inject into shell init files, which re-bury the purse shims dir behind
 # ~/.local/bin and break devcontainer shim dispatch.
 #
-# Safe to run at any time; idempotent. Called automatically by
-# purse-outfit-agents after codebase-memory-mcp install -y.
+# Safe to run at any time; idempotent. Called automatically at the end of
+# purse-outfit-agents.
 #
 # Known offenders:
-#   codebase-memory-mcp  → appends to ~/.bashrc
 #   Antigravity CLI      → appends to ~/.bashrc and ~/.profile
 #
 # Pattern matched: lines of the form

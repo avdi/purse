@@ -19,11 +19,10 @@ foreach ($a in @('claude','codex','agent','devin','auggie','agy','opencode')) {
     if (Test-Command $a) { $agentsPresent = $true; break }
 }
 $noteAgents = if ($agentsPresent) { '' } else { '  <- no agent CLIs detected' }
-$noteOutfit = if (Test-Command 'codebase-memory-mcp') { '' } else { '  <- codebase-memory-mcp not installed' }
 
 Write-Host ""
 Write-Host "-- purse: manual setup commands (not run by 'chezmoi apply') --" -ForegroundColor Cyan
 Write-Host "  * purse-install-agents.ps1   AI agent CLIs (claude, codex, cursor, devin, auggie, agy, opencode)$noteAgents"
-Write-Host "  * purse-outfit-agents.ps1    codebase-memory-mcp$noteOutfit"
+Write-Host "  * purse-outfit-agents.ps1    agent plugins + skills + GitKraken MCP"
 Write-Host ""
 {{- end -}}
