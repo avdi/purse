@@ -13,9 +13,14 @@ description: >
 Dotfiles are managed with [chezmoi](https://chezmoi.io) in a repo called **purse**:
 
 - **GitHub**: `https://github.com/avdi/purse`
-- **Chezmoi source**: `~/.local/share/chezmoi/` — use `chezmoi cd` to open a shell there
+- **Chezmoi source**: wherever this machine cloned purse, so ask rather than
+  assume. `chezmoi source-path` prints the `home/` subdirectory chezmoi reads;
+  the purse repo root is its parent. A plain `chezmoi init` clones to
+  `~/.local/share/chezmoi`, and a devcontainer or Codespace dotfiles install
+  clones to `~/dotfiles`.
 
-Chezmoi's `sourceDir` is set to the `home/` subdirectory of the purse repo.
+Edit only the clone `chezmoi source-path` names. A machine can hold a second
+purse clone, and edits there change nothing chezmoi applies.
 
 ## Always finish the change: apply, commit, push
 
@@ -23,9 +28,14 @@ Edit the **source**, then run all three, in the same sitting:
 
 ```bash
 chezmoi apply <path>   # deploy to this machine
-chezmoi cd
-git add -A && git commit -m "..." && git push
+purse="$(dirname "$(chezmoi source-path)")"
+git -C "$purse" add -A && git -C "$purse" commit -m "..." && git -C "$purse" push
 ```
+
+When you arrive from another project, that project's commit hooks can refuse
+a `git commit` aimed at a different repository. Commit through the GitKraken
+MCP tools (`git_add`, `git_commit`, `git_push` with `directory:` set to the
+purse root) instead of working around the hook.
 
 None of this needs authorization. Do not stop to ask, do not offer and wait for
 a yes, do not leave the source tree dirty. Pushing to `origin` is routine here —
@@ -112,7 +122,7 @@ home/
 
 ```bash
 # Edit directly in the chezmoi source
-chezmoi cd   # opens a shell in ~/.local/share/chezmoi/home/
+chezmoi cd   # opens a shell in the source dir (chezmoi source-path)
 # ... make changes ...
 chezmoi apply
 

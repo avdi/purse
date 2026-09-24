@@ -1,4 +1,4 @@
-# ~/.local/share/chezmoi/home/.chezmoiremove
+# home/.chezmoiremove
 # Target paths chezmoi should delete from $HOME on apply.
 
 # Retired bare-umbrella worktree workflow (replaced by branch-clone bc-*).

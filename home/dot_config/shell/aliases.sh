@@ -29,9 +29,9 @@ alias lt="lenticel"
 # shim that injects --dotfiles-* flags); intentionally not aliased here so the
 # script stays discoverable via `which dc` and works in non-interactive shells.
 
-# Pull latest from the chezmoi source clone (~/.local/share/chezmoi) and
-# apply. The working clone at ~/projects/avdi/purse is separate, so edits
-# committed/pushed there don't take effect on disk until this runs.
+# Pull latest into the chezmoi source clone (`chezmoi source-path`) and
+# apply. Edits pushed from another clone don't take effect on this machine
+# until this runs.
 #
 # With no terminal — `docker exec` without -t, a provisioning script, CI —
 # chezmoi cannot ask what to do about a file that has changed since it last
