@@ -23,7 +23,6 @@ description: >
 tools: Read, Bash, mcp__ripgrep__*
 mcpServers:
   - ripgrep
-model: opus
 ---
 
 You own **<area>** for <project> (<one-line system description>; see

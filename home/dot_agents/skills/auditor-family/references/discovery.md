@@ -21,8 +21,9 @@ Probes:
   provider OAuth, mail transport, webhooks).
 - `git log --format= --name-only | sort | uniq -c | sort -rn | head -50` — the
   hot directories are where review effort pays back.
-- Ask: "what breaks *silently* here?" Silent-corruption subsystems earn a
-  strong-tier auditor; loud-failure ones may not need an auditor at all.
+- Ask: "what breaks *silently* here?" Silent-corruption subsystems earn an
+  auditor and a strongest-model round when touched; loud-failure ones may
+  not need an auditor at all.
 
 ## Axis B — cross-cutting functional concerns
 
@@ -63,7 +64,7 @@ Probes:
   loosened or deleted to make a spec pass) belongs to nobody else.
 - Build/CI/deploy/dependency-pinning is one "infrastructure" area unless the
   project is infra-heavy.
-- Developer tooling (scripts, tasks) is its own light-tier area once there's a
+- Developer tooling (scripts, tasks) is its own area once there's a
   script tree worth conventions.
 
 ## Sanity check the roster
@@ -77,5 +78,6 @@ Before writing anything:
 3. **Coverage test.** Take the last five merged PRs. For each, list which
    auditors would have been dispatched. A PR that routes to nobody means a gap;
    a PR that routes to everybody means the areas are too broad.
-4. **Stakes test.** Assign default tiers. If everything is strong, the tiers
-   carry no information — recalibrate against what actually causes incidents.
+4. **Stakes test.** Name the areas whose changes escalate a round to the
+   strongest model. If every area does, the list carries no information —
+   recalibrate against what actually causes incidents.

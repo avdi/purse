@@ -45,7 +45,6 @@ description: >
 tools: Read, Bash, mcp__ripgrep__*         # + any code-intelligence MCPs, see below
 mcpServers:
   - ripgrep
-model: opus
 ---
 ```
 

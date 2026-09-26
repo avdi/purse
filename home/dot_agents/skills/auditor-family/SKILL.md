@@ -27,7 +27,7 @@ Plus meta-agents:
 
 | Agent | Role |
 |---|---|
-| `<prefix>-auditor-general` | Entry point. Reads a changeset, emits an ordered, model-tiered **dispatch plan** of which area auditors to run. Does not review. |
+| `<prefix>-auditor-general` | Entry point. Reads a changeset, emits an ordered **dispatch plan** of which area auditors to run, and the one model the round runs on. Does not review. |
 | `<prefix>-auditor-generalist` | Closing pass, invoked directly (not via the dispatch plan) at the end of each round with the diff plus that round's consolidated verdict — fresh, judgment-based eyes for design/architecture smells and gaps no area auditor structurally owns. |
 | `<prefix>-guidance-curator` | Harvests durable lessons out of reviews and self-reported digs, lands them in the right skill or auditor. |
 | `<prefix>-toolmonger` | Turns ad-hoc commands into tools, fixes friction, seeds skills with pointers to them. |
@@ -95,8 +95,8 @@ this is what stops a codebase from accreting the pattern it's trying to leave.
 
 ### 4. Write the auditor-general
 
-Template: `references/auditor-general.md`. It owns the roster table, the model
-tiers, the shared severity model, and the conflict-resolution rules that every
+Template: `references/auditor-general.md`. It owns the roster table, the round
+model, the shared severity model, and the conflict-resolution rules that every
 area auditor references rather than restates.
 
 ### 5. Write the meta-agents
@@ -148,7 +148,10 @@ round 1's state if uncommitted).
 **Round 2:** invoke the auditor-general again, explicitly told it's round 2,
 with a **commit range** bounding only the fix (`<boundary-sha>..HEAD`) — not a
 prose summary, not a pasted diff. It scopes the plan to those changes and
-routes only the auditors whose area the fixes touch.
+routes only the auditors whose area the fixes touch. Where the runtime can
+address a prior subagent (Claude Code's `SendMessage`), resume the round-1
+auditor rather than spawning fresh — it already holds the changeset and
+codebase context. (Reasoned, not yet measured; see `references/fleet-eval.md`.)
 
 **Close each round with the generalist auditor.** After consolidating a
 round's verdict — round 1, and round 2 if it runs — invoke
@@ -174,17 +177,25 @@ toolmonger **at most one** ad-hoc command worth banking plus any number of tool
 trouble reports. Both are expected to conclude "nothing worth capturing" most
 of the time — that's the design, not a failure.
 
-## Model tiers
+## Round model
 
-Each dispatch-plan row names a tier for invoking that auditor:
+Every auditor in a round runs on **one** model, which the dispatch plan names
+for the whole round:
 
-- **strong** — subtle reasoning, high blast radius, the high-stakes subsystems.
-- **medium** — the workhorse for most technology, style, and module changes.
-- **light** — small mechanical slices checked against a handful of conventions.
+- **balanced** — the default: the runtime's mid-size workhorse model.
+- **strongest** — escalate the whole round when a Blocking miss would be an
+  incident: authn/authz, secrets, money, data deletion or migration,
+  privacy/consent boundaries.
 
-Each auditor has a **default tier** in the roster; the general adjusts up for a
-large/subtle slice, down for a tiny mechanical one. The invoking agent may
-override.
+Never the small/fast model; never mixed models across one round's auditors;
+one subagent per auditor, never several charters folded into one session.
+This is measured, not taste — per-auditor tiering (small models on "light"
+slices) lost to a flat balanced round on recall *and* cost, and the small
+model missed Blocking findings outright. See `references/fleet-eval.md` for
+the numbers and for how to re-run the measurement on your own fleet.
+
+No agent's frontmatter names a model. The invoking agent maps
+balanced/strongest to whatever its runtime calls those models today.
 
 ## Severity model
 
@@ -207,11 +218,12 @@ code."
 | Signal | Move |
 |---|---|
 | The same finding recurs across PRs | The rule isn't in a skill, or is stated too weakly. Curator's job. |
-| An auditor's findings are always noise on this repo's changes | Narrow its scope or lower its default tier; retire it if it never lands. |
+| An auditor's findings are always noise on this repo's changes | Narrow its scope; retire it if it never lands. |
 | One auditor's charter has two sets of unrelated invariants | Split it — and split the paired skill with it. |
 | A real bug shipped that an area owns | Add a `## What you scrutinize most` bullet to that auditor, or fix the severity calibration. |
 | A skill exceeds ~200 lines | Move detail into `references/` under the skill; keep SKILL.md scannable. |
 | A transition finishes | Delete the `## Direction` entry. Stale direction is worse than none. |
+| You want to change the round model, the roster shape, or effort | Measure first — `references/fleet-eval.md`. Intuitions about which slices are "light" were wrong last time. |
 | The generalist's "roster gap" bucket names the same missing auditor twice | Stop deferring — bootstrap that area auditor (steps 2–3) instead of letting the generalist keep covering for it. |
 
 Only the curator edits standards, and only ever as **standards-only commits**
@@ -226,6 +238,9 @@ the standards' own history.
 - An area auditor with no paired skill — it will invent rules. (The generalist
   auditor is the sole, deliberate exception.)
 - Letting the auditor-general write the review itself instead of dispatching.
+- Per-auditor model tiers, or any auditor on the small/fast model.
+- Folding several auditors' charters into one session to save dispatches.
+- Pinning `model:` in an auditor's frontmatter.
 - Dispatching every auditor on every change; an unrelated auditor is noise that
   trains the reader to skim.
 - Running round 2 against the whole changeset instead of the fix range.
@@ -246,6 +261,8 @@ the standards' own history.
 - `references/auditor-general.md` — dispatcher template.
 - `references/meta-agents.md` — curator and toolmonger templates.
 - `references/generalist-auditor.md` — generalist closing-auditor template.
+- `references/fleet-eval.md` — what dispatch shape measured best, and how to
+  re-measure it against a project's own graded audits.
 
 Subagent frontmatter mechanics (tools, `mcpServers`, model): see the
 `defining-subagents` skill.
