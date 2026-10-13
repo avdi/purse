@@ -1,10 +1,8 @@
 # Declarative manifest of agent plugin marketplaces and plugins, shared across
 # every agent that natively supports the Claude plugin/marketplace format
-# (Claude Code, Codex CLI, GitHub Copilot CLI, Auggie), plus skills.sh fallback
+# (Claude Code, Codex CLI, GitHub Copilot CLI), plus skills.sh fallback
 # packages for agents that cannot consume a particular native plugin. Each
 # marketplace and plugin declares which native agents it should target.
-# Auggie uses the same `plugin marketplace add` / `plugin install` verbs and
-# recognizes both .claude-plugin and .augment-plugin manifests.
 #
 # VS Code also supports this plugin format (Preview), but only via
 # global-user settings.json — no CLI verb — so it's intentionally left
@@ -22,15 +20,11 @@ agentPlugins:
     - claude
     - codex
     - copilot
-    - auggie
 
   # What each agent calls the two operations. They are not interchangeable:
   # `codex plugin uninstall` is not a subcommand at all, which is why a plugin
   # retired here stayed enabled in ~/.codex/config.toml through every outfit
   # run — the call failed into the `|| true` and left no trace.
-  #
-  # auggie has no removal verb. A plugin there is disabled rather than
-  # uninstalled, and the flag follows the verb.
   verbs:
     claude:
       install: install
@@ -41,9 +35,6 @@ agentPlugins:
     copilot:
       install: install
       uninstall: uninstall
-    auggie:
-      install: install
-      uninstall: install --disable
 
   # Marketplaces to register, and which agents should register each one.
   # Built-in marketplaces (e.g. claude-plugins-official) are only auto-seeded
@@ -55,10 +46,10 @@ agentPlugins:
     # stays out of this one.
     - name: claude-plugins-official
       source: anthropics/claude-plugins-official
-      agents: [claude, codex, auggie]
+      agents: [claude, codex]
     - name: context7-marketplace
       source: upstash/context7
-      agents: [claude, codex, copilot, auggie]
+      agents: [claude, codex, copilot]
     - name: worktrunk
       source: max-sixty/worktrunk
       agents: [claude, codex]
@@ -73,10 +64,10 @@ agentPlugins:
   plugins:
     - name: context7
       marketplace: context7-marketplace
-      agents: [claude, codex, copilot, auggie]
+      agents: [claude, codex, copilot]
     - name: ralph-loop
       marketplace: claude-plugins-official
-      agents: [claude, codex, auggie]
+      agents: [claude, codex]
     - name: claude-code-setup
       marketplace: claude-plugins-official
       agents: [claude]
@@ -117,7 +108,7 @@ agentPlugins:
       # far less prompt weight and no mandatory skill-invocation preamble.
       - name: superpowers
         marketplace: claude-plugins-official
-        agents: [claude, codex, auggie]
+        agents: [claude, codex]
       - name: superpowers
         marketplace: superpowers-marketplace
         agents: [copilot]
@@ -132,8 +123,6 @@ agentPlugins:
           target: codex
         - command: agy
           target: antigravity-cli
-        - command: auggie
-          target: augment
         - command: copilot
           target: github-copilot
         - command: cursor-agent

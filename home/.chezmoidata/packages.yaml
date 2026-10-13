@@ -57,7 +57,7 @@ packages:
     - "@devcontainers/cli"         # devcontainer (dc alias)
 
   # npm global packages — coding-agent CLIs (installed via purse-install-agents)
-  # Requires Node.js 22+ (auggie is the strictest)
+  # Requires Node.js 22+
   agents_npm:
     - "@anthropic-ai/claude-code"  # claude
     - "@openai/codex"              # codex
@@ -68,7 +68,6 @@ packages:
     #                              # `npm install -g --force` on every run is also a
     #                              # supply-chain hazard if it's ever populated.
     #                              # Restore only with a package that's verified real.
-    - "@augmentcode/auggie"        # auggie
     - "opencode-ai"                # opencode
     - "@github/copilot"            # copilot
 

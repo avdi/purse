@@ -15,14 +15,14 @@ function Test-Command($cmd) {
 }
 
 $agentsPresent = $false
-foreach ($a in @('claude','codex','agent','devin','auggie','agy','opencode')) {
+foreach ($a in @('claude','codex','agent','devin','agy','opencode')) {
     if (Test-Command $a) { $agentsPresent = $true; break }
 }
 $noteAgents = if ($agentsPresent) { '' } else { '  <- no agent CLIs detected' }
 
 Write-Host ""
 Write-Host "-- purse: manual setup commands (not run by 'chezmoi apply') --" -ForegroundColor Cyan
-Write-Host "  * purse-install-agents.ps1   AI agent CLIs (claude, codex, cursor, devin, auggie, agy, opencode)$noteAgents"
+Write-Host "  * purse-install-agents.ps1   AI agent CLIs (claude, codex, cursor, devin, agy, opencode)$noteAgents"
 Write-Host "  * purse-outfit-agents.ps1    agent plugins + skills + GitKraken MCP"
 Write-Host ""
 {{- end -}}

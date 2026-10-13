@@ -21,3 +21,7 @@
 .cache/codebase-memory-mcp
 .claude/hooks/cbm-code-discovery-gate
 .agents/skills/codebase-memory
+
+# Retired auggie: its global-rules symlink. Its MCP registrations are
+# removed by purse-outfit-agents (retiredMcpServers).
+.augment/rules/global.md

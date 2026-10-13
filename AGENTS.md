@@ -132,7 +132,7 @@ agent present on the machine.
 
 - `home/.chezmoidata/mcp-servers.yaml` — the manifest: the servers (`mcpServers`)
   and the agents to configure (`mcpAgents`). Servers may declare `excludeAgents`
-  for known incompatibilities; **auggie** is excluded from Copilot CLI.
+  for known incompatibilities.
 - `home/dot_local/bin/executable_purse-outfit-agents.tmpl` → `purse-outfit-agents`
   — the installer. It's a **manually-invoked** step (not run on `chezmoi apply`),
   run after `purse-install-agents`, because alongside MCP registration it also
@@ -151,7 +151,7 @@ Unix (it's not in apt and brew ships it as a macOS-only cask), and via winget
 case-sensitively, so a lowercased id silently installs nothing) on Windows.
 
 Registration is per-agent: agents with a non-interactive MCP CLI are configured
-via that CLI (`claude`, `codex`, `copilot`, `auggie`, `vscode`); agents whose CLI
+via that CLI (`claude`, `codex`, `copilot`, `vscode`); agents whose CLI
 triggers an OAuth/browser login or that lack a CLI are configured by merging JSON
 directly into their config file with `jq` (`cursor`, `opencode`, `devin`,
 `antigravity`).
@@ -165,9 +165,8 @@ edit the manifest; do not hand-edit per-agent config files.
 
 ## Agent plugins
 
-Claude Code, Codex CLI, GitHub Copilot CLI, and Auggie share the same
-plugin/marketplace format (`.claude-plugin/plugin.json` manifests — Auggie also
-reads `.augment-plugin` — with near-identical `plugin marketplace add` / `plugin
+Claude Code, Codex CLI, and GitHub Copilot CLI share the same
+plugin/marketplace format (`.claude-plugin/plugin.json` manifests, with near-identical `plugin marketplace add` / `plugin
 install`(`add` for Codex) CLI verbs), so plugins are installed into all of them
 from a single declarative manifest and loop in `purse-outfit-agents`.
 

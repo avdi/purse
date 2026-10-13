@@ -19,7 +19,7 @@
 #
 # This is a deliberate, manually-invoked step — run it after purse-install-agents:
 #   - It depends on the agent CLIs already being installed (claude, codex,
-#     auggie, cursor-agent, ...), which happens via purse-install-agents.
+#     cursor-agent, ...), which happens via purse-install-agents.
 #   - Registering servers and installing plugins across every detected agent
 #     is too slow to run inline on every `chezmoi apply`.
 #
@@ -84,7 +84,6 @@ skills_target_for() {
   case "$1" in
     claude)       echo claude-code ;;
     agy)          echo antigravity-cli ;;
-    auggie)       echo augment ;;
     copilot)      echo github-copilot ;;
     cursor-agent) echo cursor ;;
     codex|opencode|devin) echo "$1" ;;
@@ -128,8 +127,6 @@ register_claude() {
     --header "Authorization: $gh_bearer_dollar"
   claude mcp remove playwright -s user >/dev/null 2>&1 || true
   claude mcp add playwright -s user -- "$pw_cmd" ${pw_args[@]+"${pw_args[@]}"}
-  claude mcp remove auggie -s user >/dev/null 2>&1 || true
-  claude mcp add auggie -s user -- "$ag_cmd" ${ag_args[@]+"${ag_args[@]}"}
   claude mcp remove ripgrep -s user >/dev/null 2>&1 || true
   claude mcp add ripgrep -s user -- "$rg_cmd" ${rg_args[@]+"${rg_args[@]}"}
 }
@@ -139,8 +136,6 @@ register_codex() {
   codex mcp add github --url "$gh_url" --bearer-token-env-var "$gh_token_var"
   codex mcp remove playwright >/dev/null 2>&1 || true
   codex mcp add playwright -- "$pw_cmd" ${pw_args[@]+"${pw_args[@]}"}
-  codex mcp remove auggie >/dev/null 2>&1 || true
-  codex mcp add auggie -- "$ag_cmd" ${ag_args[@]+"${ag_args[@]}"}
   codex mcp remove ripgrep >/dev/null 2>&1 || true
   codex mcp add ripgrep -- "$rg_cmd" ${rg_args[@]+"${rg_args[@]}"}
 }
@@ -155,29 +150,10 @@ register_devin() {
   pw=$(jq -n --arg cmd "$pw_cmd" --argjson args "$pw_args_json" \
         '{command:$cmd, args:$args}')
   jq_upsert "$cfg" mcpServers playwright "$pw"
-  local ag
-  ag=$(jq -n --arg cmd "$ag_cmd" --argjson args "$ag_args_json" \
-        '{command:$cmd, args:$args}')
-  jq_upsert "$cfg" mcpServers auggie "$ag"
   local rg
   rg=$(jq -n --arg cmd "$rg_cmd" --argjson args "$rg_args_json" \
         '{command:$cmd, args:$args}')
   jq_upsert "$cfg" mcpServers ripgrep "$rg"
-}
-
-register_auggie() {
-  # auggie does not expand ${VAR} in header values, so the github HTTP MCP
-  # cannot be registered with an env-var token reference — it would send the
-  # literal string and get a 400. Auggie has built-in GitHub context, so skip it.
-  auggie mcp remove github >/dev/null 2>&1 || true
-  local pw
-  pw=$(jq -cn --arg cmd "$pw_cmd" --argjson args "$pw_args_json" \
-        '{command:$cmd, args:$args}')
-  auggie mcp add-json --replace -- playwright "$pw"
-  local rg
-  rg=$(jq -cn --arg cmd "$rg_cmd" --argjson args "$rg_args_json" \
-        '{command:$cmd, args:$args}')
-  auggie mcp add-json --replace -- ripgrep "$rg"
 }
 
 register_vscode() {
@@ -188,10 +164,6 @@ register_vscode() {
   pw=$(jq -n --arg cmd "$pw_cmd" --argjson args "$pw_args_json" \
         '{name:"playwright", command:$cmd, args:$args}')
   code --add-mcp "$pw"
-  local ag
-  ag=$(jq -n --arg cmd "$ag_cmd" --argjson args "$ag_args_json" \
-        '{name:"auggie", command:$cmd, args:$args}')
-  code --add-mcp "$ag"
   local rg
   rg=$(jq -n --arg cmd "$rg_cmd" --argjson args "$rg_args_json" \
         '{name:"ripgrep", command:$cmd, args:$args}')
@@ -201,7 +173,6 @@ register_vscode() {
 # --- per-agent MCP removal of a retired server (args: <server-name>) ---------
 unregister_claude() { claude mcp remove "$1" -s user >/dev/null 2>&1 || true; }
 unregister_codex()  { codex mcp remove "$1" >/dev/null 2>&1 || true; }
-unregister_auggie() { auggie mcp remove "$1" >/dev/null 2>&1 || true; }
 unregister_devin()  { jq_delete "$HOME/.config/devin/config.json" mcpServers "$1"; }
 
 # `code --add-mcp` has no removing twin, so the user-profile registry is edited
@@ -231,9 +202,6 @@ outfit_mcp_servers() {
   local pw_cmd='{{ (index .mcpServers "playwright").command }}'
   local pw_args=({{ range (index .mcpServers "playwright").args }}'{{ . }}' {{ end }})  # bash array for `--` CLI forms
   local pw_args_json='{{ (index .mcpServers "playwright").args | toJson }}'             # JSON array for jq builders
-  local ag_cmd='{{ (index .mcpServers "auggie").command }}'
-  local ag_args=({{ range (index .mcpServers "auggie").args }}'{{ . }}' {{ end }})
-  local ag_args_json='{{ (index .mcpServers "auggie").args | toJson }}'
   local rg_cmd='{{ (index .mcpServers "ripgrep").command }}'
   local rg_args=({{ range (index .mcpServers "ripgrep").args }}'{{ . }}' {{ end }})
   local rg_args_json='{{ (index .mcpServers "ripgrep").args | toJson }}'
@@ -301,11 +269,11 @@ outfit_remove_retired_plugins() {
 # =============================================================================
 # 3. Agent extensions — register marketplaces and install native plugins into
 #    every agent that natively supports the Claude plugin/marketplace format
-#    (Claude Code, Codex CLI, GitHub Copilot CLI, Auggie; see
+#    (Claude Code, Codex CLI, GitHub Copilot CLI; see
 #    .chezmoidata/agent-plugins.yaml for why VS Code/Cursor/Devin/Antigravity
 #    are excluded). Built-in marketplaces are only auto-seeded on an interactive
 #    first launch, so we register them explicitly here. Codex uses `plugin add`
-#    where Claude/Copilot/Auggie use `plugin install`; otherwise identical.
+#    where Claude/Copilot use `plugin install`; otherwise identical.
 #    Packages without a compatible native plugin are installed globally through
 #    skills.sh for each detected fallback agent.
 # =============================================================================

@@ -15,13 +15,13 @@ have() { command -v "$1" >/dev/null 2>&1; }
 # A bullet is shown for every command; the trailing note adapts to current state
 # so a fully-set-up machine reads as "nothing left to do".
 agents_present=0
-for _a in claude codex cursor-agent devin auggie agy opencode; do
+for _a in claude codex cursor-agent devin agy opencode; do
   have "$_a" && { agents_present=1; break; }
 done
 note_agents=""
 [ "$agents_present" -eq 0 ] && note_agents="  ← no agent CLIs detected"
 
-# Cheap auth probes only (skip auggie's slow `token print`): flag the common
+# Cheap auth probes only flag the common
 # breakages — gh not logged in, github MCP token missing.
 note_auth=""
 _auth_need=""
@@ -43,9 +43,9 @@ cat <<EOF
 
 ── purse: manual setup commands (not run by \`chezmoi apply\`) ──
   • purse-install-extras   Homebrew + full toolset (no root needed) + devcontainer-bridge (dbr)${note_extras}
-  • purse-install-agents   AI agent CLIs (claude, codex, cursor, devin, auggie, agy, opencode)${note_agents}
+  • purse-install-agents   AI agent CLIs (claude, codex, cursor, devin, agy, opencode)${note_agents}
   • purse-outfit-agents    MCP servers + agent plugins + GitKraken MCP
-  • purse-auth-tools       Verify/remediate logins: gh, gk, auggie, MCP tokens${note_auth}
+  • purse-auth-tools       Verify/remediate logins: gh, gk, MCP tokens${note_auth}
 
 EOF
 

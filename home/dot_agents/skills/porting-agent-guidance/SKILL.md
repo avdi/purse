@@ -43,7 +43,7 @@ sparse clone is enough and costs seconds:
 
 ```bash
 git clone --filter=blob:none --no-checkout <url> src && cd src
-git sparse-checkout init --cone && git sparse-checkout set .claude .codex .gemini .augment
+git sparse-checkout init --cone && git sparse-checkout set .claude .codex .gemini
 git checkout main
 ```
 
@@ -104,8 +104,7 @@ Then work. Don't re-ask mid-flight.
 
 For each artifact, the source's text is a draft to be re-grounded:
 
-- **Verify every fact against the target.** A codebase-Q&A MCP (`auggie`'s
-  `codebase-retrieval`, or a code-graph server) answers "how does X work here"
+- **Verify every fact against the target.** A codebase-Q&A tool (an `Explore` subagent, say) answers "how does X work here"
   far faster than reading files, and it is the difference between a skill that
   cites real classes and one that cites the source repo's.
 - **Cut what the target doesn't have.** Different queue library, no document

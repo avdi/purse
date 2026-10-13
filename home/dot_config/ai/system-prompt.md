@@ -29,16 +29,14 @@ These MCP servers are registered for a reason: they are faster, more accurate, a
 
 Match the task to the tool:
 
-- **Understanding a codebase** — "how does X work", "where is Y", "what calls Z", gathering cross-file context before planning or editing: ask **`auggie`** (`codebase-retrieval`). It reasons over structure and returns synthesized answers, not raw file dumps — far more efficient than reading files by hand. **This is exactly the job you'd otherwise hand to an `Explore` (or general-purpose search) subagent — reach for `auggie` instead.** A fan-out subagent burns a whole context window re-reading files to rediscover what `auggie` already has indexed; only fall back to `Explore` when `auggie` genuinely can't answer.
-  - **Copilot CLI exception:** `auggie` MCP is intentionally not registered because the two do not interoperate reliably. Use `ripgrep` and your native search/read tools instead.
-  - Fall through to your native search/read tools only when `auggie` is unavailable or the question is about non-code text.
+- **Understanding a codebase** — "how does X work", "where is Y", "what calls Z", gathering cross-file context before planning or editing: use `ripgrep` for literal and regex hits and your native search/read tools to follow structure. For sweeps that would flood your context, hand the question to an `Explore` subagent and keep only its conclusion.
 - **Docs for a library / framework / SDK / CLI** — resolve and read via **`context7`** (`resolve-library-id` → `query-docs`). Its docs are cleaner and more parseable than scraping the open web; prefer it even for well-known libraries and even when you think you already know the answer.
 - **Local git** — status, history, diffs, blame, graphs, branches, stashes, commit composing: use **`GitKraken`** (`git_status`, `git_graph`, `git_log_or_diff`, `git_blame`, `git_branch`, `git_stash`, `git_commit_composer`, …). It presents results visually where the client supports it and reads/interacts with repositories more richly than raw `git`. `gitlens_launchpad` surfaces PRs needing attention; `gitlens_start_review` runs an AI PR review in a worktree. Don't shell out to `git` for these. (`app_tool_box` is app-internal — never call it.)
 - **GitHub API** — issues, PRs, code/repo search, releases, review workflows across repos you don't have checked out: use **`github`**. Prefer it over shelling out to `gh`.
 - **File / text search** — when the answer is a literal or regex match rather than a structural question: use **`ripgrep`**. Never `find` or `grep` when ripgrep can do it.
 - **Browser** — fetching pages, driving web UIs, verifying rendered output: use **`playwright`**.
 
-**When the right tool is missing or unauthenticated, tell me — don't quietly fall back.** If the task clearly calls for one of these servers and it isn't registered, is erroring, or needs auth/login I haven't provided, stop at the next natural breakpoint and say so plainly ("this needs `auggie` but it's not available/authenticated"). Do not silently substitute a weaker plan B and carry on as if I'd equipped you properly — I may simply not realize I haven't. A degraded fallback is fine once I've decided that with the missing tool in view.
+**When the right tool is missing or unauthenticated, tell me — don't quietly fall back.** If the task clearly calls for one of these servers and it isn't registered, is erroring, or needs auth/login I haven't provided, stop at the next natural breakpoint and say so plainly ("this needs `ripgrep` but it's not available/authenticated"). Do not silently substitute a weaker plan B and carry on as if I'd equipped you properly — I may simply not realize I haven't. A degraded fallback is fine once I've decided that with the missing tool in view.
 
 **Pre-flight the tools before autonomous execution.** When producing a plan that will be implemented without my involvement (e.g. on leaving plan mode, or before dispatching a batch of subagents), first do a run-through of the tools the work will likely lean on — the MCP servers above plus anything else the plan depends on — and verify they're actually registered and working (a cheap probe, not just an assumption). Surface anything missing, erroring, or needing auth **before** execution starts, so I can fix it up front rather than discover a fleet of subagents silently worked around broken tools.
 
@@ -59,6 +57,5 @@ It is symlinked into each AI agent's expected location:
 - `~/.claude/CLAUDE.md` (Claude Code)
 - `~/.copilot/copilot-instructions.md` (GitHub Copilot CLI)
 - `~/.gemini/GEMINI.md` (Gemini CLI)
-- `~/.augment/rules/global.md` (Augment)
 
 It can be re-added back into the dotfile source with `chezmoi re-add ~/.config/ai/system-prompt.md`.

@@ -8,8 +8,8 @@
 # Three facts per agent, keyed by the command you type:
 #
 #   kind     the label herdr knows it by, from `herdr agent start --kind`.
-#            Empty when herdr has no such agent — auggie, for one. Those
-#            still get installed on first use; they just stay unlabelled.
+#            Empty when herdr has no such agent. Those still get
+#            installed on first use; they just stay unlabelled.
 #   install  the shell command that installs it. Empty when purse has no
 #            recipe, which is most of them: an agent installed by hand or
 #            baked into an image still gets wrapped, it just never gets
@@ -23,7 +23,7 @@
 
 # Every command we are willing to wrap. Order is display order.
 purse_agent_commands() {
-  echo "claude codex gemini cursor-agent agy auggie opencode copilot amp droid grok kimi hermes qoder qwen kiro kilo maki cline devin omp pi mastracode"
+  echo "claude codex gemini cursor-agent agy opencode copilot amp droid grok kimi hermes qoder qwen kiro kilo maki cline devin omp pi mastracode"
 }
 
 # The herdr agent label for a command, or nothing when herdr has no such agent.
@@ -31,7 +31,6 @@ purse_agent_kind() {
   case "$1" in
     cursor-agent) echo cursor ;;
     qoder)        echo qodercli ;;
-    auggie)       echo "" ;;
     claude|codex|gemini|agy|opencode|copilot|amp|droid|grok|kimi|hermes|qwen|kiro|kilo|maki|cline|devin|omp|pi|mastracode)
                   echo "$1" ;;
     *)            echo "" ;;
@@ -43,7 +42,6 @@ purse_agent_install_command() {
   case "$1" in
     claude)       echo "npm install -g --force @anthropic-ai/claude-code" ;;
     codex)        echo "npm install -g --force @openai/codex" ;;
-    auggie)       echo "npm install -g --force @augmentcode/auggie" ;;
     opencode)     echo "npm install -g --force opencode-ai" ;;
     copilot)      echo "npm install -g --force @github/copilot" ;;
     cursor-agent) echo "curl https://cursor.com/install -fsS | bash" ;;

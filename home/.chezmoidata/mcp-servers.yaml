@@ -12,8 +12,7 @@
 #
 #   Merged by purse-outfit-agents. The agents in mcpAgents below keep their MCP
 #   entries inside a file they also write themselves — Claude's ~/.claude.json
-#   holds its caches and history, auggie's settings.json holds indexed
-#   directories and secrets, devin's holds an org id. Those are merged in place
+#   holds its caches and history, devin's holds an org id. Those are merged in place
 #   with the agent's own CLI or with jq, never replaced.
 mcpServers:
   github:
@@ -34,13 +33,6 @@ mcpServers:
     args: ["-y", "@playwright/mcp@latest"]
     requiresEnv: []
     excludeAgents: []
-  auggie:
-    description: "Augment CLI agent as MCP tool server"
-    transport: stdio
-    command: auggie
-    args: ["--mcp", "--mcp-auto-workspace"]
-    requiresEnv: []
-    excludeAgents: [copilot]
   ripgrep:
     description: "ripgrep code search via MCP"
     transport: stdio
@@ -56,12 +48,12 @@ mcpServers:
 # a server; the entry can go once every machine has been outfitted since.
 retiredMcpServers:
   - codebase-memory-mcp
+  - auggie
 
 # Agents purse-outfit-agents merges into. The four rendered by chezmoi are
 # deliberately absent — listing one here would make two writers of one file.
 mcpAgents:
   - claude
   - codex
-  - auggie
   - vscode
   - devin

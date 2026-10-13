@@ -1,27 +1,24 @@
 #!/usr/bin/env bash
 # purse-auth-tools — verify (and optionally remediate) the logged-in
 # state of the developer tools that I, or an agent's MCP layer, routinely trip
-# over: gh, gk, auggie, and the token-backed MCP servers (github, context7).
+# over: gh, gk, and the token-backed MCP servers (github, context7).
 #
 # Usage:
 #   purse-auth-tools [--check] [tool ...]
 #
 #   (no args)     Check every known tool; interactively remediate any that fail.
-#   tool ...      Restrict to the named tools (e.g. `gh auggie`).
+#   tool ...      Restrict to the named tools (e.g. `gh gk`).
 #   --check       Non-interactive: report status and exit non-zero if any
 #                 required tool is unauthenticated. Suitable for pre-flight.
 #
 # Two kinds of tools:
-#   login-type  gh, gk, auggie — an interactive CLI login (`<tool> auth login`).
-#               auggie is special: it's exposed as an MCP tool to *other* agents,
-#               so its session backs everyone's codebase-retrieval.
+#   login-type  gh, gk — an interactive CLI login (`<tool> auth login`).
 #   token-type  github / context7 — no login, just an env var sourced from
 #               Zoho Vault via purse-setup-secrets. We only check presence
 #               (never print values) and point at the remediation command.
 #
 # Deliberately does NOT try to authenticate every installed agent CLI at once —
-# that's a per-agent, interactive concern. Only auggie is covered here, because
-# of its MCP role.
+# that's a per-agent, interactive concern.
 
 set -uo pipefail
 
@@ -35,7 +32,7 @@ bad()  { echo "  ❌ $*"; }
 skip() { echo "  •  $*"; }
 
 # All known tools, in display order.
-ALL_TOOLS=(gh gk auggie github context7)
+ALL_TOOLS=(gh gk github context7)
 
 usage() {
   sed -n '2,26p' "$0" | sed 's/^# \{0,1\}//'
@@ -89,14 +86,6 @@ status_gk() {
   echo unauthed; return 1
 }
 
-# auggie: `token print` succeeds only with a live OAuth session. It can be slow,
-# so cap it. A present-but-expired session prints nothing and fails.
-status_auggie() {
-  have auggie || { echo absent; return 2; }
-  if timeout 30 auggie token print >/dev/null 2>&1; then echo authed; return 0; fi
-  echo unauthed; return 1
-}
-
 # github MCP: needs GITHUB_PERSONAL_ACCESS_TOKEN in the env (required).
 status_github() {
   [ -n "${GITHUB_PERSONAL_ACCESS_TOKEN:-}" ] && { echo authed; return 0; }
@@ -112,7 +101,6 @@ status_context7() {
 # ── remediation ──────────────────────────────────────────────────────────────
 remediate_gh()     { log "gh auth login"; gh auth login; }
 remediate_gk()     { log "gk auth login"; gk auth login; }
-remediate_auggie() { log "auggie login (backs the auggie MCP for all agents)"; auggie login; }
 # Every step of the fix is a host step: there is no keyring in here for zv to
 # unlock, which is why the host resolves these and dcbridge tunnels them in.
 # Printing the host recipe unqualified sends you off to run `purse-setup-secrets`
@@ -141,7 +129,6 @@ remediate_token()  {
 # ── per-tool descriptions (for the status line) ──────────────────────────────
 label_gh()       { echo "gh        GitHub CLI (git push/pull, gh commands)"; }
 label_gk()       { echo "gk        GitKraken CLI (git tooling + GitKraken MCP)"; }
-label_auggie()   { echo "auggie    Augment CLI — MCP tool exposed to other agents"; }
 label_github()   { echo "github    GITHUB_PERSONAL_ACCESS_TOKEN (github MCP)"; }
 label_context7() { echo "context7  CONTEXT7_API_KEY (context7 MCP, optional)"; }
 
@@ -178,7 +165,6 @@ handle_tool() {
   case "$tool" in
     gh)       remediate_gh ;;
     gk)       remediate_gk ;;
-    auggie)   remediate_auggie ;;
     github)   remediate_token GITHUB_PERSONAL_ACCESS_TOKEN ;;
   esac
 

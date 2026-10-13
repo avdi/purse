@@ -101,16 +101,13 @@ home/
       env.sh
   dot_claude/
     symlink_CLAUDE.md.tmpl  # ~/.claude/CLAUDE.md → ~/.config/ai/system-prompt.md
-    skills/              # Agent skills (read by Claude Code + Augment)
+    skills/              # Agent skills (read by Claude Code)
       dotfiles/
         SKILL.md
   dot_copilot/
     symlink_copilot-instructions.md.tmpl  # ~/.copilot/copilot-instructions.md → shared prompt
   dot_gemini/
     symlink_GEMINI.md.tmpl  # ~/.gemini/GEMINI.md → ~/.config/ai/system-prompt.md
-  dot_augment/
-    rules/
-      symlink_global.md.tmpl  # ~/.augment/rules/global.md → ~/.config/ai/system-prompt.md
   dot_config/git/config.tmpl  # ~/.config/git/config (managed git config; ~/.gitconfig is an unmanaged stub)
   AppData/Local/Packages/Microsoft.WindowsTerminal_8wekyb3d8bbwe/LocalState/
     settings.json             # Windows Terminal config (Windows only)
@@ -134,7 +131,7 @@ chezmoi add ~/.config/foo
 
 Edit `home/dot_config/ai/system-prompt.md` — that file is the source of truth.
 `~/.claude/CLAUDE.md`, `~/.copilot/copilot-instructions.md`,
-`~/.gemini/GEMINI.md`, and `~/.augment/rules/global.md` are all symlinks to
+and `~/.gemini/GEMINI.md` are all symlinks to
 `~/.config/ai/system-prompt.md`.
 
 After editing, run `chezmoi re-add ~/.config/ai/system-prompt.md` if you edited

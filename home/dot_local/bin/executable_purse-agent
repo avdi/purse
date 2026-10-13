@@ -163,7 +163,7 @@ warn_herdr_cannot_see_us() {
   [ -n "${HERDR_PANE_ID:-}" ] || return 0
   in_container || return 0
   # No point sending you to the other door for an agent herdr cannot name
-  # either way — auggie, for one.
+  # either way.
   [ -n "$(purse_agent_kind "$command")" ] || return 0
 
   local short
