@@ -11,12 +11,14 @@
 # project-local variables (e.g. DEVCONTAINER_CONFIG) are visible even in
 # non-interactive shells that haven't sourced direnv's hook.
 #
-# Adds one subcommand the real CLI doesn't have:
+# Adds subcommands the real CLI doesn't have:
 #
 #   dc restart    Bounce this workspace's container and re-run its
-#                 postStartCommand. Seconds, and keeps the built image —
-#                 for a from-scratch container use
-#                 `dc up --remove-existing-container`.
+#                 postStartCommand. Seconds, and keeps the built image.
+#   dc down       Stop and remove this workspace's container (and, for a
+#                 compose-based one, its sidecar services). Volumes survive.
+#   dc recreate   `down`, then `up` — a from-scratch container on the
+#                 already-built image. Extra args go to `up`.
 
 set -euo pipefail
 
@@ -28,13 +30,10 @@ fi
 
 shim="$HOME/.local/share/purse/shims/devcontainer"
 
-# `docker restart` starts the container again but runs none of the devcontainer
-# lifecycle, and postStartCommand is where a container gets the state it only
-# holds while running — Xvfb, sshd host keys, volume permissions, PATH wiring.
-# So bounce it, then hand back to `up`, which re-runs postStart on a container
-# that already exists.
-restart() {
-  local workspace resolved container_id container_workspace config
+# Sets container_id, container_workspace and config for the running container
+# serving the current directory's workspace.
+resolve_container() {
+  local workspace resolved
   local lookup_lib="$HOME/.local/share/purse/lib/devcontainer-lookup.sh"
   [[ -r "$lookup_lib" ]] || die "missing $lookup_lib"
   # shellcheck source=../share/purse/lib/devcontainer-lookup.sh
@@ -46,6 +45,50 @@ restart() {
   container_id="${resolved%%$'\t'*}"
   container_workspace="${resolved#*$'\t'}"
   config="$(devcontainer_config_label "$container_id")"
+}
+
+build_up_args() {
+  up_args=(up --workspace-folder "$container_workspace")
+  [[ -n "$config" ]] && up_args+=(--config "$config")
+  return 0
+}
+
+# A compose-based devcontainer is one service among several; removing only the
+# app container would strand its sidecars, so take the whole project down.
+remove_container() {
+  local project
+  project="$(docker inspect "$container_id" \
+    --format '{{index .Config.Labels "com.docker.compose.project"}}' 2>/dev/null)"
+  if [[ -n "$project" ]]; then
+    docker compose -p "$project" down >&2 || die "docker compose down failed"
+  else
+    docker rm -f "$container_id" >/dev/null || die "docker rm failed"
+  fi
+}
+
+down() {
+  resolve_container
+  printf 'dc: removing %s (%s)\n' "$container_id" "$container_workspace" >&2
+  remove_container
+}
+
+# `up` on a workspace with no container creates one; the shim's worktree
+# refusal applies, as it should for a container that is being created.
+recreate() {
+  resolve_container
+  printf 'dc: recreating %s (%s)\n' "$container_id" "$container_workspace" >&2
+  remove_container
+  build_up_args
+  exec "$shim" "${up_args[@]}" "$@"
+}
+
+# `docker restart` starts the container again but runs none of the devcontainer
+# lifecycle, and postStartCommand is where a container gets the state it only
+# holds while running — Xvfb, sshd host keys, volume permissions, PATH wiring.
+# So bounce it, then hand back to `up`, which re-runs postStart on a container
+# that already exists.
+restart() {
+  resolve_container
 
   printf 'dc: restarting %s (%s)\n' "$container_id" "$container_workspace" >&2
   docker restart "$container_id" >/dev/null || die "docker restart failed"
@@ -56,17 +99,19 @@ restart() {
   # ports are up by the time the app is.
   command -v dcbridge >/dev/null 2>&1 && dcbridge >&2 || true
 
-  local -a up_args=(up --workspace-folder "$container_workspace")
-  [[ -n "$config" ]] && up_args+=(--config "$config")
+  build_up_args
   # The shim refuses `up` from a linked worktree, which is about not *creating*
   # a container pinned to a checkout that may go away. This container already
   # exists; we are only re-running its lifecycle.
   PURSE_DEVCONTAINER_ALLOW_WORKTREE=1 exec "$shim" "${up_args[@]}" "$@"
 }
 
-if [[ "${1-}" == restart ]]; then
-  shift
-  restart "$@"
-fi
+case "${1-}" in
+  restart|down|recreate)
+    subcommand="$1"
+    shift
+    "$subcommand" "$@"
+    ;;
+esac
 
 exec "$shim" "$@"
