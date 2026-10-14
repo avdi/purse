@@ -154,11 +154,21 @@ container_daemon_pid() {
 # Docker's embedded DNS resolver binds 127.0.0.11 — 0B00007F in the little-endian
 # hex /proc/net/tcp speaks — on a per-container random high port, and it belongs
 # to no process the daemon can see into. It is the one unresolvable port we are
-# free to drop; sshd's 2222 is the other, and that one has to stay forwarded.
+# free to drop; sshd's 2222 is the other, and it stays forwarded unless the
+# container publishes that port through Docker itself (see below).
 container_resolver_ports() {
   in_container "$1" cat /proc/net/tcp \
     | awk '$4 == "0A" && $2 ~ /^0B00007F:/ { split($2, a, ":"); print strtonum("0x" a[2]) }' \
     | sort -nu | paste -sd, - || true
+}
+
+# A container that publishes its own sshd port (compose `ports: 2223:2222`) is
+# already reachable from the host. Letting dbr mirror its 2222 onto host 2222 as
+# well squats the port every other devcontainer's Docker publish expects, and
+# that container's `dc up` then dies with "ports are not available".
+container_publishes_sshd_port() {
+  docker inspect --format '{{if index .HostConfig.PortBindings "2222/tcp"}}yes{{end}}' "$1" 2>/dev/null \
+    | grep -q yes
 }
 
 # An older dbr predates --scan-interval, and killing a working daemon we then
@@ -190,6 +200,7 @@ start_container_daemon() { # start_container_daemon ID TOKEN
   if container_dbr_tunable "$id" "$dbr_path"; then
     args+=(--scan-interval "$SCAN_INTERVAL_MS")
     resolver_ports="$(container_resolver_ports "$id")"
+    container_publishes_sshd_port "$id" && resolver_ports="${resolver_ports:+$resolver_ports,}2222"
     [[ -n "$resolver_ports" ]] && args+=(--exclude-ports "$resolver_ports")
   fi
 
