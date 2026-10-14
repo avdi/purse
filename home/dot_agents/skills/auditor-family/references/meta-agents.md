@@ -1,13 +1,60 @@
-# Meta-agents: curator and toolmonger
+# Meta-agents: field researcher, curator and toolmonger
 
-Both run **after** a PR is pushed, both are allowed to write, and both are
-expected to conclude "nothing worth capturing" most of the time. That expected
+The field researcher and the toolmonger run **after** a PR is pushed; the
+curator runs against the queue the researcher fills. All are expected to
+conclude "nothing worth capturing" most of the time. That expected
 emptiness is what keeps them honest — an agent that must produce something
 produces noise.
 
 ---
 
-## Guidance curator
+## Field researcher and curator: propose, then land
+
+When many unrelated product-repo sessions can each learn a lesson at once, don't
+let each edit the shared guidance: two lessons silently clobber each other, or
+two contradictory rules both ship because nothing saw them side by side. Split
+the job.
+
+**Field researcher** — `agents/<prefix>-agent-guidance-field-researcher.agent.md`.
+Runs in any product-repo session; has **no write access** to the guidance repo
+(deliberate, not a permission to work around). Harvests lessons from review
+conversations and self-reported digs and files each as a structured `lesson`
+issue (verdict `capture` / `already-covered` / `leave-as-preference`, proposed
+home, the rule in one line, the originating comment). The product repo supplies
+the lesson; the guidance repo supplies the durable home. It verifies facts
+against the home's *current* content before calling a lesson new or covered —
+the installed plugin checkout is only as fresh as the last marketplace update.
+
+**Curator** — `agents/<prefix>-guidance-curator.agent.md`, the only writer of
+guidance, working two ways:
+
+- *Per issue, in real time* (e.g. an automation triggered by the `lesson`
+  label): one lesson, one file, nothing in flight against it → land it.
+- *A sweep over the open queue*, for what a single-issue run can't see: several
+  lessons touching one file or contradicting each other. Pull open
+  `needs-decision` issues first (an answer from the owner is a ruling: land the
+  lesson it unblocks, then close the decision with the commit), then the open
+  `lesson` issues; read each in full; group by target file; verify against the
+  *current* file before writing (a weeks-old lesson may be stale); land one
+  concern per commit with `Closes #N`; run the plugin validator and push nothing
+  if it fails; rebase and re-validate, never force-push, when `main` moved.
+  Every issue gets a disposition; an issue awaiting a decision stays open,
+  linked to it.
+- *Conflicts and judgment calls* are not the curator's to rule on. File **one
+  decision issue per question** (check the open ones first), assigned to the
+  owner: the question in one sentence, what's blocked, two or three options
+  with what each means for installing projects, a recommendation, how to answer
+  (a comment). Short enough to rule on from a phone. It blocks only the lesson
+  that raised it. Guidance that touches an agent's `tools:`/`mcpServers:`
+  frontmatter is checked against the cross-runtime authoring doc first, since a
+  runtime silently ignores a name it doesn't recognize.
+
+Landing is unreviewed and rolls straight into the next install, so: **one
+concern per commit** (the unit of undo), and a report written for someone
+reading cold later (commits and report are the whole record of why guidance
+changed).
+
+## Guidance curator: what to land and where
 
 Path: `.claude/agents/<prefix>-guidance-curator.md`
 

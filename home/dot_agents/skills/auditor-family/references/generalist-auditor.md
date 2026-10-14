@@ -1,6 +1,6 @@
 # Generalist auditor template
 
-Path: `.claude/agents/<prefix>-auditor-generalist.md`
+Path: `agents/<prefix>-auditor-generalist.agent.md`
 
 Every area auditor owns a slice and reviews through that lens. This one owns
 none: it is the closing pass, run once per round, that reads the **full
@@ -21,6 +21,13 @@ smell nobody wrote a rule against.
   the transcript of how the round happened — it should read as skeptically as
   a human seeing this PR for the first time, not defer to what the other
   auditors already blessed.
+- **Skipped on small follow-ons** that the project's proportional-review route
+  covers; kept for anything touching durability, migration, or journey
+  boundaries.
+- **Repeated findings are a family.** After a second occurrence of the same
+  defect in the verdict, ask whether one owning boundary resolves all sites;
+  search related sites before recommending that shape, and don't multiply
+  findings per instance.
 - **Not a tie-breaker and not a second pass on anyone's area.** If it finds
   itself re-deriving a finding an area auditor would plainly claim, that's
   duplication, not closing. Its value is the *complement* of the consolidated
@@ -42,13 +49,10 @@ description: >
   design/architecture smells — code that ignored the codebase's implicit
   patterns and agglomerated instead of extracting. Does not re-derive findings
   the roster already owns.
-tools: Read, Bash, mcp__ripgrep__*         # + any code-intelligence MCPs, see below
-mcpServers:
-  - ripgrep
 ---
 ```
 
-Six things to work through deliberately, not stopping at the first that yields
+Eight things to work through deliberately, not stopping at the first that yields
 nothing:
 
 1. **Something that still looks goofy.** Read the diff cold. Does the shape of
@@ -70,7 +74,16 @@ nothing:
    what it would have caught. It doesn't build the auditor itself (that's the
    curator's job on referral); it just notices the gap while the miss is
    fresh.
-6. **Tone in comments and copy**, independent of whatever the code-docs-style
+6. **A fix the verdict claims and the tree doesn't have.** The only reader
+   handed the changeset and the accumulated verdicts together. For each
+   Blocking item, check the cited lines against the current tree; if the quoted
+   expression is still present verbatim, the fix missed. Report it as
+   **Blocking** against the original finding (the disposition stands; the claim
+   about the code is what's false).
+7. **An adopted design row the tree doesn't reflect.** If handed a Plan/Spec
+   review's dispositions, confirm each adopted row is what the tree actually
+   does, not merely addressed somehow. Drift is **Blocking** against the row.
+8. **Tone in comments and copy**, independent of whatever the code-docs-style
    auditor already flagged content-wise: still breathless, still weirdly
    specific for what it's explaining. Read for how it sounds, not just
    whether it violates a rule.
@@ -114,13 +127,16 @@ written rule set structurally can't.
 
 ## Tool access: code-intelligence MCPs, all optional
 
-Whatever code-intelligence MCP servers the environment has — a codebase-Q&A
-tool, a code-graph/call-graph tool, an LSP-backed navigation tool — are worth
+Whatever code-intelligence MCP servers the environment has — a code-graph /
+call-graph tool (graph search, architecture, trace-path queries), an
+LSP-backed navigation tool (find-references, call hierarchy for an exact call
+count before you claim a method is overloaded or unused) — are worth
 wiring into this agent specifically, because pattern-drift detection is
 exactly the job literal-text search (`ripgrep`) can't do: it only finds a
-pattern if you already know the exact string to search for. Add each as a
-named `mcpServers` entry (see the `defining-subagents` skill for the mechanics
-and the least-privilege caveat on what a named server grants).
+pattern if you already know the exact string to search for. Name them in the
+agent body as tools to prefer; grant them per the `defining-subagents` skill's
+mechanics and the cross-runtime doc (grant syntax differs per runtime, and a
+named server's grant is broader than one tool).
 
 None of them are guaranteed to be registered in a given project or session.
 **Say so in the agent's own body, not just in a comment**: an unregistered one
@@ -159,6 +175,19 @@ The agent (or skill) that consolidates a round's findings needs a short
 section describing how to fold this pass in: invoke it after consolidating
 the dispatched auditors' verdict; treat its Findings like any other auditor's;
 surface Open questions to the user rather than resolving them; carry a Roster
-gap into the post-merge harvest step rather than acting on it now. Mailstrom's
-`mailstrom-processing-audit-findings` skill has a worked "Fold in the
-generalist pass" section to crib from.
+gap into the post-merge harvest step rather than acting on it now. The `running-audits`
+template (`references/running-audits.md`) has the worked "Fold in the closing
+pass" section, including handing it a Plan/Spec review's dispositions in round 1.
+
+## What it is not
+
+It doesn't re-run the area auditors' checks, relitigate a disposition (confirming
+a claimed fix is in the tree is not relitigating), or propose changes to the
+audit framework itself beyond naming a roster gap. It stays inside the round's
+changeset and verdict. Pre-existing concerns the change doesn't worsen are
+reported **Seen, not filed** with a location, unless independently Blocking; a
+Consider or design smell doesn't require a new tracking issue. Also: a
+class kept under its size limit by sharding it across modules only it includes
+is agglomeration a linter can't see — a Blocking design smell whose fix is to
+name the abstraction and extract it as an object the class uses (recommend an
+oracle consult if the abstraction can't be named from the diff).

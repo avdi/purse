@@ -1,6 +1,6 @@
 # Standards skill template
 
-Path: `.agents/skills/<prefix>-<area>-standards/SKILL.md`
+Path: `skills/<prefix>-<area>-standards/SKILL.md`
 
 The skill holds **the rules**. Its auditor cites it and never restates it.
 Write this before the auditor.
@@ -14,6 +14,10 @@ Rules for the rules:
 - **Say where things live.** A "Where X lives" table is the single most-used
   section — it saves every future implementor the same search.
 - **Keep it under ~200 lines.** Overflow goes to `references/` beside SKILL.md.
+- **One declared rule per predicate**, if the guidance repo uses rule
+  traceability: a stable `R-NNNN-slug` ID in a `<!-- rule: ... -->` marker
+  before it, which the paired auditor cites via `rule-ref:` instead of
+  restating. A rule a script can decide also gets a codified check.
 - **End with `## Direction`** — the transition in flight, and the destination
   shape new code should take. Delete entries when a transition completes.
 
