@@ -56,7 +56,7 @@
       }
     }
   },
-  "outputStyle": "VNV Nation",
+  "outputStyle": "Concise",
   "tui": "fullscreen",
   "skipDangerousModePermissionPrompt": true,
   "theme": "dark",
