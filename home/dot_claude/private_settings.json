@@ -28,7 +28,11 @@
     "worktrunk@worktrunk": true,
     "mattpocock-skills@mattpocock": true,
     "briefasaurus-overlay@410labs-agent-infra": true,
-    "baseline@410labs-agent-infra": true
+    "baseline@410labs-agent-infra": true,
+    "mailstrom-overlay@410labs-agent-infra": false,
+    "ruby-lsp@claude-plugins-official": true,
+    "figma@claude-plugins-official": true,
+    "iterate-on-docs@iterate-on-docs": true
   },
   "extraKnownMarketplaces": {
     "claude-plugins-official": {
@@ -53,6 +57,12 @@
       "source": {
         "source": "github",
         "repo": "mattpocock/skills"
+      }
+    },
+    "iterate-on-docs": {
+      "source": {
+        "source": "github",
+        "repo": "jessitron/iterate-on-docs"
       }
     }
   },
