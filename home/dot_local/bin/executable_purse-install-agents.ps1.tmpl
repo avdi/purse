@@ -21,6 +21,9 @@ function Get-NodeMajor {
 
 $nodeMajor = Get-NodeMajor
 if ($nodeMajor -ge 22) {
+    Write-Host "→ npm uninstall (retired): {{ .packages.agents_npm_retired | join ", " }}" -ForegroundColor Cyan
+    npm uninstall -g {{ .packages.agents_npm_retired | join " " }}
+
     Write-Host "→ npm: {{ .packages.agents_npm | join ", " }}" -ForegroundColor Cyan
     npm install -g --force {{ .packages.agents_npm | join " " }}
 } else {

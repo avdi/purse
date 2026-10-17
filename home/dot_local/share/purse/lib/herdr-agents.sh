@@ -42,7 +42,7 @@ purse_agent_install_command() {
   case "$1" in
     claude)       echo "npm install -g --force @anthropic-ai/claude-code" ;;
     codex)        echo "npm install -g --force @openai/codex" ;;
-    opencode)     echo "npm install -g --force opencode-ai" ;;
+    opencode)     echo "npm install -g --force @opencode/cli" ;;
     copilot)      echo "npm install -g --force @github/copilot" ;;
     cursor-agent) echo "curl https://cursor.com/install -fsS | bash" ;;
     agy)          echo "curl -fsSL https://antigravity.google/cli/install.sh | bash" ;;

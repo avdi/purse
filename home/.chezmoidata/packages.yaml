@@ -68,8 +68,13 @@ packages:
     #                              # `npm install -g --force` on every run is also a
     #                              # supply-chain hazard if it's ever populated.
     #                              # Restore only with a package that's verified real.
-    - "opencode-ai"                # opencode
+    - "@opencode/cli"              # opencode (v2; v1 was "opencode-ai")
     - "@github/copilot"            # copilot
+
+  # Global npm packages that must be gone before agents_npm installs. Both
+  # opencode packages own the `opencode` bin, so v1 has to be removed first.
+  agents_npm_retired:
+    - "opencode-ai"
 
   # Windows Package Manager (winget) packages
   # (Agents like claude, codex, etc. are installed via purse-install-agents)
