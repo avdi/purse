@@ -2,7 +2,8 @@
   "permissions": {
     "allow": [
       "EnterWorktree",
-      "ExitWorktree"
+      "ExitWorktree",
+      "mcp__codegraph__*"
     ]
   },
   "model": "sonnet",
@@ -15,6 +16,16 @@
             "type": "command",
             "command": "~/.claude/hooks/herdr-agent-state.sh session",
             "timeout": 10
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "codegraph prompt-hook"
           }
         ]
       }
@@ -71,5 +82,9 @@
   "skipDangerousModePermissionPrompt": true,
   "theme": "dark",
   "agentPushNotifEnabled": true,
-  "permissionMode": "auto"
+  "permissionMode": "auto",
+  "statusLine": {
+    "type": "command",
+    "command": "~/.claude/statusline.sh"
+  }
 }

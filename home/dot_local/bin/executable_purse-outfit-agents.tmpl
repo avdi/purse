@@ -472,6 +472,36 @@ outfit_gitkraken_mcp() {
   gk mcp install "${platforms[@]}" || warn "gk mcp install failed"
 }
 
+# =============================================================================
+# 9. CodeGraph — `codegraph install` wires its MCP server (and, for Claude Code,
+#    the prompt hook and auto-allow permission) into every detected agent.
+#    Indexing a project stays the user's call; this only registers the server.
+# =============================================================================
+codegraph_target_for() {
+  case "$1" in
+    claude|codex|cursor|opencode|gemini|antigravity|kiro) echo "$1" ;;
+    copilot) echo copilot-cli ;;
+  esac
+}
+
+outfit_codegraph() {
+  if ! have codegraph; then
+    warn "codegraph not found; skipping CodeGraph setup"
+    return 0
+  fi
+  local target=auto agent id targets=()
+  if ! outfitting_whole_machine; then
+    for agent in "${requested_agents[@]}"; do
+      id="$(codegraph_target_for "$agent")"
+      [ -n "$id" ] && targets+=("$id")
+    done
+    [ "${#targets[@]}" -gt 0 ] || return 0
+    target="$(IFS=,; echo "${targets[*]}")"
+  fi
+  echo "→ CodeGraph: installing into $target..."
+  codegraph install --yes --location global --target "$target" || warn "codegraph install failed"
+}
+
 # --- run ---------------------------------------------------------------------
 # MCP servers, agent plugins, and GitKraken MCP are internally resilient
 # (per-item `|| warn`) and run first.
@@ -489,6 +519,7 @@ outfit_spec_kit
 outfit_skills_ref
 outfit_global_skills
 outfit_gitkraken_mcp
+outfit_codegraph
 
 # Scrub any PATH lines injected into ~/.bashrc / ~/.profile by tool installers
 # (known offenders: antigravity CLI). env.sh owns PATH setup; duplicates here
@@ -497,7 +528,7 @@ purse-scrub-path-stompers
 
 echo
 if outfitting_whole_machine; then
-  echo "✅ Agents outfitted: MCP servers, agent plugins, spec-kit, skills-ref, global skills, GitKraken MCP."
+  echo "✅ Agents outfitted: MCP servers, agent plugins, spec-kit, skills-ref, global skills, GitKraken MCP, CodeGraph."
 else
   echo "✅ Outfitted ${requested_agents[*]}: MCP servers, agent plugins, global skills, GitKraken MCP."
 fi
