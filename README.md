@@ -133,13 +133,7 @@ Secrets (API keys, tokens, etc.) live in [Zoho Vault](https://www.zoho.com/vault
 
 ### 1. Runtime env vars — `purse-install-secrets`
 
-`~/.config/purse/secret-ids.env` maps environment variable names to Zoho Vault numeric IDs. IDs are non-sensitive and safe to commit.
-
-```
-# ~/.config/purse/secret-ids.env
-ANTHROPIC_API_KEY=2000002716908
-GITHUB_TOKEN=2000003012345
-```
+Secrets are the custom key/value fields on a single Secure Note in Zoho Vault named `PURSE_TOKENS`; each field name is an env var name. (`~/.config/purse/secret-ids.env`, the old numeric-ID map, is kept for reference and no longer read by anything.)
 
 Run `purse-install-secrets` (aliases: `purse-setup-secrets`, `setup-secrets`) to pull the current values and write them to `~/.config/shell/secrets.sh` (mode 600, never committed). That file is auto-sourced by `~/.config/shell/env.sh` on every new shell.
 
@@ -147,11 +141,11 @@ Run `purse-install-secrets` (aliases: `purse-setup-secrets`, `setup-secrets`) to
 
 **Adding a new secret:**
 
-1. Add the secret to Zoho Vault (title = env var name, password = the value).
-2. Find its numeric ID: `purse-get-secret-id ENV_VAR_NAME`
-3. Add `ENV_VAR_NAME=<id>` to `~/.config/purse/secret-ids.env`.
-4. Run `purse-install-secrets`.
-5. Commit the updated file: `chezmoi add ~/.config/purse/secret-ids.env`.
+1. Add a custom key/value field to the PURSE_TOKENS note in Zoho Vault (field name = env var name).
+2. Run `purse-install-secrets`.
+3. Open a new shell (or: `source ~/.config/shell/secrets.sh`).
+
+That's all a devcontainer needs too: the `devcontainer` shim forwards every var named in `secrets.sh` into new containers. `purse-auth-tools` knows the expected vars and reports any still missing.
 
 ### 2. Chezmoi template secrets — `secretJSON`
 

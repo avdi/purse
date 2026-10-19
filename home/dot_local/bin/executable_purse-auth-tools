@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # purse-auth-tools — verify (and optionally remediate) the logged-in
 # state of the developer tools that I, or an agent's MCP layer, routinely trip
-# over: gh, gk, and the token-backed MCP servers (github, context7).
+# over: gh, gk, and the token-backed MCP servers (github, context7, kagi).
 #
 # Usage:
 #   purse-auth-tools [--check] [tool ...]
@@ -13,9 +13,9 @@
 #
 # Two kinds of tools:
 #   login-type  gh, gk — an interactive CLI login (`<tool> auth login`).
-#   token-type  github / context7 — no login, just an env var sourced from
-#               Zoho Vault via purse-setup-secrets. We only check presence
-#               (never print values) and point at the remediation command.
+#   token-type  github / context7 / kagi — no login, just an env var
+#               sourced from Zoho Vault via purse-setup-secrets. We only
+#               check presence (never print values) and point at a fix.
 #
 # Deliberately does NOT try to authenticate every installed agent CLI at once —
 # that's a per-agent, interactive concern.
@@ -32,10 +32,10 @@ bad()  { echo "  ❌ $*"; }
 skip() { echo "  •  $*"; }
 
 # All known tools, in display order.
-ALL_TOOLS=(gh gk github context7)
+ALL_TOOLS=(gh gk github context7 kagi)
 
 usage() {
-  sed -n '2,26p' "$0" | sed 's/^# \{0,1\}//'
+  sed -n '2,21p' "$0" | sed 's/^# \{0,1\}//'
 }
 
 # ── argument parsing ─────────────────────────────────────────────────────────
@@ -98,6 +98,12 @@ status_context7() {
   echo optional-unset; return 1
 }
 
+# kagi MCP: needs KAGI_API_KEY in the env (required; kagimcp inherits it).
+status_kagi() {
+  [ -n "${KAGI_API_KEY:-}" ] && { echo authed; return 0; }
+  echo unauthed; return 1
+}
+
 # ── remediation ──────────────────────────────────────────────────────────────
 remediate_gh()     { log "gh auth login"; gh auth login; }
 remediate_gk()     { log "gk auth login"; gk auth login; }
@@ -131,6 +137,7 @@ label_gh()       { echo "gh        GitHub CLI (git push/pull, gh commands)"; }
 label_gk()       { echo "gk        GitKraken CLI (git tooling + GitKraken MCP)"; }
 label_github()   { echo "github    GITHUB_PERSONAL_ACCESS_TOKEN (github MCP)"; }
 label_context7() { echo "context7  CONTEXT7_API_KEY (context7 MCP, optional)"; }
+label_kagi()     { echo "kagi      KAGI_API_KEY (kagi search MCP)"; }
 
 # ── drive one tool: print status; in interactive mode, offer to remediate. ────
 # Sets the global `failures` counter for required tools left unauthenticated.
@@ -166,6 +173,7 @@ handle_tool() {
     gh)       remediate_gh ;;
     gk)       remediate_gk ;;
     github)   remediate_token GITHUB_PERSONAL_ACCESS_TOKEN ;;
+    kagi)     remediate_token KAGI_API_KEY ;;
   esac
 
   # Re-probe after remediation so the summary reflects reality.

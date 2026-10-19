@@ -129,6 +129,8 @@ register_claude() {
   claude mcp add playwright -s user -- "$pw_cmd" ${pw_args[@]+"${pw_args[@]}"}
   claude mcp remove ripgrep -s user >/dev/null 2>&1 || true
   claude mcp add ripgrep -s user -- "$rg_cmd" ${rg_args[@]+"${rg_args[@]}"}
+  claude mcp remove kagi -s user >/dev/null 2>&1 || true
+  claude mcp add kagi -s user -- "$kagi_cmd" ${kagi_args[@]+"${kagi_args[@]}"}
 }
 
 register_codex() {
@@ -138,6 +140,8 @@ register_codex() {
   codex mcp add playwright -- "$pw_cmd" ${pw_args[@]+"${pw_args[@]}"}
   codex mcp remove ripgrep >/dev/null 2>&1 || true
   codex mcp add ripgrep -- "$rg_cmd" ${rg_args[@]+"${rg_args[@]}"}
+  codex mcp remove kagi >/dev/null 2>&1 || true
+  codex mcp add kagi -- "$kagi_cmd" ${kagi_args[@]+"${kagi_args[@]}"}
 }
 
 register_devin() {
@@ -154,6 +158,10 @@ register_devin() {
   rg=$(jq -n --arg cmd "$rg_cmd" --argjson args "$rg_args_json" \
         '{command:$cmd, args:$args}')
   jq_upsert "$cfg" mcpServers ripgrep "$rg"
+  local kagi
+  kagi=$(jq -n --arg cmd "$kagi_cmd" --argjson args "$kagi_args_json" \
+        '{command:$cmd, args:$args}')
+  jq_upsert "$cfg" mcpServers kagi "$kagi"
 }
 
 register_vscode() {
@@ -168,6 +176,10 @@ register_vscode() {
   rg=$(jq -n --arg cmd "$rg_cmd" --argjson args "$rg_args_json" \
         '{name:"ripgrep", command:$cmd, args:$args}')
   code --add-mcp "$rg"
+  local kagi
+  kagi=$(jq -n --arg cmd "$kagi_cmd" --argjson args "$kagi_args_json" \
+        '{name:"kagi", command:$cmd, args:$args}')
+  code --add-mcp "$kagi"
 }
 
 # --- per-agent MCP removal of a retired server (args: <server-name>) ---------
@@ -205,12 +217,19 @@ outfit_mcp_servers() {
   local rg_cmd='{{ (index .mcpServers "ripgrep").command }}'
   local rg_args=({{ range (index .mcpServers "ripgrep").args }}'{{ . }}' {{ end }})
   local rg_args_json='{{ (index .mcpServers "ripgrep").args | toJson }}'
+  local kagi_cmd='{{ (index .mcpServers "kagi").command }}'
+  local kagi_args=({{ range (index .mcpServers "kagi").args }}'{{ . }}' {{ end }})
+  local kagi_args_json='{{ (index .mcpServers "kagi").args | toJson }}'
 
   # Literal env-var reference strings (NOT expanded here — each agent expands
   # them at runtime). Syntax differs per agent.
   local gh_bearer_dollar="Bearer \${${gh_token_var}}"        # ${VAR}
   local gh_bearer_envcolon="Bearer \${env:${gh_token_var}}"  # ${env:VAR}
   local gh_bearer_brace="Bearer {env:${gh_token_var}}"       # {env:VAR}
+
+  # kagi gets no env-var reference at all: kagimcp reads KAGI_API_KEY from the
+  # environment it inherits from the agent, which the shell (or the devcontainer
+  # shim) already populated from ~/.config/shell/secrets.sh.
 
   # An out-of-scope or missing agent is a normal, expected skip; a failed
   # registration warns but must not abort the run, or every later agent is

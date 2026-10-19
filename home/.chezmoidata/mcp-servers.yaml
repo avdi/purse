@@ -40,6 +40,21 @@ mcpServers:
     args: ["-y", "mcp-ripgrep@latest"]
     requiresEnv: []
     excludeAgents: []
+  kagi:
+    description: "Kagi web search & page extraction (kagimcp)"
+    transport: stdio
+    command: uvx
+    args: ["kagimcp"]
+    requiresEnv:
+      - KAGI_API_KEY
+    excludeAgents: []
+    # kagimcp reads KAGI_API_KEY out of its inherited environment — no env
+    # block in any agent config, and no value anywhere. The var comes to the
+    # agent's env from ~/.config/shell/secrets.sh (a PURSE_TOKENS field), and
+    # the devcontainer shim forwards it into containers the same way, so a
+    # spawned server inherits it in both places. requiresEnv documents the
+    # dependency here; only the http branch above reads it (for the Bearer
+    # header). uv is in packages.yaml, so uvx ships everywhere dotfiles do.
 
 # Servers dropped from the shortlist. The rendered registries lose them on the
 # next apply by themselves; the merged ones in mcpAgents keep a server until
