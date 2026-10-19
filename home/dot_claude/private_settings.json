@@ -66,7 +66,7 @@
       }
     }
   },
-  "outputStyle": "Concise",
+  "outputStyle": "Concrete",
   "tui": "fullscreen",
   "skipDangerousModePermissionPrompt": true,
   "theme": "dark",
