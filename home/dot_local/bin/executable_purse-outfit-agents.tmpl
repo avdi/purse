@@ -484,9 +484,20 @@ codegraph_target_for() {
   esac
 }
 
+ensure_codegraph_installed() {
+  have codegraph && return 0
+  if ! have npm; then
+    warn "npm not found; cannot install codegraph"
+    return 1
+  fi
+  echo "→ CodeGraph: installing @colbymchenry/codegraph via npm..."
+  npm install -g @colbymchenry/codegraph || return 1
+  have codegraph
+}
+
 outfit_codegraph() {
-  if ! have codegraph; then
-    warn "codegraph not found; skipping CodeGraph setup"
+  if ! ensure_codegraph_installed; then
+    warn "codegraph unavailable; skipping CodeGraph setup"
     return 0
   fi
   local target=auto agent id targets=()
