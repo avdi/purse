@@ -97,6 +97,30 @@ install_zoxide() {
   chmod +x "$HOME/.local/bin/zoxide"
 }
 
+# Oldest direnv that has the stdlib functions our .envrc files call
+# (source_up_if_exists). apt on Ubuntu 22.04 ships 2.25.2.
+MIN_DIRENV_VERSION=2.35.0
+
+direnv_is_recent() {
+  command -v direnv >/dev/null 2>&1 || return 1
+  [ "$(printf '%s\n%s\n' "$MIN_DIRENV_VERSION" "$(direnv version)" | sort -V | head -n1)" = "$MIN_DIRENV_VERSION" ]
+}
+
+install_direnv() {
+  local arch tag
+  case "$(uname -m)" in
+    x86_64|amd64)  arch="amd64" ;;
+    aarch64|arm64) arch="arm64" ;;
+    *)             echo "⚠️  direnv: unsupported arch $(uname -m) — skipping" >&2; return 0 ;;
+  esac
+  tag="$(latest_release_tag direnv/direnv)"
+  [ -n "$tag" ] || return 1
+  echo "→ direnv: installing ${tag} from GitHub releases..."
+  curl -fsSL -o "$HOME/.local/bin/direnv" \
+    "https://github.com/direnv/direnv/releases/download/${tag}/direnv.linux-${arch}" || return 1
+  chmod +x "$HOME/.local/bin/direnv"
+}
+
 install_yq() {
   local arch tag
   case "$(uname -m)" in
@@ -214,6 +238,12 @@ elif command -v apt-get >/dev/null 2>&1 && have_root; then
   # the modern release from GitHub into ~/.local/bin (which precedes /usr/bin in PATH).
   if [ ! -f "$HOME/.local/bin/zoxide" ]; then
     try_install zoxide install_zoxide
+  fi
+
+  # direnv: apt's copy is too old for source_up_if_exists, so keep a recent
+  # release binary in ~/.local/bin (which precedes /usr/bin in PATH).
+  if ! direnv_is_recent; then
+    try_install direnv install_direnv
   fi
 
   # yq (mikefarah): single static YAML processor binary. apt ships kislyuk/yq

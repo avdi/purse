@@ -2,7 +2,6 @@ packages:
   # Debian/Ubuntu apt packages (Linux without Homebrew)
   apt:
     - ripgrep
-    - direnv
     - jq          # JSON processor — required by purse-outfit-agents
     - unzip       # needed to unpack the gk (GitKraken CLI) release zip
     - fzf         # fuzzy finder — used by zoxide's zi and standalone
@@ -26,12 +25,16 @@ packages:
   # macOS uses brew and Windows winget (both below).
 
   # On Linux with apt+root the whole toolset is covered without Homebrew:
-  # apt covers: ripgrep, direnv, jq, fzf
-  # NodeSource covers: node; npm covers: devcontainer; GitHub releases cover: vscli, zoxide, uv, yq
+  # apt covers: ripgrep, jq, fzf
+  # NodeSource covers: node; npm covers: devcontainer; GitHub releases cover: vscli, zoxide, uv, yq, direnv
   # mise.run covers: mise (Ruby/Node/etc. runtime manager, replaces chruby/ruby-install)
   # prebuilt binaries cover: gk, worktrunk (their own run_onchange scripts)
   # git is handled separately by purse-install-extras: PPA on Ubuntu, built from
   # source on other apt+root systems (e.g. Debian), brew when there's no root.
+  # direnv is not in the apt list: Ubuntu 22.04 ships 2.25.2, which lacks
+  # source_up_if_exists, so on Linux it comes from GitHub releases by
+  # run_onchange_install-packages.sh whenever the installed one is older than
+  # MIN_DIRENV_VERSION there.
   # yq (mikefarah) ships as a single static release binary — brew would
   # source-build it in a home-dir prefix — so it's installed from GitHub
   # releases by run_onchange_install-packages.sh, like zoxide/vscli.
