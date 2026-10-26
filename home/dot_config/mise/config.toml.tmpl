@@ -1,7 +1,13 @@
+{{- $inContainer := or (env "DEVCONTAINER") (env "CODESPACES") (env "REMOTE_CONTAINERS") (stat "/.dockerenv") -}}
 [settings]
+{{- if $inContainer }}
+# Containers ship the project's Ruby, with gems built against its libruby.
+# A mise Ruby on PATH ahead of it can't load those native extensions.
+{{- else }}
 # Honour a project's .ruby-version, so each repo gets the Ruby it pins without a
 # global default fighting it.
 idiomatic_version_file_enable_tools = ["ruby"]
+{{- end }}
 
 [tools]
 # herdr (https://herdr.dev) — terminal workspace manager for coding agents.
