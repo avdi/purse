@@ -42,6 +42,9 @@ mkdir -p "$HOME/.local/bin"
 
 have() { command -v "$1" >/dev/null 2>&1; }
 warn() { echo "⚠️  $*" >&2; }
+user_namespaces_available() {
+  [[ "$(uname -s)" != Linux ]] || unshare --user --map-root-user true 2>/dev/null
+}
 
 # --- scope -------------------------------------------------------------------
 # The agent commands this run was asked for; empty means all of them.
@@ -214,6 +217,12 @@ outfit_mcp_servers() {
   local pw_cmd='{{ (index .mcpServers "playwright").command }}'
   local pw_args=({{ range (index .mcpServers "playwright").args }}'{{ . }}' {{ end }})  # bash array for `--` CLI forms
   local pw_args_json='{{ (index .mcpServers "playwright").args | toJson }}'             # JSON array for jq builders
+  # Chrome's sandbox needs unprivileged user namespaces; containers usually
+  # forbid them, and Chrome then dies at launch ("Failed to move to new namespace").
+  if ! user_namespaces_available; then
+    pw_args+=(--no-sandbox)
+    pw_args_json=$(jq -c '. + ["--no-sandbox"]' <<<"$pw_args_json")
+  fi
   local rg_cmd='{{ (index .mcpServers "ripgrep").command }}'
   local rg_args=({{ range (index .mcpServers "ripgrep").args }}'{{ . }}' {{ end }})
   local rg_args_json='{{ (index .mcpServers "ripgrep").args | toJson }}'
