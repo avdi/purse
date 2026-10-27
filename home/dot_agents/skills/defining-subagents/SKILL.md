@@ -10,6 +10,10 @@ description: >
   agent.
 ---
 
+This skill covers Claude Code only. If the agent must also run under Copilot
+or OpenCode, read the `cross-harness-compat` skill too (`*.agent.md` naming,
+no `model:`, both `mcp__server__*` and `server/*` in `tools:`).
+
 ## Where subagents are defined
 
 - Project: `.claude/agents/<name>.md`
