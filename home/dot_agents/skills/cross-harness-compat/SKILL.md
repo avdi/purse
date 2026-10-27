@@ -74,6 +74,50 @@ harness will not act on it.
 - Agent Plugins 1.0 (Copilot) only makes skills and MCP config portable.
   Skip its `$schema` unless you want Copilot-specific agent paths.
 
+## Generating other harnesses from a Claude Code plugin (acplugin)
+
+Write the plugin once in Claude Code format
+(`plugins/<name>/.claude-plugin/plugin.json` plus a top-level
+`.claude-plugin/marketplace.json`). Let `acplugin`
+(`TokenRollAI/acplugin-action`) generate the Codex, OpenCode, Cursor and
+Antigravity copies. Copilot reads the Claude format directly, so it is not a
+target.
+
+```yaml
+- run: npm install -g @anthropic-ai/claude-code && claude plugin validate .
+- uses: TokenRollAI/acplugin-action@v1
+  with:
+    platforms: codex,opencode,cursor,antigravity
+    commit-message: 🔃 Regenerate cross-harness outputs
+```
+
+- **Validate first.** `claude plugin validate .` runs before conversion, so a
+  broken source never gets converted.
+- **Commit the output.** Cursor's Auto Refresh needs files in git, and
+  OpenCode has no marketplace, so the directory is the install. The action
+  auto-commits to `main`.
+- **Sequence it.** If another workflow also pushes to `main` (a version
+  stamper, say), trigger on `workflow_run` of that workflow. The action has
+  no retry for a non-fast-forward push. A preflight `git diff --quiet
+  HEAD~1 HEAD -- <paths>` skips runs where nothing relevant changed.
+- **Never edit generated files.** Fix the Claude source and let the next
+  run overwrite them.
+- **Output layout.** Per-plugin trees land in flat top-level directories
+  named after the plugin (`<plugin>/.opencode/`, `<plugin>/.agents/`,
+  `<plugin>/.cursor-plugin/`, `<plugin>/.codex-plugin/`), next to the
+  `plugins/<name>/` source. Don't confuse the two.
+- **Known gaps (acplugin is v0.x).**
+  - Every generated manifest says `version: "1.0.0"`. The real version
+    lives in the Claude manifest.
+  - `PostToolUse/Write|Edit` and `PreToolUse/Bash` hooks don't convert to
+    Antigravity or OpenCode. Those harnesses skip them with a warning.
+  - Codex hooks need the user to trust them with `/hooks` before they fire.
+  - Generated agents all get OpenCode `mode: subagent`. To make one
+    tab-selectable, edit `mode:` in the consumer's copy, or post-process in
+    the workflow.
+- **OpenCode still needs a copy step.** The generated tree is not in a
+  discovery root. See the next section.
+
 ## Equipping OpenCode (and other harnesses)
 
 Run a script that symlinks the generated skills and agents into
