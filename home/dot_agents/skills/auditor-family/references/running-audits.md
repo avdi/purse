@@ -30,10 +30,11 @@ or when one of the three post-fix checks (step 9) could not be done.
    (`git fetch origin --quiet && git diff "$(git merge-base origin/main HEAD)" > changeset.diff`
    to include uncommitted work; `origin/main...HEAD` once committed). Pass each
    auditor that file, its row's Paths and Why, and the severity-model skill's
-   content. Run every row on the plan's round model (fast / balanced /
-   strongest, translated into a concrete override for the runtime), the same
-   model for every row, the default subagent model if the runtime can't
-   override. One subagent per row. On round 2, resume the same auditor if the
+   content. Run every row on the plan's round model: the base (fast / balanced,
+   translated into a concrete override for the runtime) for every row, except
+   the rows the plan escalates, which run on the strongest model. Escalate only
+   the rows the plan names. Use the default subagent model for the whole round
+   if the runtime can't override per dispatch. One subagent per row. On round 2, resume the same auditor if the
    runtime can address it (Claude Code `SendMessage`), else dispatch fresh.
 3. **Run codified checks once, centrally**, before the auditors review: sweep
    the snapshot with every applicable codified/partial check via the owning
@@ -47,7 +48,8 @@ or when one of the three post-fix checks (step 9) could not be done.
    manual look; it never waives the charter.
 4. **Consolidate** into one severity-grouped verdict.
 5. **Close with the generalist**, invoked directly (it is not on the plan),
-   given the changeset **and** the consolidated verdict. In round 1, also hand
+   on the strongest model whatever the round's base is, given the changeset
+   **and** the consolidated verdict. In round 1, also hand
    it any Plan/Spec review's recorded dispositions — nothing else re-reads
    them, so it is the only reader positioned to check that what the design
    round adopted landed.

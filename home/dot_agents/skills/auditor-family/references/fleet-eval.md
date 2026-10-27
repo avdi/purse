@@ -43,9 +43,12 @@ What that means for a fleet:
   repeatedly failed to return findings in the required structured shape.
 - **Per-auditor tiering loses** to a flat round on recall *and* cost; the small
   slots of the old scheme were the recall drag.
-- **Escalate the whole round to the strongest model** when a Blocking miss
-  would be an incident — about +18 points of recall at ~16× the cost. Extra
-  depth (16 turns vs 2) is most of that gap.
+- **A flat strongest round** caught the most — about +18 points of recall at
+  ~16× the cost; extra depth (16 turns vs 2) is most of that gap. Escalating
+  only incident-class rows that the change alters, plus the closing pass, buys
+  part of it at a fraction of the price. That mixed arrangement (a `fast` base,
+  two levels, never a small slot below the base) has not been measured; the
+  evidence only rules out the three-level scheme.
 - **One session per auditor.** Single-session monoliths lost recall at every
   model size; affinity clusters/lanes matched or lost to fan-out and cost more.
   Fan-out at the balanced model is ~13–70s of critical path, so a round is

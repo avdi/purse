@@ -22,7 +22,7 @@ Probes:
 - `git log --format= --name-only | sort | uniq -c | sort -rn | head -50` — the
   hot directories are where review effort pays back.
 - Ask: "what breaks *silently* here?" Silent-corruption subsystems earn an
-  auditor and a strongest-model round when touched; loud-failure ones may
+  auditor and a strongest-model row when a change alters them; loud-failure ones may
   not need an auditor at all.
 
 ## Axis B — cross-cutting functional concerns
@@ -78,6 +78,6 @@ Before writing anything:
 3. **Coverage test.** Take the last five merged PRs. For each, list which
    auditors would have been dispatched. A PR that routes to nobody means a gap;
    a PR that routes to everybody means the areas are too broad.
-4. **Stakes test.** Name the areas whose changes escalate a round to the
-   strongest model. If every area does, the list carries no information —
+4. **Stakes test.** Name the areas whose rows escalate to the strongest
+   model when a change alters their behavior. If every area does, the list carries no information —
    recalibrate against what actually causes incidents.

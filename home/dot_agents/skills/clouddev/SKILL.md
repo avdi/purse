@@ -375,6 +375,8 @@ rather than failing halfway through a QA pass.
 
 ### Script contract
 
+The manifest's `exec` is best a project-level `script/exec` that also works on the host, in a devcontainer and in CI, and routes into the container topology only when told to. See the `exec-prefix` skill.
+
 | Script | Must | Must not |
 |---|---|---|
 | `prepare` | be idempotent; do **all** network work (image pulls, dependency installs, cache warming); leave only disk behind | start any process — it will be discarded; write a credential to disk |

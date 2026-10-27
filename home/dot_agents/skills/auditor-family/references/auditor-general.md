@@ -115,22 +115,36 @@ files don't. Add project-specific cases as they bite. Baseline examples:
 
 ## Round model
 
-Every auditor in a round runs on the **same** model; pick one for the round:
+A round has one **base model** every dispatched auditor runs on, plus a short
+list of rows **escalated** to the strongest model. Pick the base:
 
 - **`fast`** — the default. The runtime's **current-generation** small/fast
   model (Claude: Haiku 5.5 or newer).
-- **`balanced`** — the mid-size workhorse. Use when the small model isn't
-  current-generation, or you can't tell which generation it is.
-- **`strongest`** — escalate the whole round when a Blocking miss would be an
-  incident: authn/authz, secrets, money, data deletion or migration,
-  privacy/consent boundaries, or a large change across several. Name the
-  reason in Scope.
+- **`balanced`** — the mid-size workhorse. Use as the base when the small model
+  isn't current-generation, or you can't tell which generation it is.
 
-Never mix models across the rows of one round. <Cite the measurement: flat
-current-gen small ≥ flat balanced on recall at a fraction of the cost; an old
-small generation missed Blocking findings and failed the output shape; flat
-beat per-auditor tiering; strongest +18 points at ~16× cost; effort, single
-sessions and lanes, and charter-in-prompt bought nothing.> No agent's
+`strongest` is not a base. Give it to a row, and that row alone, when **both**
+hold:
+
+1. the auditor's area is one where a Blocking miss would be an incident:
+   authn/authz, secrets, money, data deletion or migration, privacy/consent
+   boundaries; and
+2. this change alters behavior in that area. Touching a nearby file, reusing a
+   helper from the area, or sitting next to a sensitive concept is not enough.
+
+The presumption is that no row is escalated. When you escalate one, name it and
+the behavior it changes in the Scope line; an escalation you can't state in one
+clause is not one. Escalate the row, not the round.
+
+The closing pass (`<prefix>-auditor-generalist`) always runs on `strongest`. It
+is not on the plan, so the invoker applies this without being told.
+
+<Cite the measurement: flat current-gen small ≥ flat balanced on recall at a
+fraction of the cost; an old small generation missed Blocking findings and
+failed the output shape; flat beat three-level per-auditor tiering because the
+small slots were the recall drag; a flat strongest round +18 points at ~16×
+cost; effort, single sessions and lanes, and charter-in-prompt bought nothing.
+Say that the base-plus-escalated-rows scheme itself is unmeasured.> No agent's
 frontmatter names a model: it is the **invoker's** job to translate
 fast/balanced/strongest into a concrete override at dispatch, or use the
 runtime's default subagent model for the whole round if it can't override.
@@ -219,8 +233,9 @@ Exactly one artifact, nothing else.
    lines; three or more technology/module auditors; two or more independent
    seams). For a Plan/Spec: whether it names a PR sequence and, if not, whether
    the work looks as though it should. Say if this is a Plan/Spec review or a
-   round 2. End with the **Round model** — `fast`, or `balanced`/`strongest`
-   and why.
+   round 2. End with the **Round model** — the base (`fast`, or `balanced` and
+   why), then each row escalated to `strongest` with the behavior it changes, or
+   "no rows escalated".
 2. **The plan**, most relevant first:
 
    | # | Auditor | Paths | Why it's on the list (the slice it owns here) |

@@ -29,8 +29,8 @@ Plus meta-agents:
 
 | Agent | Role |
 |---|---|
-| `<prefix>-auditor-general` | Entry point. Reads a changeset, emits an ordered **dispatch plan** (auditor, paths, why) and the one model the round runs on. Does not review, and does not pre-investigate. |
-| `<prefix>-auditor-generalist` | Closing pass, invoked directly (not via the dispatch plan) with the diff plus that round's consolidated verdict. Judgment-based eyes for design/architecture smells and gaps no area auditor owns; also confirms "fixed" claims and adopted design rows really are in the tree. |
+| `<prefix>-auditor-general` | Entry point. Reads a changeset, emits an ordered **dispatch plan** (auditor, paths, why) and the round model: a base, plus any rows escalated to the strongest. Does not review, and does not pre-investigate. |
+| `<prefix>-auditor-generalist` | Closing pass, invoked directly (not via the dispatch plan) on the strongest model, with the diff plus that round's consolidated verdict. Judgment-based eyes for design/architecture smells and gaps no area auditor owns; also confirms "fixed" claims and adopted design rows really are in the tree. |
 | `<prefix>-agent-guidance-field-researcher` | Harvests durable lessons from reviews and self-reported digs and **files them as `lesson` issues** on the guidance repo. Cannot edit it. |
 | `<prefix>-guidance-curator` | The only writer of guidance. Lands lessons from the queue, per-issue in real time and as a sweep that sees the whole queue at once. |
 | `<prefix>-toolmonger` | Turns ad-hoc commands into tools, fixes friction, seeds skills with pointers to them. |
@@ -44,10 +44,14 @@ one exception to "no auditor without a paired skill" (see Bootstrapping step 6).
 The same goes across layers: never put a rule in both a baseline and an overlay;
 a lesson that now applies to two or more overlays belongs in baseline.
 
-**Frontmatter is just `name` and `description`.** Agents are named
-`*.agent.md` (Copilot silently skips plain `.md`), name no `model:`, and list no
-`tools:`/`mcpServers:` unless the agent truly needs a restriction or a grant;
-the two runtimes spell those differently and each silently ignores the other's
+**Frontmatter is `name` and `description`, plus grants only where needed.**
+Agents are named `*.agent.md` (Copilot silently skips plain `.md`) and name no
+`model:`. Claude Code subagents do not inherit the parent session's MCP
+servers, so an auditor that should search with an index declares it:
+`tools: Read, Bash, Grep, Glob, mcp__ripgrep__*` plus `mcpServers: [ripgrep]`
+(add `codegraph` and `LSP` on the generalist, the auditor that most needs
+structure over text). Area auditors are read-only: list no `Edit`/`Write`. The
+two runtimes spell grants differently and each silently ignores the other's
 form. Mechanics: `defining-subagents` skill and the agent-infra repo's
 `docs/cross-runtime-agent-authoring.md`.
 
@@ -64,6 +68,14 @@ adds only:
   routing for its overlay auditors), `running-audits-notes` (what is unsafe to
   run concurrently in this project, project-local verification scripts), and
   `<area>-auditor-notes` where a baseline auditor needs project calibration.
+- What a `running-audits-notes` supplement typically holds: the datastore a
+  test run writes to (one SQLite test DB per worktree means no two auditors
+  run the suite in the same worktree at once; sibling worktrees are safe); the
+  environment variables an auditor must never set because they turn a read into
+  a write or a paid call (cassette re-record flags, real-provider opt-ins), so
+  the auditor reports the check and its predicted result instead; and where to
+  send background CI output (the session scratchpad, not shared `/tmp`, so
+  another session's leftover log isn't mistaken for yours).
 - Baseline must be enabled explicitly alongside the overlay in runtimes
   without plugin-dependency resolution (Copilot).
 
@@ -183,13 +195,14 @@ dispositions are handed to the closing pass in round 1.
    each relevant auditor the compact result. A passing check narrows the
    manual look; it never waives an auditor's charter.
 3. **Run every row** of the plan, as one subagent each, in a single concurrent
-   block, on the plan's one round model. Hand each auditor the diff as a file,
+   block, on the plan's base model (escalated rows on the strongest). Hand each auditor the diff as a file,
    its row's Paths and Why, and the severity-model skill's content. Never trim
    the plan yourself; if the fan-out is disproportionate, ask for a leaner plan
    *before* dispatching.
 4. **Consolidate** into one verdict, Blocking → Should-fix → Consider,
    deduplicated and attributed (narrower owner wins; functional beats style).
-5. **Close with the generalist**, given the changeset and the verdict.
+5. **Close with the generalist** on the strongest model, given the changeset
+   and the verdict.
 6. **Post the verdict** as a PR comment (a table: finding, severity,
    disposition) with a machine-readable `round2_reason`; never fold it into the
    PR description.
@@ -244,21 +257,32 @@ the time — that's the design.
 
 ## Round model
 
-Every auditor in a round runs on **one** model, which the dispatch plan names
-for the whole round:
+A round has one **base model** that every dispatched auditor runs on, plus a
+short list of **escalated rows** that run on the strongest model. The dispatch
+plan names both.
 
-- **fast** — the default: the runtime's **current-generation** small/fast
+- **fast** — the default base: the runtime's **current-generation** small/fast
   model (Claude: Haiku 5.5 or newer).
-- **balanced** — the mid-size workhorse. Use it when the small model isn't
-  current-generation or you can't tell which generation it is.
-- **strongest** — escalate the whole round when a Blocking miss would be an
-  incident: authn/authz, secrets, money, data deletion or migration,
-  privacy/consent boundaries, or a large change across several. Name the
-  reason in Scope.
+- **balanced** — the base when the small model isn't current-generation or you
+  can't tell which generation it is.
+- **strongest** — never a base. Given to a row, and that row alone, when **both**
+  hold: (1) its area is one where a Blocking miss would be an incident (authn/
+  authz, secrets, money, data deletion or migration, privacy/consent
+  boundaries), and (2) this change *alters behavior* in that area. A nearby
+  file, a reused helper, or a sensitive-sounding concept is not enough. The
+  presumption is that no row is escalated; most rounds escalate none. Name the
+  row and the behavior it changes in Scope; an escalation you can't state in one
+  clause isn't one.
+- **The generalist closing pass always runs on strongest.** It isn't on the
+  plan, so the invoker applies this without being told: it sees the whole
+  changeset and every verdict, and is the one reader that has to catch what the
+  focused rows structurally miss.
 
-Never mixed models across one round's auditors; one subagent per auditor, never
-several charters folded into one session; an *old-generation* small model is
-not `fast`. This is measured, not taste — see `references/fleet-eval.md`.
+Never a model tier per auditor by stakes (three levels); one subagent per
+auditor, never several charters folded into one session; an *old-generation*
+small model is not `fast`. The two-level arrangement (base plus escalated rows)
+is a reasoned compromise between the measured arms, not itself measured. See
+`references/fleet-eval.md`.
 
 No agent's frontmatter names a model. The invoking agent maps
 fast/balanced/strongest to whatever its runtime calls those models today, and
@@ -326,8 +350,9 @@ them; it blocks only the lesson that raised it.
 - Letting the auditor-general write the review itself, or pre-investigate
   likely findings, instead of routing. It stops when every changed subject has
   an owner.
-- Per-auditor model tiers, mixed models in a round, or an old-generation small
-  model as the "fast" tier.
+- Per-auditor model tiers by stakes, escalating a row because it merely sits
+  near a sensitive area, a strongest base for the whole round, or an
+  old-generation small model as the "fast" tier.
 - Folding several auditors' charters into one session or one "lane" to save
   dispatches (monoliths and affinity clusters both lost recall).
 - Pinning `model:` in an auditor's frontmatter; hardcoding `tools:`/MCP syntax
