@@ -1,4 +1,14 @@
-# Skills and agents that work in more than one harness
+---
+name: cross-harness-compat
+description: >
+  Write skills, agents, plugins and hooks that work under more than one
+  harness (Claude Code, Copilot CLI, OpenCode). Covers *.agent.md naming,
+  omitting model:, listing both mcp__server__* and server/* in tools:,
+  harness-specific frontmatter, plugin dependencies, hook payload differences,
+  and equipping OpenCode. Use when authoring or debugging a skill or agent
+  that "works in one harness but not another", or when adding an MCP tool
+  grant to an agent.
+---
 
 Distilled from 410Labs/agent-infra's `docs/cross-runtime-agent-authoring.md`
 (verified against vendor docs and real sessions, 2026-09/10). Check that file
