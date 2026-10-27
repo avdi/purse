@@ -182,6 +182,13 @@ from a single declarative manifest and loop in `purse-outfit-agents`.
   `settings.json` — no CLI verb — so it's intentionally left unmanaged, alongside
   Cursor/Devin/Antigravity which don't share the format at all.
 
+## Cross-harness skills and agents
+
+When writing skills or agents meant to run under more than one harness
+(Claude Code, Copilot, OpenCode), read `docs/cross-harness-skills-and-agents.md`
+first. Key points: name agents `*.agent.md`, omit `model:`, list both
+`mcp__server__*` and `server/*` in `tools:`.
+
 ## Secrets — Zoho Vault
 
 Avdi uses [Zoho Vault](https://www.zoho.com/vault/) as his password/secret manager, **not** 1Password, Bitwarden, or the system keychain. When secrets need to be referenced in scripts or configs, expect them to come from Zoho Vault (typically via a CLI or manual retrieval), not from another secret store. Do not assume or generate integrations with other secret managers.
