@@ -163,6 +163,12 @@ edit the manifest; do not hand-edit per-agent config files.
 
 `jq` is a hard dependency of the installer (declared in `packages.yaml`).
 
+**Project `.mcp.json` in opencode 2.x:** opencode has no native support, so
+`home/dot_config/opencode/plugins/mcp-json.js` (a global plugin) reads the
+project's `.mcp.json` at startup and registers its servers through
+`ctx.mcp.transform`, expanding `${VAR}`/`${VAR:-default}`. Servers already in
+opencode's own config win. Edits to `.mcp.json` need an opencode restart.
+
 ## Agent plugins
 
 Claude Code, Codex CLI, and GitHub Copilot CLI share the same
