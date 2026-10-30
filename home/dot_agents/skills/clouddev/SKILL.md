@@ -219,9 +219,12 @@ environment variables UI (the same place a private-registry pull token
 already lives — see *Publishing the dev image* below). Every platform with an
 environment concept at tier 1–3 already has this primitive, because it's more
 basic than a services slot or a compose reader. Because the platform
-re-injects it into *every* process it starts — hook, setup script, and the
-agent's own shell calls alike — it survives process boundaries for free, with
-nothing to write, forget to write, or go stale.
+re-injects it into every process the *session* starts — hook and the agent's
+own shell calls alike — it survives process boundaries for free, with nothing
+to write, forget to write, or go stale. **Claude Code cloud does not inject
+user-defined variables into the setup script** (platform variables only,
+measured 2026-10-30), so `prepare` never reads `CLOUDDEV_TOPOLOGY`, and a
+switch `prepare` needs is an argument in the setup script's text.
 
 It cannot live in `clouddev.yml` either: one project can legitimately run
 direct on Copilot and container on Claude Code cloud at the same time, so
@@ -291,6 +294,12 @@ provisioning**. Copilot is explicit:
 Codex air-gaps the agent phase by default; Claude Code cloud applies access
 levels to the session. A lazily-pulled image or a mid-task `bundle install`
 fails — and on Copilot it fails by quietly appending a warning to the PR body.
+
+Open network is not trusted network. Claude Code cloud's egress gateway
+re-signs HTTPS with its own CA: the box trusts it and containers do not, so
+every HTTPS call inside `docker build` or `docker run` fails with a certificate
+error. Pull a published image in `prepare`; mount the host CA bundle into
+runtime containers (`references/claude-code-cloud.md`, *Network and TLS*).
 
 ### A shell setup script is the universal lowest common denominator
 
@@ -797,6 +806,9 @@ Two constraints to plan for up front:
 - **Private registry auth.** A private repo's dev image is private too. Each
   platform needs a registry token as a secret. Some platforms accept only
   *public* images — check `references/platforms.md` before counting on it.
+  On Claude Code cloud the setup script cannot see user-defined environment
+  variables, so a token never reaches `prepare`: publish the image publicly, or
+  pull it from `boot`.
 - **Architecture.** Build `linux/amd64`. Add `arm64` only once a target
   platform is confirmed to run ARM; multi-arch builds cost real CI time.
 
@@ -870,6 +882,10 @@ id && sudo -n true                      # can prepare install packages?
 pwd && git rev-parse --show-toplevel    # where did the checkout land?
 env | grep -c YOUR_SECRET_NAME          # are secrets visible in this phase?
 ```
+
+For a fuller instrument that also tests caching, TLS and the service stack, copy
+`references/probe-prepare.sh` and follow *Probe method* in
+`references/claude-code-cloud.md`.
 
 Currently unanswered by documentation and worth probing: nested Docker on
 **Cosmos** and **Factory managed** (Factory's answer decides whether its
@@ -1390,6 +1406,13 @@ behind each of its sections.
   Factory BYOM, Coder, a self-hosted runner, or simply `claude -p` / `droid
   exec` / `devin -p` in your own CI. A heavy stack on a managed box with no
   session hook is a losing position you chose.
+- **Building the dev image inside `prepare` behind a TLS-intercepting
+  gateway.** Every HTTPS step in the Dockerfile fails on the gateway CA, and a
+  locally re-tagged base image is ignored by BuildKit. Build in CI, publish,
+  pull. Detail: `references/claude-code-cloud.md`.
+- **Reading "Docker preinstalled" as "Docker running".** Claude Code cloud ships
+  the client and `dockerd` binary with no daemon running; `prepare` and `boot`
+  start it.
 - **Provisioning by prompt.** Antigravity's documented way to prepare an
   environment is to send the agent an interaction telling it to install things,
   then fork the resulting environment id. Codegen, Jules, and Factory managed
@@ -1416,6 +1439,9 @@ Treat a stale entry as unknown, not as true.
 - `references/platforms.md` — per-platform capability matrix: base image
   control, nested Docker, customization hook, network model.
 - `references/adapters.md` — adapter templates, one per platform.
+- `references/claude-code-cloud.md` — measured Claude Code cloud behavior
+  (setup script, snapshot, env vars, Docker, TLS gateway, probe method), plus
+  `references/probe-prepare.sh`, the probe template that produced it.
 - `references/github-actions.md` — running an agent unattended in your own CI:
   why the phase split stops paying, proving the environment instead of
   assuming it, browser/MCP provisioning, private marketplace credentials, the

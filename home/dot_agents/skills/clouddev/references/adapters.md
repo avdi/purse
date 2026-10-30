@@ -170,8 +170,14 @@ No repo file; the setup script is configured in the environment UI at
 ```bash
 #!/usr/bin/env bash
 set -euo pipefail
-script/clouddev/prepare
+cd /home/user/<repo> && script/clouddev/prepare
 ```
+
+The script starts in `/home/user`, not the checkout, and its output is shown
+only when it exits non-zero (`claude-code-cloud.md`). `prepare` starts
+`dockerd` itself, runs the project's host-side initialize step for gitignored
+env files, and pulls a **published** dev image: building the Dockerfile in
+setup fails behind the gateway's TLS interception.
 
 The setup script has a real budget — *"keep the script's total runtime under
 roughly five minutes so the environment cache can build"* — so `prepare`'s
@@ -226,15 +232,19 @@ and local sessions; the docs' own worked example gates cloud-only behavior on
 that platform is this one or none at all).
 
 Also set in that same environment UI: a persistent environment variable
-`CLOUDDEV_TOPOLOGY=container`. This is what tells `boot`/`exec` to pull and
+`CLOUDDEV_TOPOLOGY=container`, visible to the session and **not** to the setup
+script. This is what tells `boot`/`exec` to pull and
 route through the app container instead of running natively — see *Topology
 is a platform-injected persistent env var* above. The `SessionStart` hook
 body never mentions topology at all; it's the same bare call to `boot` every
 platform gets.
 
-Network access `Trusted` at minimum (Docker Hub is in the defaults); add a
-`Custom` allowlist entry for the registry host. A **public** package needs
-nothing else. A **private** one is a real cost, not a formality: the
+Network access: **Full** avoids a long allowlist; `Trusted` plus a `Custom`
+entry per host works but blocks by DNS, so every host a build touches must be
+listed. The runtime app container needs the gateway CA mounted and
+`CURL_CA_BUNDLE`, `SSL_CERT_FILE`, `NODE_EXTRA_CA_CERTS`, `REQUESTS_CA_BUNDLE`
+set (`claude-code-cloud.md`, *Network and TLS*). A **public** package needs
+no registry credential. A **private** one is a real cost, not a formality: the
 environment dialog's own note under **Environment variables** *"warns against
 putting secrets there,"* because *"anyone who uses the environment can read
 [them]"* — and the documented alternative, an **API credential** the agent

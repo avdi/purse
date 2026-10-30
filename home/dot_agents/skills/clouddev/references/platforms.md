@@ -45,7 +45,7 @@ Aider, Cline, OpenCode. These are tier 0 by construction.
 | GitLab Duo (external agent) | 1 | **yours** (`image:`) | undocumented | `commands:` | `commands:` | not documented |
 | GitLab Duo (native flow) | 2 | **yours** (`image:`) | undocumented | `setup_script` | `setup_script` | not documented |
 | OpenHands (self-hosted) | 0/1 | your base, rebuilt as agent-server | **no** — not provisioned | `.openhands/setup.sh` | same script | `/workspace/project[/<conv>]/<repo>` |
-| Claude Code cloud | 2 | fixed | **yes**, preinstalled | setup script | `SessionStart` hook | not documented |
+| Claude Code cloud | 2 | fixed | binaries only: **start `dockerd` yourself** (works as root) | setup script (cwd `/home/user`; user env vars invisible) | `SessionStart` hook | `/home/user/<repo>` (measured 2026-10-30) |
 | Cursor cloud agents | 1 | **yours** (Dockerfile) | yes, needs config | `install` | `start` + `terminals` | not documented |
 | Amp (orbs) | 2 | fixed Debian 12 | yes, you install it | `.agents/setup` | `.agents/resume` (**10s**) | `/home/user/workspace/repo` (observed) |
 | Copilot cloud agent | 2 | runner (or `snapshot`) | **`services:`**, not compose | — (none) | `copilot-setup-steps.yml` | `/workspace` (agent) |
@@ -87,7 +87,9 @@ provisioning:
   Copilot setup steps."* Blocked requests append a warning to the PR body.
 - **Codex** — internet during setup, air-gapped agent phase by default.
 - **Claude Code cloud** — access levels apply to the session; Docker Hub is in
-  the Trusted defaults.
+  the Trusted defaults. In allowlist mode an unlisted host fails at DNS; the
+  egress gateway re-signs HTTPS with its own CA, which the box trusts and
+  containers do not (measured 2026-10-30; `claude-code-cloud.md`).
 - **GitLab** — *"`setup_script` commands run before SRT is applied and execute
   outside it."* Unrestricted in setup, Anthropic SRT sandbox during the run.
 
@@ -390,8 +392,9 @@ pre-provisioned spec; no public endpoint registers one), no documented Docker.
 
 Base image not replaceable; supported paths are installing on top via setup
 script, or *"run your own image as a container alongside Claude with `docker
-compose`"* — the container topology. `docker`, `dockerd`, `docker compose` all
-preinstalled. Postgres 16 and Redis 7 preinstalled but not running. Ruby
+compose`"* — the container topology. `docker`, `dockerd`, `docker compose` are
+installed, but no daemon is running: the script starts `dockerd` (measured
+2026-10-30). Postgres 16 and Redis 7 preinstalled but not running. Ruby
 3.1/3.2/3.3 + rbenv, Node 20/21/22 via nvm.
 
 Setup script runs once, then filesystem snapshot; re-runs on script or
@@ -399,7 +402,10 @@ allowed-host change, or after ~7 days. Network levels: None / Trusted / Full /
 Custom. No human shell — the agent runs every command.
 
 Map `boot` to a repo `SessionStart` hook, since the snapshot won't hold
-running containers.
+running containers. Measured 2026-10-30: exit 0 snapshots the disk (including
+`/var/lib/docker`), a failed setup leaves no snapshot, a new commit does not
+re-run setup, and an edit to the script text does. Full measurements:
+`claude-code-cloud.md`.
 
 ### Cursor cloud agents — tier 1
 <https://cursor.com/docs/cloud-agent/setup.md> ·
