@@ -28,6 +28,6 @@ fi
 
 export GPG_TTY=$(tty)
 
-. "$HOME/.config/shell/aliases.sh"
+[ -n "${_PURSE_ALIASES_SOURCED:-}" ] || . "$HOME/.config/shell/aliases.sh"
 
 

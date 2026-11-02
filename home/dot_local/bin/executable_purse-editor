@@ -1,0 +1,18 @@
+#!/usr/bin/env bash
+# purse-editor — the value of $EDITOR. Prefers VS Code's `code --wait`, falling
+# back to micro (installed to ~/.local/bin by purse-install-extras), then vi.
+#
+# Probes `code --version` rather than `command -v code`: devcontainers ship a
+# /usr/local/bin/code stub that is always present yet exits 127 whenever no real
+# VS Code CLI is reachable. The probe costs over half a second on WSL, so it runs
+# here, when an editor is wanted, and not in every shell's startup.
+
+set -euo pipefail
+
+if code --version >/dev/null 2>&1; then
+  exec code --wait "$@"
+elif command -v micro >/dev/null 2>&1; then
+  exec micro "$@"
+else
+  exec vi "$@"
+fi

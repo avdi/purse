@@ -72,12 +72,32 @@ purse_agent_short_name() {
 # install, plus any that are already here. Wrapping a name we can neither
 # install nor find would replace the shell's own "command not found" with a
 # worse message, so it stays unwrapped.
+#
+# Looks past the Windows half of a WSL PATH: every miss stats each /mnt entry
+# over 9p, roughly 100ms per agent, and this runs in every interactive shell.
 purse_agent_wrappable_commands() {
-  for _pa_cmd in $(purse_agent_commands); do
-    if [ -n "$(purse_agent_install_command "$_pa_cmd")" ] ||
-       command -v "$_pa_cmd" > /dev/null 2>&1; then
-      echo "$_pa_cmd"
-    fi
+  (
+    PATH="$(purse_path_without_windows_mounts)"
+    for _pa_cmd in $(purse_agent_commands); do
+      if [ -n "$(purse_agent_install_command "$_pa_cmd")" ] ||
+         command -v "$_pa_cmd" > /dev/null 2>&1; then
+        echo "$_pa_cmd"
+      fi
+    done
+  )
+}
+
+purse_path_without_windows_mounts() {
+  _pa_rest="$PATH:"
+  _pa_kept=""
+  while [ -n "$_pa_rest" ]; do
+    _pa_entry="${_pa_rest%%:*}"
+    _pa_rest="${_pa_rest#*:}"
+    case "$_pa_entry" in
+      /mnt/*) ;;
+      *) _pa_kept="${_pa_kept:+$_pa_kept:}$_pa_entry" ;;
+    esac
   done
-  unset _pa_cmd
+  echo "$_pa_kept"
+  unset _pa_rest _pa_kept _pa_entry
 }

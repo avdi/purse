@@ -14,6 +14,10 @@
 # run_once_setup-shell.sh adds a source line for this file to ~/.bashrc,
 # ~/.profile, and ~/.zshrc (if present) on first apply.
 
+# Not exported: a child shell has none of the aliases and functions, so it must
+# load this file itself. ~/.profile reads it to skip what ~/.bashrc already did.
+_PURSE_ALIASES_SOURCED=1
+
 # Source env vars first so aliases can reference them if needed
 # shellcheck source=/dev/null
 _shell_cfg="${XDG_CONFIG_HOME:-$HOME/.config}/shell"
