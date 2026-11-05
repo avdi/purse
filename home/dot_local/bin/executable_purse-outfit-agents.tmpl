@@ -563,10 +563,10 @@ outfit_context_mode() {
     return 0
   fi
   echo "→ context-mode: installing the npm package..."
-  npm install -g context-mode || { warn "context-mode npm install failed"; return 0; }
+  npm install -g context-mode@latest || { warn "context-mode npm install failed"; return 0; }
   id="$(IFS=,; echo "${targets[*]}")"
   echo "→ context-mode: setup for $id..."
-  context-mode setup --agents "$id" --yes --no-input || warn "context-mode setup failed"
+  context-mode setup --agents "$id" --yes --no-input </dev/null || warn "context-mode setup failed"
 }
 
 # --- run ---------------------------------------------------------------------
