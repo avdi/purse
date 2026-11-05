@@ -8,7 +8,10 @@ It spells an env-var reference {env:VAR} inside a header value — no leading $,
 unlike every other agent here.
 
 The GitKraken stanza is what `gk mcp install` writes; gk leaves a matching entry
-untouched, so chezmoi stays the only writer. */ -}}
+untouched, so chezmoi stays the only writer.
+
+"plugins" is the key `opencode plugin add` writes; context-mode is listed here
+because that command would otherwise edit this chezmoi-owned file. */ -}}
 {{- $servers := dict -}}
 {{- range $name, $server := .mcpServers -}}
 {{-   if not (has "opencode" $server.excludeAgents) -}}
@@ -23,4 +26,4 @@ untouched, so chezmoi stays the only writer. */ -}}
 {{- if lookPath "gk" -}}
 {{-   $_ := set $servers "GitKraken" (dict "type" "local" "enabled" true "command" (list (lookPath "gk") "mcp" "--host=opencode")) -}}
 {{- end -}}
-{{ dict "mcp" $servers | toPrettyJson }}
+{{ dict "mcp" $servers "plugins" (list "context-mode") | toPrettyJson }}

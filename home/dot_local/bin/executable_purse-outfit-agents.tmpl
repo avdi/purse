@@ -538,6 +538,37 @@ outfit_codegraph() {
   codegraph install --yes --location global --target "$target" || warn "codegraph install failed"
 }
 
+# =============================================================================
+# 10. context-mode on agents without a native plugin install. Claude Code and
+#     Codex get it through agent-plugins.yaml and OpenCode through the rendered
+#     opencode.json; Copilot CLI and VS Code are wired by context-mode's own
+#     setup, which needs the npm package installed globally.
+# =============================================================================
+context_mode_target_for() {
+  case "$1" in
+    copilot) echo copilot-cli ;;
+    code)    echo vscode ;;
+  esac
+}
+
+outfit_context_mode() {
+  local command id targets=()
+  for command in copilot code; do
+    wants "$command" && have "$command" || continue
+    targets+=("$(context_mode_target_for "$command")")
+  done
+  [ "${#targets[@]}" -gt 0 ] || return 0
+  if ! have npm; then
+    warn "npm not found; skipping context-mode setup"
+    return 0
+  fi
+  echo "→ context-mode: installing the npm package..."
+  npm install -g context-mode || { warn "context-mode npm install failed"; return 0; }
+  id="$(IFS=,; echo "${targets[*]}")"
+  echo "→ context-mode: setup for $id..."
+  context-mode setup --agents "$id" --yes --no-input || warn "context-mode setup failed"
+}
+
 # --- run ---------------------------------------------------------------------
 # MCP servers, agent plugins, and GitKraken MCP are internally resilient
 # (per-item `|| warn`) and run first.
@@ -556,6 +587,7 @@ outfit_skills_ref
 outfit_global_skills
 outfit_gitkraken_mcp
 outfit_codegraph
+outfit_context_mode
 
 # Scrub any PATH lines injected into ~/.bashrc / ~/.profile by tool installers
 # (known offenders: antigravity CLI). env.sh owns PATH setup; duplicates here
@@ -564,7 +596,7 @@ purse-scrub-path-stompers
 
 echo
 if outfitting_whole_machine; then
-  echo "✅ Agents outfitted: MCP servers, agent plugins, spec-kit, skills-ref, global skills, GitKraken MCP, CodeGraph."
+  echo "✅ Agents outfitted: MCP servers, agent plugins, spec-kit, skills-ref, global skills, GitKraken MCP, CodeGraph, context-mode."
 else
   echo "✅ Outfitted ${requested_agents[*]}: MCP servers, agent plugins, global skills, GitKraken MCP."
 fi
