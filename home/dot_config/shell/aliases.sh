@@ -351,6 +351,14 @@ else
   PS1='\[\e[36m\]\w\[\e[0m\]$(_purse_git_info)\n\$ '
 fi
 
+# A script cannot export into the shell that ran it, so purse-install-secrets
+# is wrapped: once it has rewritten secrets.sh, this shell loads the result.
+purse-install-secrets() {
+  command purse-install-secrets "$@" || return
+  # shellcheck disable=SC1091
+  . "${HOME}/.config/shell/secrets.sh"
+}
+
 # starship opt-in — only active after running purse-launch-starship,
 # which installs the font + binary and creates the marker file.
 # Initialized last so it owns PROMPT_COMMAND / precmd after other hooks.
