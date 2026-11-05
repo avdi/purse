@@ -41,6 +41,13 @@ if [ -d "$HOME/.local/share/purse/shims" ]; then
 fi
 export PATH
 
+# Dotfiles for devcontainers. The purse devcontainer shim reads PURSE_DOTFILES_*;
+# project wrappers that bypass the shim (e.g. chuck-backend's script/dc) read
+# DEVCONTAINER_DOTFILES_*. Both get the same values.
+export DEVCONTAINER_DOTFILES_REPOSITORY="${PURSE_DOTFILES_REPOSITORY:-https://github.com/avdi/purse.git}"
+export DEVCONTAINER_DOTFILES_INSTALL_COMMAND="${PURSE_DOTFILES_INSTALL_COMMAND:-install.sh}"
+export DEVCONTAINER_DOTFILES_TARGET_PATH="${PURSE_DOTFILES_TARGET_PATH:-~/dotfiles}"
+
 # Local Homebrew — wired up by `purse-install-extras` in no-root environments
 # (installed to ~/.homebrew) or the standard linuxbrew prefix. `brew shellenv`
 # prepends brew's bin/man paths and exports HOMEBREW_* for the session.
