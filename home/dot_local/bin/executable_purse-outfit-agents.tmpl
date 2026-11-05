@@ -569,6 +569,17 @@ outfit_context_mode() {
   context-mode setup --agents "$id" --yes --no-input </dev/null || warn "context-mode setup failed"
 }
 
+# CodeGraph writes its usage block into each agent's instruction file by
+# replacing the file, which turns the symlink to system-prompt.md into a copy.
+# The block now lives in system-prompt.md itself, so this only repairs a link
+# that an older codegraph, or a changed block, still broke.
+restore_instruction_symlinks() {
+  have chezmoi || return 0
+  chezmoi apply --force "$HOME/.claude/CLAUDE.md" "$HOME/.gemini/GEMINI.md" \
+    "$HOME/.copilot/copilot-instructions.md" >/dev/null 2>&1 \
+    || warn "could not restore instruction-file symlinks"
+}
+
 # --- run ---------------------------------------------------------------------
 # MCP servers, agent plugins, and GitKraken MCP are internally resilient
 # (per-item `|| warn`) and run first.
@@ -588,6 +599,7 @@ outfit_global_skills
 outfit_gitkraken_mcp
 outfit_codegraph
 outfit_context_mode
+restore_instruction_symlinks
 
 # Scrub any PATH lines injected into ~/.bashrc / ~/.profile by tool installers
 # (known offenders: antigravity CLI). env.sh owns PATH setup; duplicates here
