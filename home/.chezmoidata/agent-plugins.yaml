@@ -58,6 +58,9 @@ agentPlugins:
     - name: mattpocock
       source: mattpocock/skills
       agents: [claude]
+    - name: context-mode
+      source: mksglu/context-mode
+      agents: [claude, codex]
 
   # Plugins to install, in `name@marketplace` form, and which agents should
   # install each one.
@@ -80,6 +83,9 @@ agentPlugins:
     - name: mattpocock-skills
       marketplace: mattpocock
       agents: [claude]
+    - name: context-mode
+      marketplace: context-mode
+      agents: [claude, codex]
 
   # Retired from the shortlist above but possibly still installed on machines
   # outfitted under an older manifest. purse-outfit-agents uninstalls these
@@ -88,9 +94,6 @@ agentPlugins:
   # every machine has been re-outfitted past it.
   retired:
     marketplaces:
-      # Friction in daily use outweighed its context-window savings.
-      - name: context-mode
-        agents: [claude]
       # Statusline badge clutter outweighed the terse-response benefit.
       - name: caveman
         agents: [claude]
@@ -98,9 +101,6 @@ agentPlugins:
       - name: superpowers-marketplace
         agents: [copilot]
     plugins:
-      - name: context-mode
-        marketplace: context-mode
-        agents: [claude]
       - name: caveman
         marketplace: caveman
         agents: [claude]

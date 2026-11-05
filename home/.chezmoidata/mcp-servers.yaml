@@ -55,6 +55,16 @@ mcpServers:
     # spawned server inherits it in both places. requiresEnv documents the
     # dependency here; only the http branch above reads it (for the Bearer
     # header). uv is in packages.yaml, so uvx ships everywhere dotfiles do.
+  tavily:
+    description: "Tavily web search, extract, crawl & research (tavily-mcp)"
+    transport: stdio
+    command: npx
+    args: ["-y", "tavily-mcp@latest"]
+    requiresEnv:
+      - TAVILY_API_KEY
+    excludeAgents: []
+    # tavily-mcp reads TAVILY_API_KEY out of its inherited environment, the
+    # same way kagimcp does — see kagi above.
 
 # Servers dropped from the shortlist. The rendered registries lose them on the
 # next apply by themselves; the merged ones in mcpAgents keep a server until

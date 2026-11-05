@@ -134,6 +134,8 @@ register_claude() {
   claude mcp add ripgrep -s user -- "$rg_cmd" ${rg_args[@]+"${rg_args[@]}"}
   claude mcp remove kagi -s user >/dev/null 2>&1 || true
   claude mcp add kagi -s user -- "$kagi_cmd" ${kagi_args[@]+"${kagi_args[@]}"}
+  claude mcp remove tavily -s user >/dev/null 2>&1 || true
+  claude mcp add tavily -s user -- "$tavily_cmd" ${tavily_args[@]+"${tavily_args[@]}"}
 }
 
 register_codex() {
@@ -145,6 +147,8 @@ register_codex() {
   codex mcp add ripgrep -- "$rg_cmd" ${rg_args[@]+"${rg_args[@]}"}
   codex mcp remove kagi >/dev/null 2>&1 || true
   codex mcp add kagi -- "$kagi_cmd" ${kagi_args[@]+"${kagi_args[@]}"}
+  codex mcp remove tavily >/dev/null 2>&1 || true
+  codex mcp add tavily -- "$tavily_cmd" ${tavily_args[@]+"${tavily_args[@]}"}
 }
 
 register_devin() {
@@ -165,6 +169,10 @@ register_devin() {
   kagi=$(jq -n --arg cmd "$kagi_cmd" --argjson args "$kagi_args_json" \
         '{command:$cmd, args:$args}')
   jq_upsert "$cfg" mcpServers kagi "$kagi"
+  local tavily
+  tavily=$(jq -n --arg cmd "$tavily_cmd" --argjson args "$tavily_args_json" \
+        '{command:$cmd, args:$args}')
+  jq_upsert "$cfg" mcpServers tavily "$tavily"
 }
 
 register_vscode() {
@@ -183,6 +191,10 @@ register_vscode() {
   kagi=$(jq -n --arg cmd "$kagi_cmd" --argjson args "$kagi_args_json" \
         '{name:"kagi", command:$cmd, args:$args}')
   code --add-mcp "$kagi"
+  local tavily
+  tavily=$(jq -n --arg cmd "$tavily_cmd" --argjson args "$tavily_args_json" \
+        '{name:"tavily", command:$cmd, args:$args}')
+  code --add-mcp "$tavily"
 }
 
 # --- per-agent MCP removal of a retired server (args: <server-name>) ---------
@@ -229,6 +241,9 @@ outfit_mcp_servers() {
   local kagi_cmd='{{ (index .mcpServers "kagi").command }}'
   local kagi_args=({{ range (index .mcpServers "kagi").args }}'{{ . }}' {{ end }})
   local kagi_args_json='{{ (index .mcpServers "kagi").args | toJson }}'
+  local tavily_cmd='{{ (index .mcpServers "tavily").command }}'
+  local tavily_args=({{ range (index .mcpServers "tavily").args }}'{{ . }}' {{ end }})
+  local tavily_args_json='{{ (index .mcpServers "tavily").args | toJson }}'
 
   # Literal env-var reference strings (NOT expanded here — each agent expands
   # them at runtime). Syntax differs per agent.
@@ -238,7 +253,8 @@ outfit_mcp_servers() {
 
   # kagi gets no env-var reference at all: kagimcp reads KAGI_API_KEY from the
   # environment it inherits from the agent, which the shell (or the devcontainer
-  # shim) already populated from ~/.config/shell/secrets.sh.
+  # shim) already populated from ~/.config/shell/secrets.sh. tavily likewise
+  # with TAVILY_API_KEY.
 
   # An out-of-scope or missing agent is a normal, expected skip; a failed
   # registration warns but must not abort the run, or every later agent is
