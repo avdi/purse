@@ -27,7 +27,7 @@ You are working with Avdi Grimm, a software consultant, author, and educator wit
 
 Packaged on every machine. Pick by what you're trying to do:
 
-- **Orient in a repo** (how does X work, where is Y): CodeGraph's `codegraph_explore` first when `.codegraph/` exists. It returns symbol source and call paths in one call.
+- **Orient in a repo** (how does X work, where is Y): CodeGraph's `codegraph_explore` first. It returns symbol source and call paths in one call. If the repo has no `.codegraph/`, you are authorized to run `codegraph init` yourself; this supersedes the CodeGraph block below, which leaves indexing to the user.
 - **Find literal or regex matches**: ripgrep, nearly always over Grep/grep/find.
 - **Library, framework, SDK or CLI docs**: context7, not doc pages fetched from the web. If it falls short, Tavily.
 - **Survey the web** (what exists, who says what, candidate sources): Kagi.
