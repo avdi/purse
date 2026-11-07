@@ -576,7 +576,7 @@ outfit_context_mode() {
 restore_instruction_symlinks() {
   have chezmoi || return 0
   chezmoi apply --force "$HOME/.claude/CLAUDE.md" "$HOME/.gemini/GEMINI.md" \
-    "$HOME/.copilot/copilot-instructions.md" >/dev/null 2>&1 \
+    "$HOME/.copilot/copilot-instructions.md" "$HOME/.config/opencode/AGENTS.md" >/dev/null 2>&1 \
     || warn "could not restore instruction-file symlinks"
 }
 
