@@ -23,22 +23,20 @@ You are working with Avdi Grimm, a software consultant, author, and educator wit
 - In code and docs, describe the current design, not its history. Don't narrate changes ("previously X", "we no longer use Y") or negate an alternative the reader was never shown ("there's no Z to install") — leave history to git; state what is.
 - Avoid "gate" as a stand-in for any barrier, blocker, or checkpoint — it's become filler. Name the actual mechanism: what's blocking, what it's blocking, why. ("the frob re-work is complete, clearing the path to X" beats "the frob gate is open.")
 
-## MCP Tools
+## Tools
 
-These MCP servers are registered for a reason: they are faster, more accurate, and less token-hungry than shell commands, ad-hoc scripts, or guesswork. **Reach for the right MCP tool first.** Falling back to `find`/`grep`/`git`/`gh`/`curl` when a registered server covers the task is a mistake — do it only when the MCP tool genuinely can't serve the need, and say why.
+Packaged on every machine. Pick by what you're trying to do:
 
-Match the task to the tool:
+- **Orient in a repo** (how does X work, where is Y): CodeGraph's `codegraph_explore` first when `.codegraph/` exists. It returns symbol source and call paths in one call.
+- **Find literal or regex matches**: ripgrep, nearly always over Grep/grep/find.
+- **Library, framework, SDK or CLI docs**: context7, not doc pages fetched from the web. If it falls short, Tavily.
+- **Survey the web** (what exists, who says what, candidate sources): Kagi.
+- **Read and digest the web** (extract or crawl pages, research across sources): Tavily, once you know where to look.
+- **Commit, review, resolve, plan work**: GitKraken beats plain git, `gh` and the github MCP for composing clean commits from a messy tree (`git_commit_composer`), conflicts (`git_resolve`), PRs ranked by need (`gitlens_launchpad`), issue to linked branch (`gitlens_start_work`), a PR reviewed in its own worktree (`gitlens_start_review`), multi-repo workspaces, and issues/PRs across GitHub, GitLab, Bitbucket and Azure. github MCP or `gh` for repos not checked out, GitHub-wide code search, releases and CI.
+- **Big output** (logs, test runs, many-file reads): context-mode's `ctx_*` tools keep it out of the context window.
+- **A task a mattpocock skill covers** (tdd, diagnosing-bugs, grilling, code-review, research): offer to use it.
 
-- **Understanding a codebase** — "how does X work", "where is Y", "what calls Z", gathering cross-file context before planning or editing: use `ripgrep` for literal and regex hits and your native search/read tools to follow structure. For sweeps that would flood your context, hand the question to an `Explore` subagent and keep only its conclusion.
-- **Docs for a library / framework / SDK / CLI** — resolve and read via **`context7`** (`resolve-library-id` → `query-docs`). Its docs are cleaner and more parseable than scraping the open web; prefer it even for well-known libraries and even when you think you already know the answer.
-- **Local git** — status, history, diffs, blame, graphs, branches, stashes, commit composing: use **`GitKraken`** (`git_status`, `git_graph`, `git_log_or_diff`, `git_blame`, `git_branch`, `git_stash`, `git_commit_composer`, …). It presents results visually where the client supports it and reads/interacts with repositories more richly than raw `git`. `gitlens_launchpad` surfaces PRs needing attention; `gitlens_start_review` runs an AI PR review in a worktree. Don't shell out to `git` for these. (`app_tool_box` is app-internal — never call it.)
-- **GitHub API** — issues, PRs, code/repo search, releases, review workflows across repos you don't have checked out: use **`github`**. Prefer it over shelling out to `gh`.
-- **File / text search** — when the answer is a literal or regex match rather than a structural question: use **`ripgrep`**. Never `find` or `grep` when ripgrep can do it.
-- **Browser** — fetching pages, driving web UIs, verifying rendered output: use **`playwright`**.
-
-**When the right tool is missing or unauthenticated, tell me — don't quietly fall back.** If the task clearly calls for one of these servers and it isn't registered, is erroring, or needs auth/login I haven't provided, stop at the next natural breakpoint and say so plainly ("this needs `ripgrep` but it's not available/authenticated"). Do not silently substitute a weaker plan B and carry on as if I'd equipped you properly — I may simply not realize I haven't. A degraded fallback is fine once I've decided that with the missing tool in view.
-
-**Pre-flight the tools before autonomous execution.** When producing a plan that will be implemented without my involvement (e.g. on leaving plan mode, or before dispatching a batch of subagents), first do a run-through of the tools the work will likely lean on — the MCP servers above plus anything else the plan depends on — and verify they're actually registered and working (a cheap probe, not just an assumption). Surface anything missing, erroring, or needing auth **before** execution starts, so I can fix it up front rather than discover a fleet of subagents silently worked around broken tools.
+If a tool named here is missing, erroring or unauthenticated, say so at the next natural breakpoint instead of quietly falling back. Before autonomous work, probe the tools the plan leans on.
 
 ## Workflow
 

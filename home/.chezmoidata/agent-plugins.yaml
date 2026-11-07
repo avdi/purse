@@ -61,6 +61,9 @@ agentPlugins:
     - name: context-mode
       source: mksglu/context-mode
       agents: [claude, codex]
+    - name: ponytail
+      source: DietrichGebert/ponytail
+      agents: [claude, codex]
 
   # Plugins to install, in `name@marketplace` form, and which agents should
   # install each one.
@@ -68,9 +71,6 @@ agentPlugins:
     - name: context7
       marketplace: context7-marketplace
       agents: [claude, codex, copilot]
-    - name: ralph-loop
-      marketplace: claude-plugins-official
-      agents: [claude, codex]
     - name: claude-code-setup
       marketplace: claude-plugins-official
       agents: [claude]
@@ -79,7 +79,10 @@ agentPlugins:
       agents: [claude]
     - name: worktrunk
       marketplace: worktrunk
-      agents: [claude]
+      agents: [claude, codex]
+    - name: ponytail
+      marketplace: ponytail
+      agents: [claude, codex]
     - name: mattpocock-skills
       marketplace: mattpocock
       agents: [claude]
@@ -101,6 +104,10 @@ agentPlugins:
       - name: superpowers-marketplace
         agents: [copilot]
     plugins:
+      # Subsumed by Claude Code's goals.
+      - name: ralph-loop
+        marketplace: claude-plugins-official
+        agents: [claude, codex]
       - name: caveman
         marketplace: caveman
         agents: [claude]
@@ -121,6 +128,30 @@ agentPlugins:
       agents:
         - command: codex
           target: codex
+        - command: agy
+          target: antigravity-cli
+        - command: copilot
+          target: github-copilot
+        - command: cursor-agent
+          target: cursor
+        - command: opencode
+          target: opencode
+        - command: devin
+          target: devin
+    - source: max-sixty/worktrunk
+      agents:
+        - command: agy
+          target: antigravity-cli
+        - command: copilot
+          target: github-copilot
+        - command: cursor-agent
+          target: cursor
+        - command: opencode
+          target: opencode
+        - command: devin
+          target: devin
+    - source: DietrichGebert/ponytail
+      agents:
         - command: agy
           target: antigravity-cli
         - command: copilot
