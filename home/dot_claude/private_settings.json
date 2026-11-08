@@ -31,6 +31,10 @@
       }
     ]
   },
+  "statusLine": {
+    "type": "command",
+    "command": "~/.claude/statusline.sh"
+  },
   "enabledPlugins": {
     "context7@context7-marketplace": true,
     "ralph-loop@claude-plugins-official": true,
@@ -43,7 +47,8 @@
     "mailstrom-overlay@410labs-agent-infra": false,
     "ruby-lsp@claude-plugins-official": true,
     "figma@claude-plugins-official": true,
-    "iterate-on-docs@iterate-on-docs": true
+    "iterate-on-docs@iterate-on-docs": true,
+    "context-mode@context-mode": true
   },
   "extraKnownMarketplaces": {
     "claude-plugins-official": {
@@ -82,9 +87,5 @@
   "skipDangerousModePermissionPrompt": true,
   "theme": "dark",
   "agentPushNotifEnabled": true,
-  "permissionMode": "auto",
-  "statusLine": {
-    "type": "command",
-    "command": "~/.claude/statusline.sh"
-  }
+  "permissionMode": "auto"
 }
