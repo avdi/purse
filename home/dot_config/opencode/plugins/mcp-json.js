@@ -14,9 +14,16 @@ import path from "node:path"
 
 const ENV_REFERENCE = /\$\{([A-Za-z_][A-Za-z0-9_]*)(?::-([^}]*))?\}/g
 
-// The credential env files named by the project's .envrc. Override with a
+// The credential env file named by the project's .envrc. Override with a
 // colon-separated MCP_JSON_ENV_FILES, or set it to "" to disable file loading.
-const DEFAULT_ENV_FILES = ["~/.config/shiprise/env", "~/.config/graceful.dev/env"]
+// One registry only (`~/.config/shiprise/env`, Avdi's 2026-11-04 key-regime
+// ruling and the 2026-11-12 ENVSOUP-MACHINE-FIX design): the deprecated
+// `~/.config/graceful.dev/env` was dropped on 2026-11-12 — it loaded in the
+// opposite order from .envrc and bin/secrets (later-wins here vs shiprise-wins
+// there), so a shell and an MCP could resolve the same name to different
+// values. The vetinari fold-in checklist in operations/secrets.md migrates any
+// remaining names before that machine's file is deleted.
+const DEFAULT_ENV_FILES = ["~/.config/shiprise/env"]
 
 const parseEnvFile = (text) =>
   Object.fromEntries(
