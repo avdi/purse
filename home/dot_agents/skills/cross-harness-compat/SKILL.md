@@ -25,6 +25,41 @@ OpenCode only looks in `.opencode/skills/`, `.claude/skills/`,
 plugin cache. A plugin installed for Claude Code gives OpenCode nothing, so
 link or copy the skills into one of those directories.
 
+### Typing a skill's name is not portable
+
+Skills are typed commands in Claude Code and not elsewhere
+(vendor docs verified 2026-11-12):
+
+- **Claude Code**: `.claude/skills/news/` *is* `/news` in the slash menu —
+  nothing extra needed.
+- **OpenCode**: skills are never typed commands. The human reaches one by
+  mentioning it in a prompt as `@<skill-id>` (`@news`); the agent reaches it
+  by description trigger or the `skill` tool. The typed-command surface is a
+  separate mechanism: **commands**, `.opencode/commands/<name>.md` in a
+  project or `~/.config/opencode/commands/` globally. A command's Markdown
+  body is a prompt template (`$ARGUMENTS`, `$1`, optional
+  `agent` / `model` / `subagent` frontmatter), and a shim restores the
+  muscle memory:
+
+  ```markdown
+  ---
+  description: What did I miss — the newspaper front page
+  ---
+
+  @news $ARGUMENTS
+  ```
+
+  The `@id` inside the template is what loads the skill — the command is a
+  context pointer, and its wording decides how well the skill runs. Command
+  files reload live on save, no restart.
+- **Copilot CLI**: no documented typed-skill surface, so the description
+  trigger is the human path there too.
+
+Corollary: a description that says "use when the user says `/<name>`" is
+Claude Code vocabulary. Keep it — it is an honest trigger phrase — and know
+which harness the spelling serves; ship the OpenCode shim when the typing
+habit matters.
+
 ## Agents
 
 Name every agent file `<name>.agent.md`.
