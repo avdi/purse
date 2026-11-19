@@ -1,0 +1,11 @@
+{
+  "name": "purse",
+  "owner": { "name": "Avdi Grimm" },
+  "plugins": [
+    {
+      "name": "wsl-links",
+      "source": "./plugins/wsl-links",
+      "description": "Turns local file paths in the agent's reply into clickable Windows links when running under WSL"
+    }
+  ]
+}
