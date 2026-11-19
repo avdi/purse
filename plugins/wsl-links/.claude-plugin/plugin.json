@@ -1,6 +1,0 @@
-{
-  "name": "wsl-links",
-  "version": "0.1.0",
-  "description": "Turns local file paths in the agent's reply into clickable Windows links when running under WSL",
-  "author": { "name": "Avdi Grimm" }
-}

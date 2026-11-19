@@ -29,6 +29,17 @@
           }
         ]
       }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "~/.claude/hooks/wsl-links.sh",
+            "timeout": 10
+          }
+        ]
+      }
     ]
   },
   "statusLine": {
