@@ -97,22 +97,6 @@ for name in $forward_env_names; do
   [ -n "$value" ] && remote_env_args+=(--remote-env "$name=$value")
 done
 
-# Pass through anything that isn't `up` or `exec` untouched.
-if [ "${1:-}" != "up" ] && [ "${1:-}" != "exec" ]; then
-  exec "$real_devcontainer" "$@"
-fi
-
-# For `exec`, inject the same --remote-env vars (no dotfiles/WSLg/dbr needed).
-#
-# Naming a containerised agent for herdr needs nothing here: herdr reads
-# HERDR_AGENT from this process's own environment, and `dcsh` sets it before
-# handing over. The variable is inherited across this exec on its own.
-if [ "${1:-}" = "exec" ]; then
-  shift  # consume `exec`
-  exec "$real_devcontainer" exec \
-    "${remote_env_args[@]+"${remote_env_args[@]}"}" "$@"
-fi
-
 # The workspace the CLI will act on: an explicit --workspace-folder, else cwd.
 workspace_folder=""
 expecting_workspace_folder=0
@@ -128,6 +112,36 @@ for arg in "$@"; do
   esac
 done
 workspace_folder="${workspace_folder:-$PWD}"
+
+# Tell the container where its workspace lives on the host, in a form a host
+# file manager can open (Windows-style for WSL hosts), so in-container agents
+# can print clickable links. See ~/.claude/hooks/wsl-links.sh.
+host_workspace_path() {
+  local dir; dir="$(cd "$1" 2>/dev/null && pwd -P)" || return 0
+  if [ -n "${WSL_DISTRO_NAME:-}" ] && command -v wslpath >/dev/null 2>&1; then
+    wslpath -m -- "$dir"
+  else
+    printf '%s\n' "$dir"
+  fi
+}
+host_workspace="$(host_workspace_path "$workspace_folder")"
+[ -n "$host_workspace" ] && remote_env_args+=(--remote-env "PURSE_HOST_WORKSPACE=$host_workspace")
+
+# Pass through anything that isn't `up` or `exec` untouched.
+if [ "${1:-}" != "up" ] && [ "${1:-}" != "exec" ]; then
+  exec "$real_devcontainer" "$@"
+fi
+
+# For `exec`, inject the same --remote-env vars (no dotfiles/WSLg/dbr needed).
+#
+# Naming a containerised agent for herdr needs nothing here: herdr reads
+# HERDR_AGENT from this process's own environment, and `dcsh` sets it before
+# handing over. The variable is inherited across this exec on its own.
+if [ "${1:-}" = "exec" ]; then
+  shift  # consume `exec`
+  exec "$real_devcontainer" exec \
+    "${remote_env_args[@]+"${remote_env_args[@]}"}" "$@"
+fi
 
 # A container built from a linked worktree pins its bind-mount sources to that
 # checkout's path, and outlives it: remove the worktree and the container can

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Stop hook: list Windows-clickable file:// links for local paths in the final reply.
+# Stop hook: list host-clickable file:// links for local paths in the final reply.
 set -euo pipefail
 
 MAX_LINKS=10
@@ -34,29 +34,54 @@ absolute_existing() {
 
 percent_encode_uri_path() { sed -e 's/%/%25/g' -e 's/ /%20/g' -e 's/#/%23/g' -e 's/?/%3F/g'; }
 
-windows_file_uri() {
-  local mixed
-  mixed=$(wslpath -m -- "$1")
-  case $mixed in
-    //*) printf 'file:%s\n' "$mixed" | percent_encode_uri_path ;;
-    *)   printf 'file:///%s\n' "$mixed" | percent_encode_uri_path ;;
+# Turns a host path ("//wsl.localhost/Ubuntu/x", "C:/x" or "/Users/x") into a file:// URI.
+file_uri() {
+  case $1 in
+    //*)  printf 'file:%s\n' "$1" ;;
+    /*)   printf 'file://%s\n' "$1" ;;
+    *)    printf 'file:///%s\n' "$1" ;;
+  esac | percent_encode_uri_path
+}
+
+in_devcontainer() { [ -n "${PURSE_HOST_WORKSPACE:-}" ]; }
+
+host_workspace_name() { basename -- "$PURSE_HOST_WORKSPACE"; }
+
+container_workspace() {
+  local name; name=$(host_workspace_name)
+  awk -v name="$name" '{ n = split($5, parts, "/"); if (parts[n] == name) { print $5; exit } }' /proc/self/mountinfo \
+    | grep . || echo "/workspaces/$name"
+}
+
+# Prints the host-side URI for a container path; nothing when it is outside the workspace mount.
+devcontainer_file_uri() {
+  local workspace=$1 path=$2
+  case $path in
+    "$workspace") file_uri "$PURSE_HOST_WORKSPACE" ;;
+    "$workspace"/*) file_uri "$PURSE_HOST_WORKSPACE${path#"$workspace"}" ;;
   esac
 }
 
+wsl_file_uri() { file_uri "$(wslpath -m -- "$1")"; }
+
+link_for() {
+  if in_devcontainer; then devcontainer_file_uri "$(container_workspace)" "$1"; else wsl_file_uri "$1"; fi
+}
+
 main() {
-  running_under_wsl || exit 0
-  local input cwd path
+  in_devcontainer || running_under_wsl || exit 0
+  local input cwd path uri
   input=$(cat)
   cwd=$(jq -r '.cwd // empty' <<<"$input")
   : "${cwd:=$PWD}"
 
   local links=()
   while IFS= read -r path; do
-    links+=("$(windows_file_uri "$path")")
+    uri=$(link_for "$path"); [ -z "$uri" ] || links+=("$uri")
   done < <(final_reply "$input" | path_candidates | absolute_existing "$cwd" | awk '!seen[$0]++' | head -n "$MAX_LINKS")
 
   [ ${#links[@]} -gt 0 ] || exit 0
-  printf '%s\n' "${links[@]}" | jq -Rsc '{systemMessage: ("Windows links:\n" + .)}'
+  printf '%s\n' "${links[@]}" | jq -Rsc '{systemMessage: ("Host links:\n" + .)}'
 }
 
 main
